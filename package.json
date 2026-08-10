@@ -1,0 +1,16 @@
+{
+  "name": "capacityos",
+  "private": true,
+  "description": "CapacityOS monorepo root — npm workspaces for the JavaScript/TypeScript side (apps/web, packages/contracts). apps/api is a separate Python project managed by uv.",
+  "workspaces": [
+    "apps/web",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "test": "npm run test --workspace apps/web"
+  }
+}

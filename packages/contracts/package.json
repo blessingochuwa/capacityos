@@ -1,0 +1,7 @@
+{
+  "name": "@capacityos/contracts",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Shared TypeScript contracts between apps/web and apps/api — populated once real domain data exists to share (CLAUDE.md §6).",
+  "type": "module"
+}
