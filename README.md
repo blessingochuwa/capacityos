@@ -4,7 +4,7 @@ CapacityOS is an open-source-first resource and capacity planning platform for g
 
 The full product mission, operating philosophy, and architectural rules for this repository are defined in [CLAUDE.md](./CLAUDE.md) — that document is the governing source of truth for how this project is built. See also [docs/architecture.md](./docs/architecture.md) for a shorter technical overview.
 
-> **Status:** Phase 0 — repository and architecture bootstrap. No product features (dashboard, capacity engine, scenarios, AI, integrations) exist yet. See [docs/adr/0001-phase-0-bootstrap.md](./docs/adr/0001-phase-0-bootstrap.md) for what was scaffolded and why.
+> **Status:** Phase 1 — domain foundation (Person, Team, Project, Allocation, WorkingSchedule, AvailabilityException). No capacity calculations, dashboard, scenarios, AI, or integrations exist yet. See [docs/domain-concepts.md](./docs/domain-concepts.md) for what the domain entities mean and [docs/adr/](./docs/adr/) for the decisions behind them.
 
 ## Repository layout
 
@@ -41,10 +41,11 @@ The dev server runs at `http://localhost:5173`.
 ```bash
 cd apps/api
 uv sync
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
-The API runs at `http://localhost:8000`. A health check is available at `GET /api/v1/health`.
+The API runs at `http://localhost:8000`. A health check is available at `GET /api/v1/health`; domain CRUD routes (people, teams, projects, allocations, working schedules, availability exceptions) are under `/api/v1/`.
 
 ### Environment variables
 
@@ -53,7 +54,7 @@ Copy `.env.example` to `.env` at the repo root and adjust values as needed. See 
 ## Development
 
 - Frontend lint/typecheck/test: `npm run lint --workspace apps/web`, `npm run typecheck --workspace apps/web`, `npm run test --workspace apps/web`
-- Backend lint/typecheck/test: from `apps/api`, `uv run ruff check .`, `uv run mypy .`, `uv run pytest`
+- Backend lint/typecheck/test: from `apps/api`, `uv run ruff check .`, `uv run pyright`, `uv run pytest`
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for full contribution guidelines and [SECURITY.md](./SECURITY.md) for reporting vulnerabilities.
 

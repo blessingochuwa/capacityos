@@ -27,6 +27,8 @@ Database (SQLite in dev, PostgreSQL-compatible; SQLAlchemy + Alembic)
 - **Postgres-compatible from day one** (CLAUDE.md §7): SQLite is a dev convenience; no SQLite-specific assumptions in domain/persistence code.
 - **Phased build order** (CLAUDE.md §39): don't implement a phase before the one before it is stable.
 
-## Current state (Phase 0)
+## Current state (Phase 1)
 
-Repository and architecture bootstrap only. No domain entities, capacity engine, dashboard, scenario planning, AI layer, auth, or integrations exist yet. See [docs/adr/0001-phase-0-bootstrap.md](./adr/0001-phase-0-bootstrap.md) for what was scaffolded and why.
+The domain foundation exists: Person, Team/TeamMembership, Project, Allocation, WorkingSchedule/WorkingScheduleEntry, and AvailabilityException — with SQLAlchemy models, an Alembic migration, Pydantic contracts, repositories, services, and thin CRUD routes under `/api/v1/`. See [docs/domain-concepts.md](./domain-concepts.md) for what each entity means (in particular, the WORKING SCHEDULE ≠ AVAILABILITY ≠ ALLOCATION ≠ CAPACITY distinction) and [docs/adr/0002-phase-1-domain-foundation.md](./adr/0002-phase-1-domain-foundation.md) for the implementation decisions behind them.
+
+**Still not implemented**, by design: any capacity/utilization/over-allocation calculation, the dashboard, scenario planning, AI, integrations, and auth. Phase 1 exists to give those later phases trustworthy source data — see [docs/adr/0001-phase-0-bootstrap.md](./adr/0001-phase-0-bootstrap.md) for the original bootstrap.

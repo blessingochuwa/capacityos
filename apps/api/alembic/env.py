@@ -2,6 +2,8 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
+# Registers all models on Base.metadata before target_metadata is read below.
+import app.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from alembic import context
 from app.core.config import get_settings
 from app.core.database import Base
@@ -15,7 +17,6 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Domain models register themselves on Base.metadata on import (none yet — Phase 1).
 target_metadata = Base.metadata
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
