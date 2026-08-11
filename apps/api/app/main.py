@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.allocations import router as allocations_router
 from app.api.v1.availability_exceptions import router as availability_exceptions_router
+from app.api.v1.capacity import router as capacity_router
 from app.api.v1.health import router as health_router
 from app.api.v1.people import router as people_router
 from app.api.v1.projects import router as projects_router
@@ -32,3 +33,4 @@ app.include_router(projects_router)
 app.include_router(allocations_router)
 app.include_router(working_schedules_router)
 app.include_router(availability_exceptions_router)
+app.include_router(capacity_router)

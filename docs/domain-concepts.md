@@ -74,3 +74,66 @@ A `WorkingSchedule` is a container for up to seven `WorkingScheduleEntry` rows (
 ## What Phase 1 does NOT compute
 
 No utilization percentage, remaining capacity, over-allocation flag, workload score, or bottleneck detection exists anywhere in this phase — deliberately. Phase 1's job is to make the four source concepts above trustworthy and clearly distinguished; a future capacity engine (CLAUDE.md §10, Phase 2) is what turns `WorkingSchedule + AvailabilityException + Allocation` into an actual capacity number.
+
+## Capacity Engine (Phase 2)
+
+The capacity engine (`app/domain/capacity.py`, `app/domain/dates.py`) is pure, deterministic Python — no database, no HTTP, no AI (CLAUDE.md §4/§10) — that turns the three source concepts above into the fifth: **capacity**, over an explicit `[start_date, end_date]`. See [ADR 0003](adr/0003-phase-2-capacity-engine.md) for the reasoning behind every decision below; this section is the formulas and definitions.
+
+### Definitions
+
+| Term | Meaning |
+|---|---|
+| **Gross capacity** | The hours implied by `WorkingSchedule` alone for the period — the normal pattern, with no exceptions or allocations applied. |
+| **Unavailable hours** | `gross capacity − effective capacity` for the period — the hours removed by `AvailabilityException`s. |
+| **Effective capacity** | Gross capacity after applying availability exceptions — the actual working time available. |
+| **Allocated hours** | Planned project demand (`Allocation`) time-phased into the period. |
+| **Remaining capacity** | `effective capacity − allocated hours`. Can be negative — a negative value is real information (over-allocation), never clamped to zero. |
+| **Utilization** | `allocated hours ÷ effective capacity`, as a ratio (0.80 = 80%, not the string `"80%"`). **`null`, not `0`, when effective capacity is `0`** — see below. |
+| **Over-allocation** | `max(allocated hours − effective capacity, 0)`. Zero when a person has slack; positive whenever demand exceeds effective capacity, including when effective capacity is itself `0`. |
+
+### Daily ledger, then aggregation
+
+The engine always computes one day at a time first (`calculate_daily_capacity`), then sums the daily ledger into a period total (`calculate_period_capacity`) — day, week, and any arbitrary range are the same function with different bounds, never a separately-derived "weekly formula." Team totals (`aggregate_team_capacity`) are sums of already-computed member totals, not a third independent calculation.
+
+### Allocation semantics: time-phasing
+
+`Allocation.allocation_hours` is a **total** over `[start_date, end_date]` (see the Allocation section above). The engine spreads it evenly across every **calendar** day in that range — including weekends and days the person isn't normally scheduled to work — specifically so that an allocation placed on a non-working day shows up as a real conflict (over-allocation) instead of being silently absorbed or moved. Multiple allocations overlapping the same person and date (different projects) sum — this is cross-project contention, a fact to surface, not an error.
+
+### Availability semantics: overlapping exceptions
+
+If more than one `AvailabilityException` covers the same date, the engine takes the **most restrictive** reading: effective capacity for that date is the minimum of the normal scheduled hours and every covering exception's "available that day" value (`0` for `hours = None`). It is never a sum — two exceptions each leaving 4h and 2h available do not combine into 6h.
+
+### Working schedule selection
+
+`WorkingScheduleService` now rejects (422) creating or updating a schedule whose effective date range overlaps another schedule already on file for the same person — a Phase 1 amendment (ADR 0003) needed so the engine can assume at most one schedule ever matches a given date. Zero matching schedules for a date means `0` scheduled hours (the person has no normal pattern on file for that date), not an error.
+
+### Zero-capacity utilization
+
+`utilization` is `null` whenever effective capacity is `0` for the period — both when nothing is allocated (a person fully on leave, correctly not shown as "0% utilized") and when something *is* allocated despite zero capacity (a genuine conflict, visible instead through a positive `over_allocation` and negative `remaining_capacity`).
+
+### Team aggregation
+
+Team `effective_capacity`/`allocated_hours`/`remaining_capacity` are sums of member values. Team `utilization` is **weighted** — `sum(allocated) / sum(effective)` — never an average of member utilization percentages, which would treat a person with 2 effective hours as equally significant to the team number as one with 40. The team API response always includes every member's own full result alongside the team totals, so an individual's over-allocation is never hidden by a healthy team aggregate.
+
+### Canonical week
+
+Monday–Sunday, defined once (`app/domain/dates.py::WEEK_START_WEEKDAY`), matching `WorkingScheduleEntry.weekday`'s existing `date.weekday()` convention (0=Monday). The API takes explicit `start_date`/`end_date` — there's no separate "week" concept to get wrong.
+
+### Worked example
+
+```text
+Person: Mon-Fri, 8h/day (40h/week gross)
+Period: one week, no availability exceptions
+Allocations: Project A 20h, Project B 15h, Project C 10h (all covering the full week)
+
+Gross capacity      = 40h
+Effective capacity  = 40h   (no exceptions)
+Allocated hours     = 45h   (20 + 15 + 10)
+Remaining capacity  = -5h   (40 - 45)
+Utilization         = 1.125 (45 / 40)
+Over-allocation     = 5h    (45 - 40)
+```
+
+### What Phase 2 does NOT do
+
+No skills, no bottleneck detection, no scenario planning, no dashboard, no AI-generated explanation of these numbers — those are later phases (CLAUDE.md §39). Phase 2's job is the arithmetic itself, exposed through three thin read-only endpoints (`GET /api/v1/capacity/people/{id}`, `/teams/{id}`, `/projects/{id}`).

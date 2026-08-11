@@ -84,6 +84,69 @@ def test_update_schedule_replaces_entries(client: TestClient) -> None:
     assert body["entries"][0]["hours"] == "4"
 
 
+def test_create_overlapping_schedule_for_same_person_returns_422(client: TestClient) -> None:
+    """Two unbounded (effective_start/end_date=None) schedules for the same
+    person always overlap — the capacity engine needs at most one schedule
+    matching any given date (docs/adr/0003-phase-2-capacity-engine.md)."""
+    person = _create_person(client)
+    client.post(
+        "/api/v1/working-schedules", json={"person_id": person["id"], "entries": _entries()}
+    )
+
+    response = client.post(
+        "/api/v1/working-schedules",
+        json={"person_id": person["id"], "entries": _entries(hours=4)},
+    )
+    assert response.status_code == 422
+
+
+def test_create_non_overlapping_schedule_for_same_person_returns_201(client: TestClient) -> None:
+    person = _create_person(client)
+    client.post(
+        "/api/v1/working-schedules",
+        json={
+            "person_id": person["id"],
+            "entries": _entries(),
+            "effective_end_date": "2026-06-30",
+        },
+    )
+
+    response = client.post(
+        "/api/v1/working-schedules",
+        json={
+            "person_id": person["id"],
+            "entries": _entries(hours=4),
+            "effective_start_date": "2026-07-01",
+        },
+    )
+    assert response.status_code == 201
+
+
+def test_update_schedule_into_overlap_returns_422(client: TestClient) -> None:
+    person = _create_person(client)
+    client.post(
+        "/api/v1/working-schedules",
+        json={
+            "person_id": person["id"],
+            "entries": _entries(),
+            "effective_end_date": "2026-06-30",
+        },
+    )
+    second = client.post(
+        "/api/v1/working-schedules",
+        json={
+            "person_id": person["id"],
+            "entries": _entries(hours=4),
+            "effective_start_date": "2026-07-01",
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/working-schedules/{second['id']}", json={"effective_start_date": "2026-01-01"}
+    )
+    assert response.status_code == 422
+
+
 def test_delete_schedule(client: TestClient) -> None:
     person = _create_person(client)
     created = client.post(

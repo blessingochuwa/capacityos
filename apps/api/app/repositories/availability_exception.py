@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from sqlalchemy import func, select
 
@@ -23,3 +24,17 @@ class AvailabilityExceptionRepository(BaseRepository[AvailabilityException]):
             )
         )
         return items, total
+
+    def list_for_people(
+        self, person_ids: list[uuid.UUID], start_date: date, end_date: date
+    ) -> list[AvailabilityException]:
+        """Exceptions for any of person_ids overlapping [start_date, end_date],
+        one query for the whole batch — see WorkingScheduleRepository.list_for_people."""
+        if not person_ids:
+            return []
+        stmt = select(AvailabilityException).where(
+            AvailabilityException.person_id.in_(person_ids),
+            AvailabilityException.start_date <= end_date,
+            AvailabilityException.end_date >= start_date,
+        )
+        return list(self.session.scalars(stmt))

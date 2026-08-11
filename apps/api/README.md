@@ -25,9 +25,9 @@ uv run uvicorn app.main:app --reload
 app/
 ├── main.py          FastAPI app + middleware + exception-handler wiring
 ├── api/v1/           HTTP routes (thin — no business logic): people, teams, projects,
-│                     allocations, working-schedules, availability-exceptions, health
+│                     allocations, working-schedules, availability-exceptions, capacity, health
 ├── core/              Settings, database session/transaction handling, domain exceptions
-├── domain/            Pure deterministic business rules (the capacity engine — Phase 2+)
+├── domain/            Pure deterministic business rules — the capacity engine (Phase 2)
 ├── services/          Validation and orchestration across repositories
 ├── repositories/      Persistence access (SQLAlchemy)
 ├── models/             SQLAlchemy ORM models — see docs/domain-concepts.md
