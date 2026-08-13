@@ -51,3 +51,39 @@ class AvailabilityType(StrEnum):
     PERSONAL_LEAVE = "personal_leave"
     REDUCED_AVAILABILITY = "reduced_availability"
     OTHER = "other"
+
+
+class ScenarioStatus(StrEnum):
+    """Controlled vocabulary for Scenario.status (Phase 4).
+
+    A workflow label the user sets deliberately (PATCH) — it has no effect
+    on calculation: draft/active/archived scenarios all calculate exactly
+    the same way. It exists purely so a user can distinguish "still being
+    built," "the one we're actually planning around," and "no longer
+    relevant" in the scenario list.
+    """
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class ScenarioOperationType(StrEnum):
+    """Controlled vocabulary for ScenarioOperation.operation_type (Phase 4).
+
+    See docs/adr/0004-phase-4-scenario-planning.md for why these 8 types
+    were chosen over the prompt's original 6 categories (in particular, why
+    there is no standalone "change project demand" type: Project has no
+    stored demand field — demand is derived from Allocation rows — so demand
+    changes are expressed as add_allocation/adjust_allocation instead of an
+    invented distribution rule).
+    """
+
+    ADD_ALLOCATION = "add_allocation"
+    ADJUST_ALLOCATION = "adjust_allocation"
+    REMOVE_ALLOCATION = "remove_allocation"
+    MOVE_ALLOCATION = "move_allocation"
+    SHIFT_PROJECT = "shift_project"
+    AVAILABILITY_OVERRIDE = "availability_override"
+    AVAILABILITY_CLEAR = "availability_clear"
+    ADD_HYPOTHETICAL_RESOURCE = "add_hypothetical_resource"

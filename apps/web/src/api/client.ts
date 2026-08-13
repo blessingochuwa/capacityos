@@ -57,22 +57,7 @@ function buildQueryString(params?: QueryParams): string {
   return query ? `?${query}` : ''
 }
 
-export async function apiGet<T>(
-  path: string,
-  params?: QueryParams,
-): Promise<T> {
-  const url = `${API_BASE_URL}${path}${buildQueryString(params)}`
-
-  let response: Response
-  try {
-    response = await fetch(url, { headers: { Accept: 'application/json' } })
-  } catch {
-    throw new ApiError(
-      0,
-      'Could not reach the CapacityOS API. Check your connection.',
-    )
-  }
-
+async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail: string | null = null
     try {
@@ -85,6 +70,55 @@ export async function apiGet<T>(
       detail ?? `Request failed (${response.status})`,
     )
   }
-
+  if (response.status === 204) {
+    return undefined as T
+  }
   return (await response.json()) as T
+}
+
+async function request<T>(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  options?: { params?: QueryParams; body?: unknown },
+): Promise<T> {
+  const url = `${API_BASE_URL}${path}${buildQueryString(options?.params)}`
+  const init: RequestInit = {
+    method,
+    headers: { Accept: 'application/json' },
+  }
+  if (options?.body !== undefined) {
+    init.headers = { ...init.headers, 'Content-Type': 'application/json' }
+    init.body = JSON.stringify(options.body)
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url, init)
+  } catch {
+    throw new ApiError(
+      0,
+      'Could not reach the CapacityOS API. Check your connection.',
+    )
+  }
+  return handleResponse<T>(response)
+}
+
+export function apiGet<T>(path: string, params?: QueryParams): Promise<T> {
+  return request<T>('GET', path, { params })
+}
+
+/** Scenario planning (Phase 4) is the first frontend feature that writes —
+ * every earlier phase was read-only. These follow apiGet's exact error-
+ * handling shape (same ApiError, same extractDetail) rather than
+ * introducing a second convention. */
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>('POST', path, { body })
+}
+
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>('PATCH', path, { body })
+}
+
+export function apiDelete<T = void>(path: string): Promise<T> {
+  return request<T>('DELETE', path)
 }

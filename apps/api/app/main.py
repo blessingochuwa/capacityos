@@ -7,6 +7,7 @@ from app.api.v1.capacity import router as capacity_router
 from app.api.v1.health import router as health_router
 from app.api.v1.people import router as people_router
 from app.api.v1.projects import router as projects_router
+from app.api.v1.scenarios import router as scenarios_router
 from app.api.v1.teams import router as teams_router
 from app.api.v1.working_schedules import router as working_schedules_router
 from app.core.config import get_settings
@@ -34,3 +35,4 @@ app.include_router(allocations_router)
 app.include_router(working_schedules_router)
 app.include_router(availability_exceptions_router)
 app.include_router(capacity_router)
+app.include_router(scenarios_router)

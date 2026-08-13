@@ -137,3 +137,43 @@ Over-allocation     = 5h    (45 - 40)
 ### What Phase 2 does NOT do
 
 No skills, no bottleneck detection, no scenario planning, no dashboard, no AI-generated explanation of these numbers — those are later phases (CLAUDE.md §39). Phase 2's job is the arithmetic itself, exposed through three thin read-only endpoints (`GET /api/v1/capacity/people/{id}`, `/teams/{id}`, `/projects/{id}`).
+
+## Scenario Planning (Phase 4)
+
+A **Scenario** (`app/models/scenario.py`) is a hypothetical planning exercise: "what happens if we accept this work?", "what if this project starts two weeks earlier?", "would hiring someone solve this?" — answered without ever writing to Person, Team, Project, Allocation, WorkingSchedule, or AvailabilityException. See [ADR 0004](adr/0004-phase-4-scenario-planning.md) for the full reasoning; this section is the concepts and lifecycle.
+
+### Baseline vs scenario
+
+Every scenario has a **baseline period** (`baseline_start_date`/`baseline_end_date`) and a list of **ScenarioOperations** — the delta from real data. A scenario is never a copy of People/Projects/Allocations; it is its operations plus that date range. Calculating it always re-reads current baseline data and applies the operations in memory — nothing is ever written back.
+
+### Scenario operations
+
+Eight typed operations (`app/domain/scenario.py`), each a small, unambiguous change:
+
+| Operation | Models |
+|---|---|
+| `add_allocation` | A new hypothetical allocation |
+| `adjust_allocation` | A change to a real, existing allocation's hours and/or dates |
+| `remove_allocation` | Excluding a real, existing allocation |
+| `move_allocation` | Moving all or part of a real allocation's hours to another person |
+| `shift_project` | Shifting every allocation on a project by N days |
+| `availability_override` | A hypothetical reduction/removal of availability for a window |
+| `availability_clear` | Restoring normal availability for a window (early return from leave) |
+| `add_hypothetical_resource` | A virtual person (no Person row) with a synthetic weekly schedule, for "would hiring solve this" questions |
+
+`adjust_allocation`/`remove_allocation`/`move_allocation` only ever target a **real, baseline** allocation — not one created earlier in the same scenario by another operation. This is a deliberate scope limit (see the ADR), not an oversight.
+
+Operations apply in stored **sequence order** — a later operation sees the effect of every earlier one. This is the entire conflict-resolution rule: there is no separate merge/precedence logic beyond "apply in order."
+
+### Calculation lifecycle
+
+1. Load real baseline facts (schedules, exceptions, allocations) for every person a scenario's operations reference, directly or via a project's full membership.
+2. Apply the scenario's operations, in sequence, to produce a hypothetical version of those same facts (`apply_scenario_operations`) — a pure, in-memory transformation. The baseline is never mutated; a fresh state is returned.
+3. Run **the same, unmodified** Phase 2 engine (`calculate_period_capacity`, `aggregate_team_capacity`, `calculate_project_demand`) over both the baseline facts and the scenario facts.
+4. Derive comparison, risk, and impact entirely from those two already-computed results — no second set of formulas.
+
+`POST /calculate`, `GET /results`, and `GET /comparison` all perform this same computation on demand — there is no cached "scenario result" row. See the ADR for why.
+
+### Comparison semantics
+
+Baseline and scenario numbers are always kept as distinct, explicit fields — never merged into one blob. A `MetricDelta` (`baseline`, `scenario`, `delta`) is used for every compared metric. Risks are limited to two objective facts the engine already computes — over-allocation and exactly-zero remaining capacity — each marked `is_new` (true in the scenario, false in the baseline) so "prioritize new risks" (CLAUDE.md §16) is a fact, not a guess.

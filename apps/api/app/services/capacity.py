@@ -1,24 +1,16 @@
 import uuid
-from collections import defaultdict
-from collections.abc import Callable, Sequence
 from datetime import date
 
 from app.core.exceptions import DomainValidationError, NotFoundError
 from app.domain.capacity import (
-    AllocationFact,
-    AvailabilityExceptionFact,
     PersonCapacityResult,
     ProjectAllocationFact,
     ProjectDemandResult,
-    ScheduleFact,
     TeamCapacityResult,
     aggregate_team_capacity,
     calculate_period_capacity,
     calculate_project_demand,
 )
-from app.models.allocation import Allocation
-from app.models.availability_exception import AvailabilityException
-from app.models.working_schedule import WorkingSchedule
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -26,40 +18,11 @@ from app.repositories.project import ProjectRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
+from app.services.planning_facts import allocation_to_fact, load_people_facts
 
 MAX_RANGE_DAYS = 1096
 """~3 years. A pragmatic guard (decision #7) against a typo'd date range
 blowing up the size of the daily breakdown — not a business rule."""
-
-
-def _schedule_to_fact(schedule: WorkingSchedule) -> ScheduleFact:
-    return ScheduleFact(
-        effective_start_date=schedule.effective_start_date,
-        effective_end_date=schedule.effective_end_date,
-        entries={entry.weekday: entry.hours for entry in schedule.entries},
-        created_at=schedule.created_at,
-    )
-
-
-def _exception_to_fact(exception: AvailabilityException) -> AvailabilityExceptionFact:
-    return AvailabilityExceptionFact(
-        start_date=exception.start_date, end_date=exception.end_date, hours=exception.hours
-    )
-
-
-def _allocation_to_fact(allocation: Allocation) -> AllocationFact:
-    return AllocationFact(
-        start_date=allocation.start_date,
-        end_date=allocation.end_date,
-        allocation_hours=allocation.allocation_hours,
-    )
-
-
-def _group_by[T](items: Sequence[T], key: Callable[[T], uuid.UUID]) -> dict[uuid.UUID, list[T]]:
-    grouped: dict[uuid.UUID, list[T]] = defaultdict(list)
-    for item in items:
-        grouped[key(item)].append(item)
-    return grouped
 
 
 class CapacityService:
@@ -95,15 +58,20 @@ class CapacityService:
     def _person_capacity(
         self, person_id: uuid.UUID, start_date: date, end_date: date
     ) -> PersonCapacityResult:
-        schedules = self.schedule_repository.list_for_people([person_id], start_date, end_date)
-        exceptions = self.availability_repository.list_for_people([person_id], start_date, end_date)
-        allocations = self.allocation_repository.list_for_people([person_id], start_date, end_date)
+        facts = load_people_facts(
+            self.schedule_repository,
+            self.availability_repository,
+            self.allocation_repository,
+            [person_id],
+            start_date,
+            end_date,
+        )[person_id]
         return calculate_period_capacity(
             start_date,
             end_date,
-            [_schedule_to_fact(s) for s in schedules],
-            [_exception_to_fact(e) for e in exceptions],
-            [_allocation_to_fact(a) for a in allocations],
+            list(facts.schedules),
+            list(facts.exceptions),
+            list(facts.allocations),
         )
 
     def get_person_capacity(
@@ -129,27 +97,24 @@ class CapacityService:
             for membership in self.team_membership_repository.list_for_team(team_id)
         ]
 
-        schedules_by_person = _group_by(
-            self.schedule_repository.list_for_people(person_ids, start_date, end_date),
-            lambda s: s.person_id,
-        )
-        exceptions_by_person = _group_by(
-            self.availability_repository.list_for_people(person_ids, start_date, end_date),
-            lambda e: e.person_id,
-        )
-        allocations_by_person = _group_by(
-            self.allocation_repository.list_for_people(person_ids, start_date, end_date),
-            lambda a: a.person_id,
+        facts_by_person = load_people_facts(
+            self.schedule_repository,
+            self.availability_repository,
+            self.allocation_repository,
+            person_ids,
+            start_date,
+            end_date,
         )
 
         members: list[tuple[uuid.UUID, PersonCapacityResult]] = []
         for person_id in person_ids:
+            facts = facts_by_person[person_id]
             result = calculate_period_capacity(
                 start_date,
                 end_date,
-                [_schedule_to_fact(s) for s in schedules_by_person.get(person_id, [])],
-                [_exception_to_fact(e) for e in exceptions_by_person.get(person_id, [])],
-                [_allocation_to_fact(a) for a in allocations_by_person.get(person_id, [])],
+                list(facts.schedules),
+                list(facts.exceptions),
+                list(facts.allocations),
             )
             members.append((person_id, result))
 
@@ -168,7 +133,7 @@ class CapacityService:
         allocations = self.allocation_repository.list_for_project(project_id, start_date, end_date)
         facts = [
             ProjectAllocationFact(
-                person_id=allocation.person_id, allocation=_allocation_to_fact(allocation)
+                person_id=allocation.person_id, allocation=allocation_to_fact(allocation)
             )
             for allocation in allocations
         ]

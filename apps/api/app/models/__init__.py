@@ -9,6 +9,7 @@ from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
 from app.models.person import Person
 from app.models.project import Project
+from app.models.scenario import Scenario, ScenarioOperation
 from app.models.team import Team
 from app.models.team_membership import TeamMembership
 from app.models.working_schedule import WorkingSchedule, WorkingScheduleEntry
@@ -18,6 +19,8 @@ __all__ = [
     "AvailabilityException",
     "Person",
     "Project",
+    "Scenario",
+    "ScenarioOperation",
     "Team",
     "TeamMembership",
     "WorkingSchedule",

@@ -4,6 +4,8 @@ import { RouteErrorBoundary } from '@/components/layout/RouteErrorBoundary'
 import { CapacityOverviewPage } from '@/features/capacity/views/CapacityOverviewPage'
 import { PersonCapacityPage } from '@/features/capacity/views/PersonCapacityPage'
 import { ProjectCapacityPage } from '@/features/capacity/views/ProjectCapacityPage'
+import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
+import { ScenarioWorkspacePage } from '@/features/scenarios/views/ScenarioWorkspacePage'
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +20,8 @@ export const router = createBrowserRouter([
         path: 'capacity/projects/:projectId',
         element: <ProjectCapacityPage />,
       },
+      { path: 'scenarios', element: <ScenarioListPage /> },
+      { path: 'scenarios/:scenarioId', element: <ScenarioWorkspacePage /> },
     ],
   },
 ])

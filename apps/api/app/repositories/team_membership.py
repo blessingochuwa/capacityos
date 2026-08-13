@@ -26,3 +26,16 @@ class TeamMembershipRepository(BaseRepository[TeamMembership]):
                 .order_by(TeamMembership.created_at)
             )
         )
+
+    def list_for_people(self, person_ids: list[uuid.UUID]) -> list[TeamMembership]:
+        """Memberships for any of person_ids, one query for the whole batch
+        — same batched pattern as AllocationRepository.list_for_people etc.
+        Used by scenario impact analysis to report which teams are affected
+        (app/services/scenario_calculation.py) without a query per person."""
+        if not person_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(TeamMembership).where(TeamMembership.person_id.in_(person_ids))
+            )
+        )
