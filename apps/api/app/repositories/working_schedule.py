@@ -40,3 +40,40 @@ class WorkingScheduleRepository(BaseRepository[WorkingSchedule]):
             .options(selectinload(WorkingSchedule.entries))
         )
         return list(self.session.scalars(stmt))
+
+    def get_by_external_id(self, external_id: str) -> WorkingSchedule | None:
+        return self.session.scalar(
+            select(WorkingSchedule)
+            .where(WorkingSchedule.external_id == external_id)
+            .options(selectinload(WorkingSchedule.entries))
+        )
+
+    def list_by_external_ids(self, external_ids: list[str]) -> list[WorkingSchedule]:
+        """Batched lookup for Phase 6 import identity resolution. entries is
+        eager-loaded since diffing always needs it (see
+        app/domain/import_export_diff.py::WorkingScheduleFact)."""
+        if not external_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(WorkingSchedule)
+                .where(WorkingSchedule.external_id.in_(external_ids))
+                .options(selectinload(WorkingSchedule.entries))
+            )
+        )
+
+    def list_all_for_people(self, person_ids: list[uuid.UUID]) -> list[WorkingSchedule]:
+        """Every schedule for any of person_ids, regardless of effective
+        date range (unlike list_for_people, which only returns schedules
+        intersecting a query range) — used by Phase 6 import to pre-check
+        overlap against a person's complete existing schedule set before
+        writing anything."""
+        if not person_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(WorkingSchedule)
+                .where(WorkingSchedule.person_id.in_(person_ids))
+                .options(selectinload(WorkingSchedule.entries))
+            )
+        )

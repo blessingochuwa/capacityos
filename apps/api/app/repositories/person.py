@@ -19,3 +19,9 @@ class PersonRepository(BaseRepository[Person]):
         if not person_ids:
             return []
         return list(self.session.scalars(select(Person).where(Person.id.in_(person_ids))))
+
+    def list_by_emails(self, emails: list[str]) -> list[Person]:
+        """Batched lookup for Phase 6 import identity resolution."""
+        if not emails:
+            return []
+        return list(self.session.scalars(select(Person).where(Person.email.in_(emails))))

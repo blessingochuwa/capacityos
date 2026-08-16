@@ -1,0 +1,732 @@
+"""Orchestrates Phase 6 import validate/apply for all 7 entities (CLAUDE.md
+§39 Phase 6).
+
+Stateless: validate() and apply() both run the identical parse -> normalize
+pipeline on demand — no persisted import job/batch entity (see
+docs/adr/0006-phase-6-import-export.md). apply() additionally writes.
+Atomicity comes entirely from app/core/database.py's existing single-
+commit-per-request contract: this service never calls session.commit()/
+rollback(), and only starts calling create()/update()/add_member() once
+every row in the batch has already been confirmed clean by the read-only
+pre-check pass. If a service call still raises mid-write (a narrow
+concurrent-write race — the pre-check already ruled out every predictable
+failure), the exception propagates through the existing NotFoundError/
+ConflictError/DomainValidationError handling exactly like every other
+service in this codebase; get_db's `except Exception: db.rollback()` still
+discards everything flushed so far in the same request, so atomicity holds
+either way.
+"""
+
+import contextlib
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, cast
+
+from app.domain.dates import ranges_overlap
+from app.domain.import_export_diff import (
+    AllocationFact,
+    AvailabilityExceptionFact,
+    NormalizeOutcome,
+    PersonFact,
+    ProjectFact,
+    ReferenceLookup,
+    TeamFact,
+    TeamMembershipFact,
+    TeamMembershipPayload,
+    WorkingScheduleFact,
+    apply_mode_policy,
+    normalize_allocation_row,
+    normalize_availability_exception_row,
+    normalize_person_row,
+    normalize_project_row,
+    normalize_team_membership_row,
+    normalize_team_row,
+    normalize_working_schedule_row,
+    resolve_person_reference,
+)
+from app.domain.import_export_parsing import (
+    ExportFormat,
+    ImportEntityType,
+    ImportErrorCode,
+    ImportMode,
+    ParseFailure,
+    coerce_optional_str,
+    detect_format,
+    parse_csv_rows,
+    parse_json_rows,
+)
+from app.models.allocation import Allocation
+from app.models.availability_exception import AvailabilityException
+from app.models.person import Person
+from app.models.project import Project
+from app.models.team import Team
+from app.models.working_schedule import WorkingSchedule
+from app.repositories.allocation import AllocationRepository
+from app.repositories.availability_exception import AvailabilityExceptionRepository
+from app.repositories.person import PersonRepository
+from app.repositories.project import ProjectRepository
+from app.repositories.team import TeamRepository
+from app.repositories.team_membership import TeamMembershipRepository
+from app.repositories.working_schedule import WorkingScheduleRepository
+from app.schemas.allocation import AllocationCreate, AllocationUpdate
+from app.schemas.availability_exception import (
+    AvailabilityExceptionCreate,
+    AvailabilityExceptionUpdate,
+)
+from app.schemas.import_export import (
+    ImportApplyResult,
+    ImportFieldError,
+    ImportRowResult,
+    ImportRowStatus,
+    ImportValidationReport,
+)
+from app.schemas.person import PersonCreate, PersonUpdate
+from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.schemas.team import TeamCreate, TeamUpdate
+from app.schemas.working_schedule import WorkingScheduleCreate, WorkingScheduleUpdate
+from app.services.allocation import AllocationService
+from app.services.availability_exception import AvailabilityExceptionService
+from app.services.person import PersonService
+from app.services.project import ProjectService
+from app.services.team import TeamService
+from app.services.team_membership import TeamMembershipService
+from app.services.working_schedule import WorkingScheduleService
+
+# ---------------------------------------------------------------------------
+# ORM row -> Fact conversion (the only place this service touches an ORM
+# attribute directly — everything past this point works with plain Facts,
+# mirroring how app/services/capacity.py hands app/domain/capacity.py
+# nothing but fact dataclasses)
+# ---------------------------------------------------------------------------
+
+
+def _person_fact(person: Person) -> PersonFact:
+    return PersonFact(
+        id=person.id, email=person.email, first_name=person.first_name,
+        last_name=person.last_name, display_name=person.display_name,
+        job_title=person.job_title, timezone=person.timezone,
+        employment_status=person.employment_status,
+    )
+
+
+def _team_fact(team: Team) -> TeamFact:
+    return TeamFact(id=team.id, name=team.name, description=team.description)
+
+
+def _project_fact(project: Project) -> ProjectFact:
+    return ProjectFact(
+        id=project.id, external_id=project.external_id, name=project.name,
+        description=project.description, status=project.status,
+        start_date=project.start_date, end_date=project.end_date,
+    )
+
+
+def _allocation_fact(allocation: Allocation) -> AllocationFact:
+    return AllocationFact(
+        id=allocation.id, external_id=allocation.external_id, person_id=allocation.person_id,
+        project_id=allocation.project_id, start_date=allocation.start_date,
+        end_date=allocation.end_date, allocation_hours=allocation.allocation_hours,
+        allocation_unit=allocation.allocation_unit, notes=allocation.notes,
+    )
+
+
+def _working_schedule_fact(schedule: WorkingSchedule) -> WorkingScheduleFact:
+    return WorkingScheduleFact(
+        id=schedule.id, external_id=schedule.external_id, person_id=schedule.person_id,
+        effective_start_date=schedule.effective_start_date,
+        effective_end_date=schedule.effective_end_date,
+        entries=tuple((entry.weekday, entry.hours) for entry in schedule.entries),
+    )
+
+
+def _availability_exception_fact(exception: AvailabilityException) -> AvailabilityExceptionFact:
+    return AvailabilityExceptionFact(
+        id=exception.id, external_id=exception.external_id, person_id=exception.person_id,
+        start_date=exception.start_date, end_date=exception.end_date,
+        availability_type=exception.availability_type, hours=exception.hours,
+        notes=exception.notes,
+    )
+
+
+def _collect(rows: Sequence[Mapping[str, object]], column: str) -> set[str]:
+    return {v for v in (coerce_optional_str(row.get(column)) for row in rows) if v is not None}
+
+
+def _collect_uuids(rows: Sequence[Mapping[str, object]], column: str) -> set[uuid.UUID]:
+    result: set[uuid.UUID] = set()
+    for row in rows:
+        raw = coerce_optional_str(row.get(column))
+        if raw is None:
+            continue
+        # An invalid literal id is reported per-row during normalize, not here.
+        with contextlib.suppress(ValueError):
+            result.add(uuid.UUID(raw))
+    return result
+
+
+@dataclass(frozen=True)
+class _PreparedRow:
+    row_number: int
+    outcome: NormalizeOutcome[Any]
+
+
+@dataclass(frozen=True)
+class _Prepared:
+    file_error: ImportFieldError | None
+    rows: list[_PreparedRow]
+
+
+class ImportService:
+    def __init__(
+        self,
+        person_repository: PersonRepository,
+        person_service: PersonService,
+        team_repository: TeamRepository,
+        team_service: TeamService,
+        team_membership_repository: TeamMembershipRepository,
+        team_membership_service: TeamMembershipService,
+        project_repository: ProjectRepository,
+        project_service: ProjectService,
+        allocation_repository: AllocationRepository,
+        allocation_service: AllocationService,
+        working_schedule_repository: WorkingScheduleRepository,
+        working_schedule_service: WorkingScheduleService,
+        availability_exception_repository: AvailabilityExceptionRepository,
+        availability_exception_service: AvailabilityExceptionService,
+        *,
+        max_file_size_bytes: int,
+        max_rows: int,
+    ) -> None:
+        self.person_repository = person_repository
+        self.person_service = person_service
+        self.team_repository = team_repository
+        self.team_service = team_service
+        self.team_membership_repository = team_membership_repository
+        self.team_membership_service = team_membership_service
+        self.project_repository = project_repository
+        self.project_service = project_service
+        self.allocation_repository = allocation_repository
+        self.allocation_service = allocation_service
+        self.working_schedule_repository = working_schedule_repository
+        self.working_schedule_service = working_schedule_service
+        self.availability_exception_repository = availability_exception_repository
+        self.availability_exception_service = availability_exception_service
+        self.max_file_size_bytes = max_file_size_bytes
+        self.max_rows = max_rows
+
+    # -- Public entry points ------------------------------------------------
+
+    def validate(
+        self,
+        entity_type: ImportEntityType,
+        raw_bytes: bytes,
+        filename: str | None,
+        content_type: str | None,
+        mode: ImportMode,
+    ) -> ImportValidationReport:
+        prepared = self._prepare(entity_type, raw_bytes, filename, content_type, mode)
+        return self._to_validation_report(entity_type, mode, prepared)
+
+    def apply(
+        self,
+        entity_type: ImportEntityType,
+        raw_bytes: bytes,
+        filename: str | None,
+        content_type: str | None,
+        mode: ImportMode,
+    ) -> ImportApplyResult:
+        prepared = self._prepare(entity_type, raw_bytes, filename, content_type, mode)
+        if prepared.file_error is not None or any(p.outcome.errors for p in prepared.rows):
+            return self._to_apply_result(entity_type, mode, prepared, applied=False)
+
+        for prow in prepared.rows:
+            self._write_row(entity_type, prow.outcome)
+        return self._to_apply_result(entity_type, mode, prepared, applied=True)
+
+    # -- Level 1 (file) + dispatch --------------------------------------------
+
+    def _prepare(
+        self,
+        entity_type: ImportEntityType,
+        raw_bytes: bytes,
+        filename: str | None,
+        content_type: str | None,
+        mode: ImportMode,
+    ) -> _Prepared:
+        detected_format = detect_format(filename, content_type)
+        if detected_format is None:
+            return _Prepared(
+                ImportFieldError(
+                    field=None, code=ImportErrorCode.UNSUPPORTED_FORMAT,
+                    message="Could not determine the file's format. Upload a .csv or .json file.",
+                ),
+                [],
+            )
+
+        if len(raw_bytes) > self.max_file_size_bytes:
+            return _Prepared(
+                ImportFieldError(
+                    field=None, code=ImportErrorCode.FILE_TOO_LARGE,
+                    message=f"File exceeds the {self.max_file_size_bytes}-byte limit.",
+                ),
+                [],
+            )
+
+        parsed = (
+            parse_csv_rows(raw_bytes, entity_type)
+            if detected_format == ExportFormat.CSV
+            else parse_json_rows(raw_bytes, entity_type)
+        )
+        if isinstance(parsed, ParseFailure):
+            return _Prepared(
+                ImportFieldError(field=None, code=parsed.code, message=parsed.message), []
+            )
+
+        if len(parsed) > self.max_rows:
+            return _Prepared(
+                ImportFieldError(
+                    field=None, code=ImportErrorCode.ROW_LIMIT_EXCEEDED,
+                    message=(
+                        f"File has {len(parsed)} rows, exceeding the {self.max_rows}-row limit."
+                    ),
+                ),
+                [],
+            )
+
+        preparers = {
+            ImportEntityType.PERSON: self._prepare_person,
+            ImportEntityType.TEAM: self._prepare_team,
+            ImportEntityType.TEAM_MEMBERSHIP: self._prepare_team_membership,
+            ImportEntityType.PROJECT: self._prepare_project,
+            ImportEntityType.ALLOCATION: self._prepare_allocation,
+            ImportEntityType.WORKING_SCHEDULE: self._prepare_working_schedule,
+            ImportEntityType.AVAILABILITY_EXCEPTION: self._prepare_availability_exception,
+        }
+        rows = preparers[entity_type](parsed, mode)
+        return _Prepared(None, self._flag_duplicate_identities(rows))
+
+    def _flag_duplicate_identities(self, rows: list[_PreparedRow]) -> list[_PreparedRow]:
+        """Level 4 (cross-row): two rows in the same file resolving to the
+        same identity — always blocking, regardless of the classified
+        action, since the second occurrence would otherwise silently
+        collide with the first at apply time."""
+        seen: dict[str, int] = {}
+        result: list[_PreparedRow] = []
+        for prow in rows:
+            identity = prow.outcome.identity
+            if identity is None or prow.outcome.errors:
+                result.append(prow)
+                continue
+            if identity in seen:
+                duplicate = ImportFieldError(
+                    field=None, code=ImportErrorCode.DUPLICATE_IN_FILE,
+                    message=f"Row {seen[identity]} already resolves to the same record.",
+                )
+                result.append(
+                    _PreparedRow(
+                        prow.row_number,
+                        NormalizeOutcome(
+                            None, None, prow.outcome.matched_id, identity, [duplicate]
+                        ),
+                    )
+                )
+            else:
+                seen[identity] = prow.row_number
+                result.append(prow)
+        return result
+
+    # -- Lookup construction (batched — one query per fact type per file,
+    # never per row, per CLAUDE.md §27) --------------------------------------
+
+    def _person_lookup_maps(
+        self, rows: Sequence[Mapping[str, object]]
+    ) -> tuple[dict[uuid.UUID, PersonFact], dict[str, PersonFact]]:
+        ids = _collect_uuids(rows, "person_id")
+        emails = _collect(rows, "person_email")
+        by_id: dict[uuid.UUID, PersonFact] = {}
+        for person in self.person_repository.list_by_ids(list(ids)):
+            by_id[person.id] = _person_fact(person)
+        for person in self.person_repository.list_by_emails(list(emails)):
+            by_id[person.id] = _person_fact(person)
+        by_email = {fact.email: fact for fact in by_id.values()}
+        return by_id, by_email
+
+    def _team_lookup_maps(
+        self, rows: Sequence[Mapping[str, object]]
+    ) -> tuple[dict[uuid.UUID, TeamFact], dict[str, TeamFact]]:
+        ids = _collect_uuids(rows, "team_id")
+        names = _collect(rows, "team_name")
+        by_id: dict[uuid.UUID, TeamFact] = {}
+        for team in self.team_repository.list_by_ids(list(ids)):
+            by_id[team.id] = _team_fact(team)
+        for team in self.team_repository.list_by_names(list(names)):
+            by_id[team.id] = _team_fact(team)
+        by_name = {fact.name: fact for fact in by_id.values()}
+        return by_id, by_name
+
+    def _project_lookup_maps(
+        self, rows: Sequence[Mapping[str, object]]
+    ) -> tuple[dict[uuid.UUID, ProjectFact], dict[str, ProjectFact]]:
+        ids = _collect_uuids(rows, "project_id")
+        external_ids = _collect(rows, "project_external_id")
+        by_id: dict[uuid.UUID, ProjectFact] = {}
+        for project in self.project_repository.list_by_ids(list(ids)):
+            by_id[project.id] = _project_fact(project)
+        for project in self.project_repository.list_by_external_ids(list(external_ids)):
+            by_id[project.id] = _project_fact(project)
+        by_external_id = {
+            fact.external_id: fact for fact in by_id.values() if fact.external_id is not None
+        }
+        return by_id, by_external_id
+
+    def _build_lookup(
+        self,
+        rows: Sequence[Mapping[str, object]],
+        *,
+        need_people: bool = False,
+        need_teams: bool = False,
+        need_projects: bool = False,
+    ) -> ReferenceLookup:
+        people_by_id, people_by_email = self._person_lookup_maps(rows) if need_people else ({}, {})
+        teams_by_id, teams_by_name = self._team_lookup_maps(rows) if need_teams else ({}, {})
+        projects_by_id, projects_by_external_id = (
+            self._project_lookup_maps(rows) if need_projects else ({}, {})
+        )
+        return ReferenceLookup(
+            people_by_id=people_by_id, people_by_email=people_by_email,
+            teams_by_id=teams_by_id, teams_by_name=teams_by_name,
+            projects_by_id=projects_by_id, projects_by_external_id=projects_by_external_id,
+        )
+
+    # -- Per-entity preparation -----------------------------------------------
+
+    def _prepare_person(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        # Self-identity match: Person's own "email" column — NOT the
+        # "person_email" column other entities use to *reference* a person
+        # (see _person_lookup_maps, which is for that latter case only).
+        emails = _collect(rows, "email")
+        people_by_email = {
+            person.email: _person_fact(person)
+            for person in self.person_repository.list_by_emails(list(emails))
+        }
+        lookup = ReferenceLookup(
+            people_by_id={f.id: f for f in people_by_email.values()},
+            people_by_email=people_by_email,
+            teams_by_id={}, teams_by_name={}, projects_by_id={}, projects_by_external_id={},
+        )
+        return [
+            _PreparedRow(i, apply_mode_policy(normalize_person_row(row, lookup), mode))
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_team(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        # Self-identity match: Team's own "name" column — NOT "team_name"
+        # (see _team_lookup_maps, which is for reference resolution only).
+        names = _collect(rows, "name")
+        teams_by_name = {
+            team.name: _team_fact(team) for team in self.team_repository.list_by_names(list(names))
+        }
+        lookup = ReferenceLookup(
+            people_by_id={}, people_by_email={},
+            teams_by_id={f.id: f for f in teams_by_name.values()}, teams_by_name=teams_by_name,
+            projects_by_id={}, projects_by_external_id={},
+        )
+        return [
+            _PreparedRow(i, apply_mode_policy(normalize_team_row(row, lookup), mode))
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_team_membership(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_people=True, need_teams=True)
+        resolved_person_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_person_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_person_ids.add(ref)
+        memberships = self.team_membership_repository.list_for_people(list(resolved_person_ids))
+        existing = {
+            (m.person_id, m.team_id): TeamMembershipFact(person_id=m.person_id, team_id=m.team_id)
+            for m in memberships
+        }
+        return [
+            _PreparedRow(
+                i, apply_mode_policy(normalize_team_membership_row(row, lookup, existing), mode)
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_project(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        # Self-identity match: Project's own "external_id" column — NOT
+        # "project_external_id" (see _project_lookup_maps, which is for
+        # reference resolution only, e.g. an Allocation row pointing at a
+        # project).
+        external_ids = _collect(rows, "external_id")
+        existing = {
+            project.external_id: _project_fact(project)
+            for project in self.project_repository.list_by_external_ids(list(external_ids))
+            if project.external_id is not None
+        }
+        return [
+            _PreparedRow(i, apply_mode_policy(normalize_project_row(row, existing), mode))
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_allocation(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_people=True, need_projects=True)
+        external_ids = _collect(rows, "external_id")
+        existing = {
+            a.external_id: _allocation_fact(a)
+            for a in self.allocation_repository.list_by_external_ids(list(external_ids))
+            if a.external_id is not None
+        }
+        return [
+            _PreparedRow(
+                i, apply_mode_policy(normalize_allocation_row(row, lookup, existing), mode)
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_working_schedule(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_people=True)
+        external_ids = _collect(rows, "external_id")
+        existing = {
+            s.external_id: _working_schedule_fact(s)
+            for s in self.working_schedule_repository.list_by_external_ids(list(external_ids))
+            if s.external_id is not None
+        }
+
+        # Overlap pre-check (Level 3): seed every referenced person's
+        # COMPLETE existing schedule set (not date-bounded — see
+        # list_all_for_people), then simulate the batch in file order so a
+        # later row also sees the effect of an earlier one, exactly
+        # mirroring WorkingScheduleService's own overlap rule (see
+        # docs/adr/0006-phase-6-import-export.md).
+        resolved_person_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_person_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_person_ids.add(ref)
+        resolved_person_ids.update(fact.person_id for fact in existing.values())
+        ranges_by_person: dict[uuid.UUID, list[tuple[uuid.UUID, date | None, date | None]]] = {}
+        for schedule in self.working_schedule_repository.list_all_for_people(
+            list(resolved_person_ids)
+        ):
+            ranges_by_person.setdefault(schedule.person_id, []).append(
+                (schedule.id, schedule.effective_start_date, schedule.effective_end_date)
+            )
+
+        result: list[_PreparedRow] = []
+        for i, row in enumerate(rows, start=1):
+            outcome = apply_mode_policy(normalize_working_schedule_row(row, lookup, existing), mode)
+            outcome = self._check_working_schedule_overlap(outcome, ranges_by_person)
+            result.append(_PreparedRow(i, outcome))
+        return result
+
+    def _check_working_schedule_overlap(
+        self,
+        outcome: NormalizeOutcome[Any],
+        ranges_by_person: dict[uuid.UUID, list[tuple[uuid.UUID, date | None, date | None]]],
+    ) -> NormalizeOutcome[Any]:
+        if outcome.errors or outcome.action in (None, "unchanged"):
+            return outcome
+
+        payload = outcome.payload
+        self_id: uuid.UUID | None = None
+        if isinstance(payload, WorkingScheduleCreate):
+            person_id = payload.person_id
+            candidate_start = payload.effective_start_date
+            candidate_end = payload.effective_end_date
+        elif isinstance(payload, WorkingScheduleUpdate):
+            self_id = outcome.matched_id
+            owner = next(
+                (
+                    (pid, start, end)
+                    for pid, entries in ranges_by_person.items()
+                    for sid, start, end in entries
+                    if sid == self_id
+                ),
+                None,
+            )
+            if owner is None:
+                return outcome  # no existing schedules to compare against at all
+            person_id, existing_start, existing_end = owner
+            candidate_start = (
+                payload.effective_start_date
+                if "effective_start_date" in payload.model_fields_set
+                else existing_start
+            )
+            candidate_end = (
+                payload.effective_end_date
+                if "effective_end_date" in payload.model_fields_set
+                else existing_end
+            )
+        else:
+            return outcome
+
+        for other_id, other_start, other_end in ranges_by_person.get(person_id, []):
+            if other_id == self_id:
+                continue
+            if ranges_overlap(candidate_start, candidate_end, other_start, other_end):
+                error = ImportFieldError(
+                    field=None, code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                    message=(
+                        "effective date range overlaps an existing working schedule "
+                        "for this person."
+                    ),
+                )
+                return NormalizeOutcome(None, None, outcome.matched_id, outcome.identity, [error])
+
+        ranges_by_person.setdefault(person_id, []).append(
+            (self_id or uuid.uuid4(), candidate_start, candidate_end)
+        )
+        return outcome
+
+    def _prepare_availability_exception(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_people=True)
+        external_ids = _collect(rows, "external_id")
+        existing = {
+            e.external_id: _availability_exception_fact(e)
+            for e in self.availability_exception_repository.list_by_external_ids(
+                list(external_ids)
+            )
+            if e.external_id is not None
+        }
+        return [
+            _PreparedRow(
+                i,
+                apply_mode_policy(
+                    normalize_availability_exception_row(row, lookup, existing), mode
+                ),
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    # -- Writing (apply only; every row already confirmed clean) -------------
+
+    def _write_row(self, entity_type: ImportEntityType, outcome: NormalizeOutcome[Any]) -> None:
+        if outcome.action in (None, "unchanged"):
+            return
+
+        if entity_type == ImportEntityType.PERSON:
+            if outcome.action == "create":
+                self.person_service.create(cast(PersonCreate, outcome.payload))
+            else:
+                self.person_service.update(
+                    cast(uuid.UUID, outcome.matched_id), cast(PersonUpdate, outcome.payload)
+                )
+        elif entity_type == ImportEntityType.TEAM:
+            if outcome.action == "create":
+                self.team_service.create(cast(TeamCreate, outcome.payload))
+            else:
+                self.team_service.update(
+                    cast(uuid.UUID, outcome.matched_id), cast(TeamUpdate, outcome.payload)
+                )
+        elif entity_type == ImportEntityType.TEAM_MEMBERSHIP:
+            payload = cast(TeamMembershipPayload, outcome.payload)
+            self.team_membership_service.add_member(payload.team_id, payload.data)
+        elif entity_type == ImportEntityType.PROJECT:
+            if outcome.action == "create":
+                self.project_service.create(cast(ProjectCreate, outcome.payload))
+            else:
+                self.project_service.update(
+                    cast(uuid.UUID, outcome.matched_id), cast(ProjectUpdate, outcome.payload)
+                )
+        elif entity_type == ImportEntityType.ALLOCATION:
+            if outcome.action == "create":
+                self.allocation_service.create(cast(AllocationCreate, outcome.payload))
+            else:
+                self.allocation_service.update(
+                    cast(uuid.UUID, outcome.matched_id), cast(AllocationUpdate, outcome.payload)
+                )
+        elif entity_type == ImportEntityType.WORKING_SCHEDULE:
+            if outcome.action == "create":
+                self.working_schedule_service.create(cast(WorkingScheduleCreate, outcome.payload))
+            else:
+                self.working_schedule_service.update(
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(WorkingScheduleUpdate, outcome.payload),
+                )
+        else:
+            if outcome.action == "create":
+                self.availability_exception_service.create(
+                    cast(AvailabilityExceptionCreate, outcome.payload)
+                )
+            else:
+                self.availability_exception_service.update(
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(AvailabilityExceptionUpdate, outcome.payload),
+                )
+
+    # -- Report assembly -------------------------------------------------
+
+    def _to_row_result(self, prow: _PreparedRow) -> ImportRowResult:
+        outcome = prow.outcome
+        if outcome.errors:
+            status = ImportRowStatus.INVALID
+        elif outcome.action == "create":
+            status = ImportRowStatus.VALID_CREATE
+        elif outcome.action == "update":
+            status = ImportRowStatus.VALID_UPDATE
+        else:
+            status = ImportRowStatus.VALID_UNCHANGED
+        return ImportRowResult(
+            row_number=prow.row_number, status=status, identity=outcome.identity,
+            matched_id=outcome.matched_id, errors=outcome.errors,
+        )
+
+    def _to_validation_report(
+        self, entity_type: ImportEntityType, mode: ImportMode, prepared: _Prepared
+    ) -> ImportValidationReport:
+        if prepared.file_error is not None:
+            return ImportValidationReport(
+                entity_type=entity_type, mode=mode, file_error=prepared.file_error,
+                total_rows=0, valid_create_count=0, valid_update_count=0,
+                valid_unchanged_count=0, invalid_count=0, ready_to_apply=False, rows=[],
+            )
+        results = [self._to_row_result(p) for p in prepared.rows]
+        creates = sum(1 for r in results if r.status == ImportRowStatus.VALID_CREATE)
+        updates = sum(1 for r in results if r.status == ImportRowStatus.VALID_UPDATE)
+        unchanged = sum(1 for r in results if r.status == ImportRowStatus.VALID_UNCHANGED)
+        invalid = sum(1 for r in results if r.status == ImportRowStatus.INVALID)
+        return ImportValidationReport(
+            entity_type=entity_type, mode=mode, total_rows=len(results),
+            valid_create_count=creates, valid_update_count=updates,
+            valid_unchanged_count=unchanged, invalid_count=invalid,
+            ready_to_apply=invalid == 0 and len(results) > 0, rows=results,
+        )
+
+    def _to_apply_result(
+        self, entity_type: ImportEntityType, mode: ImportMode, prepared: _Prepared, *, applied: bool
+    ) -> ImportApplyResult:
+        if prepared.file_error is not None:
+            return ImportApplyResult(
+                entity_type=entity_type, mode=mode, file_error=prepared.file_error, applied=False,
+                total_rows=0, created_count=0, updated_count=0, unchanged_count=0,
+                invalid_count=0, rows=[],
+            )
+        results = [self._to_row_result(p) for p in prepared.rows]
+        creates = sum(1 for r in results if r.status == ImportRowStatus.VALID_CREATE)
+        updates = sum(1 for r in results if r.status == ImportRowStatus.VALID_UPDATE)
+        unchanged = sum(1 for r in results if r.status == ImportRowStatus.VALID_UNCHANGED)
+        invalid = sum(1 for r in results if r.status == ImportRowStatus.INVALID)
+        return ImportApplyResult(
+            entity_type=entity_type, mode=mode, applied=applied, total_rows=len(results),
+            created_count=creates if applied else 0, updated_count=updates if applied else 0,
+            unchanged_count=unchanged if applied else 0, invalid_count=invalid, rows=results,
+        )

@@ -38,3 +38,20 @@ class AvailabilityExceptionRepository(BaseRepository[AvailabilityException]):
             AvailabilityException.end_date >= start_date,
         )
         return list(self.session.scalars(stmt))
+
+    def get_by_external_id(self, external_id: str) -> AvailabilityException | None:
+        return self.session.scalar(
+            select(AvailabilityException).where(AvailabilityException.external_id == external_id)
+        )
+
+    def list_by_external_ids(self, external_ids: list[str]) -> list[AvailabilityException]:
+        """Batched lookup for Phase 6 import identity resolution."""
+        if not external_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(AvailabilityException).where(
+                    AvailabilityException.external_id.in_(external_ids)
+                )
+            )
+        )

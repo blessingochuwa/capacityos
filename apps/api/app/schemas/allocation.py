@@ -14,6 +14,10 @@ class AllocationBase(BaseModel):
     allocation_hours: Decimal = Field(ge=0)
     allocation_unit: AllocationUnit = AllocationUnit.TOTAL_HOURS
     notes: str | None = None
+    external_id: str | None = Field(default=None, max_length=200)
+    """The Phase 6 import identity key for this entity (Allocation has no
+    natural key). Nullable — most allocations are created directly and
+    never imported. See docs/adr/0006-phase-6-import-export.md."""
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:
@@ -33,6 +37,7 @@ class AllocationUpdate(BaseModel):
     allocation_hours: Decimal | None = Field(default=None, ge=0)
     allocation_unit: AllocationUnit | None = None
     notes: str | None = None
+    external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:

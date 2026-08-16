@@ -21,6 +21,10 @@ class AvailabilityExceptionBase(BaseModel):
         ),
     )
     notes: str | None = None
+    external_id: str | None = Field(default=None, max_length=200)
+    """The Phase 6 import identity key for this entity (AvailabilityException
+    has no natural key). Nullable — most exceptions are created directly and
+    never imported. See docs/adr/0006-phase-6-import-export.md."""
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:
@@ -39,6 +43,7 @@ class AvailabilityExceptionUpdate(BaseModel):
     availability_type: AvailabilityType | None = None
     hours: Decimal | None = Field(default=None, ge=0, le=24)
     notes: str | None = None
+    external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:

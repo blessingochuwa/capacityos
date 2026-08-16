@@ -33,3 +33,18 @@ def week_range(any_date: date) -> tuple[date, date]:
     monday = any_date - timedelta(days=any_date.weekday() - WEEK_START_WEEKDAY)
     sunday = monday + timedelta(days=6)
     return monday, sunday
+
+
+def ranges_overlap(
+    start_a: date | None, end_a: date | None, start_b: date | None, end_b: date | None
+) -> bool:
+    """Whether two nullable [start, end] ranges overlap. None on either end of
+    a range means unbounded in that direction (see WorkingSchedule.effective_*).
+
+    Promoted out of app/services/working_schedule.py (Phase 1) so Phase 6's
+    import pre-check can simulate the same overlap rule in memory without a
+    second implementation — see docs/adr/0006-phase-6-import-export.md.
+    """
+    a_starts_before_b_ends = start_a is None or end_b is None or start_a <= end_b
+    b_starts_before_a_ends = start_b is None or end_a is None or start_b <= end_a
+    return a_starts_before_b_ends and b_starts_before_a_ends

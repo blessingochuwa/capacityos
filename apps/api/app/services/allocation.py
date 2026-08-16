@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.exceptions import DomainValidationError, NotFoundError
+from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.models.allocation import Allocation
 from app.repositories.allocation import AllocationRepository
 from app.repositories.person import PersonRepository
@@ -24,6 +24,12 @@ class AllocationService:
             raise NotFoundError("Person", data.person_id)
         if self.project_repository.get(data.project_id) is None:
             raise NotFoundError("Project", data.project_id)
+        if data.external_id is not None and self.repository.get_by_external_id(
+            data.external_id
+        ):
+            raise ConflictError(
+                f"An allocation with external_id {data.external_id} already exists."
+            )
 
         allocation = Allocation(
             person_id=data.person_id,
@@ -33,6 +39,7 @@ class AllocationService:
             allocation_hours=data.allocation_hours,
             allocation_unit=data.allocation_unit,
             notes=data.notes,
+            external_id=data.external_id,
         )
         return self.repository.add(allocation)
 
@@ -62,6 +69,14 @@ class AllocationService:
         merged_end = updates.get("end_date", allocation.end_date)
         if merged_end < merged_start:
             raise DomainValidationError("end_date cannot precede start_date")
+
+        new_external_id = updates.get("external_id")
+        if new_external_id is not None and new_external_id != allocation.external_id:
+            existing = self.repository.get_by_external_id(new_external_id)
+            if existing is not None and existing.id != allocation.id:
+                raise ConflictError(
+                    f"An allocation with external_id {new_external_id} already exists."
+                )
 
         for field, value in updates.items():
             setattr(allocation, field, value)

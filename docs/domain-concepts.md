@@ -221,3 +221,57 @@ Signals are sorted `(severity, is_new-first, type-family, entity_label, entity_i
 ### What Phase 5 does NOT do
 
 No AI, no external integrations, no new capacity formula, no second invented threshold beyond LOW_CAPACITY, no org-wide unscoped scan (every endpoint is person/team/project/scenario-scoped, matching Phase 2/4). Concentration risk and capacity imbalance never escalate beyond `info` severity — they are structural observations, not confirmed problems.
+
+## Import / Export (Phase 6)
+
+Phase 6 makes CapacityOS's core operational data **portable**: exportable to CSV/JSON for backup or reuse, and importable back in with the same validate-before-write discipline every other write path in this system follows. See [ADR 0006](adr/0006-phase-6-import-export.md) for the full reasoning; this section is the vocabulary and rules.
+
+### Supported entities
+
+Person, Team, TeamMembership, Project, WorkingSchedule, AvailabilityException, Allocation — the same source-fact entities Phase 1 defined. **Deliberately excluded:** Scenario/ScenarioOperation (hypothetical, not source data — see [Scenario Planning](#scenario-planning-phase-4)) and Insight signals (derived, recalculated from source facts every time, never stored as authoritative — see [Operational Insights](#operational-insights-phase-5)). Importing a derived value as if it were a fact would let stale or fabricated numbers silently override what the capacity engine would otherwise compute.
+
+### Vocabulary
+
+| Term | Meaning |
+|---|---|
+| `ENTITY_COLUMNS` | The single source of truth for one entity's column/header set and order — shared verbatim by import parsing, export writing, and template generation. |
+| Identity | The field(s) used to match an uploaded row against an existing record: `email` (Person), `name` (Team), resolved `(person_id, team_id)` (TeamMembership), or `external_id` (Project, Allocation, WorkingSchedule, AvailabilityException). A row with no identity always creates. |
+| `external_id` | A nullable, unique, user-supplied string identifier added in Phase 6 for the four entities with no pre-existing natural key — the Phase 6 import identity key, distinct from the database's own internal `id`. |
+| Validation report | The Stage A response (`ImportValidationReport`): per-row status plus totals, before anything is written. |
+| Apply result | The Stage B response (`ImportApplyResult`): the same shape, after writing — `applied=False` whenever any row was invalid, since nothing is written unless every row is clean. |
+
+### The two-stage flow
+
+```text
+Uploaded file
+      ↓
+Level 1 — file validation (format, encoding, headers, size/row limits)
+      ↓
+Level 2 — record validation (required fields, types, enums — via the real Create/Update Pydantic schemas)
+      ↓
+Level 3 — domain validation (reference resolution, date ranges, working-schedule overlap — reusing existing domain/service rules)
+      ↓
+Level 4 — cross-row validation (duplicate identities within the same file)
+      ↓
+Validation report (Stage A) — nothing written yet
+      ↓
+Explicit user confirmation
+      ↓
+Apply (Stage B) — re-validates the same file, then writes every row through the existing services, atomically
+```
+
+A row's classified action is one of `valid_create` / `valid_update` / `valid_unchanged` / `invalid`. "Unchanged" is a real field-level comparison against the current stored value (only the fields the row actually supplied), not just "a match was found" — this is what makes reimporting the same file repeatedly deterministic instead of reporting spurious updates every time.
+
+### Import modes
+
+| Mode | Behavior |
+|---|---|
+| `upsert` (default) | Create if no match, update if matched and changed, no-op if matched and unchanged. |
+| `create_only` | A row that matches an existing record becomes a blocking conflict instead of updating it. |
+| `update_only` | A row that matches nothing becomes a blocking error instead of creating it. |
+
+There is no destructive "sync" or "replace" mode — an import never deletes a record that's simply absent from the uploaded file.
+
+### What Phase 6 does NOT do
+
+No AI, no external integrations, no new capacity formula, no persisted import-job/history entity (a validation report exists only within its own request/response), no destructive sync mode, no asynchronous/background job infrastructure. Imported facts flow through the unmodified Phase 2 capacity engine and Phase 5 insight classifiers exactly like manually-entered data — Phase 6 introduces no second way for a number to become "true."

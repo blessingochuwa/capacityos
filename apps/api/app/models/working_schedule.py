@@ -5,7 +5,15 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Numeric, SmallInteger, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Numeric,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -46,6 +54,10 @@ class WorkingSchedule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     effective_start_date: Mapped[date | None] = mapped_column(Date)
     effective_end_date: Mapped[date | None] = mapped_column(Date)
+    external_id: Mapped[str | None] = mapped_column(String(200), unique=True, index=True)
+    """Phase 6 import identity key — WorkingSchedule has no other natural
+    key. Nullable: most schedules are created directly and never imported.
+    See docs/adr/0006-phase-6-import-export.md."""
 
     person: Mapped[Person] = relationship(back_populates="working_schedules")
     entries: Mapped[list[WorkingScheduleEntry]] = relationship(

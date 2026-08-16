@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.exceptions import DomainValidationError, NotFoundError
+from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.models.availability_exception import AvailabilityException
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -22,6 +22,12 @@ class AvailabilityExceptionService:
     def create(self, data: AvailabilityExceptionCreate) -> AvailabilityException:
         if self.person_repository.get(data.person_id) is None:
             raise NotFoundError("Person", data.person_id)
+        if data.external_id is not None and self.repository.get_by_external_id(
+            data.external_id
+        ):
+            raise ConflictError(
+                f"An availability exception with external_id {data.external_id} already exists."
+            )
 
         exception = AvailabilityException(
             person_id=data.person_id,
@@ -30,6 +36,7 @@ class AvailabilityExceptionService:
             availability_type=data.availability_type,
             hours=data.hours,
             notes=data.notes,
+            external_id=data.external_id,
         )
         return self.repository.add(exception)
 
@@ -54,6 +61,15 @@ class AvailabilityExceptionService:
         merged_end = updates.get("end_date", exception.end_date)
         if merged_end < merged_start:
             raise DomainValidationError("end_date cannot precede start_date")
+
+        new_external_id = updates.get("external_id")
+        if new_external_id is not None and new_external_id != exception.external_id:
+            existing = self.repository.get_by_external_id(new_external_id)
+            if existing is not None and existing.id != exception.id:
+                raise ConflictError(
+                    f"An availability exception with external_id {new_external_id} "
+                    "already exists."
+                )
 
         for field, value in updates.items():
             setattr(exception, field, value)

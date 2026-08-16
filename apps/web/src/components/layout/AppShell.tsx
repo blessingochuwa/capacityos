@@ -33,6 +33,9 @@ export function AppShell() {
               <NavLink to="/insights" className={NAV_LINK_CLASS}>
                 Insights
               </NavLink>
+              <NavLink to="/import-export" className={NAV_LINK_CLASS}>
+                Import / Export
+              </NavLink>
             </nav>
           </div>
           <div className="w-56">

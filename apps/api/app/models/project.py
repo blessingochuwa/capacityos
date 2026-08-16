@@ -50,6 +50,10 @@ class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
+    external_id: Mapped[str | None] = mapped_column(String(200), unique=True, index=True)
+    """Phase 6 import identity key — Project has no other natural key (name
+    is not unique). Nullable: most projects are created directly through the
+    UI/API and never imported. See docs/adr/0006-phase-6-import-export.md."""
 
     allocations: Mapped[list[Allocation]] = relationship(
         back_populates="project", cascade="all, delete-orphan"

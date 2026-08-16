@@ -24,6 +24,10 @@ class WorkingScheduleCreate(BaseModel):
     effective_start_date: date | None = None
     effective_end_date: date | None = None
     entries: list[WorkingScheduleEntryCreate] = Field(min_length=1)
+    external_id: str | None = Field(default=None, max_length=200)
+    """The Phase 6 import identity key for this entity (WorkingSchedule has
+    no natural key). Nullable — most schedules are created directly and
+    never imported. See docs/adr/0006-phase-6-import-export.md."""
 
     @model_validator(mode="after")
     def _check_entries_and_dates(self) -> Self:
@@ -46,6 +50,7 @@ class WorkingScheduleUpdate(BaseModel):
     effective_start_date: date | None = None
     effective_end_date: date | None = None
     entries: list[WorkingScheduleEntryCreate] | None = None
+    external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _check_entries_and_dates(self) -> Self:
@@ -69,6 +74,7 @@ class WorkingScheduleRead(BaseModel):
     person_id: uuid.UUID
     effective_start_date: date | None
     effective_end_date: date | None
+    external_id: str | None
     created_at: datetime
     updated_at: datetime
     entries: list[WorkingScheduleEntryRead]

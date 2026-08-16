@@ -13,6 +13,11 @@ class ProjectBase(BaseModel):
     status: ProjectStatus = ProjectStatus.PLANNED
     start_date: date | None = None
     end_date: date | None = None
+    external_id: str | None = Field(default=None, max_length=200)
+    """The Phase 6 import identity key for this entity (Project has no
+    natural key — name is not unique). Nullable because most projects are
+    created directly through the UI/API and never imported. See
+    docs/adr/0006-phase-6-import-export.md."""
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:
@@ -36,6 +41,7 @@ class ProjectUpdate(BaseModel):
     status: ProjectStatus | None = None
     start_date: date | None = None
     end_date: date | None = None
+    external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _check_date_range(self) -> Self:

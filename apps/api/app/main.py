@@ -4,7 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.allocations import router as allocations_router
 from app.api.v1.availability_exceptions import router as availability_exceptions_router
 from app.api.v1.capacity import router as capacity_router
+from app.api.v1.exports import router as exports_router
 from app.api.v1.health import router as health_router
+from app.api.v1.imports import router as imports_router
 from app.api.v1.insights import router as insights_router
 from app.api.v1.people import router as people_router
 from app.api.v1.projects import router as projects_router
@@ -38,3 +40,5 @@ app.include_router(availability_exceptions_router)
 app.include_router(capacity_router)
 app.include_router(scenarios_router)
 app.include_router(insights_router)
+app.include_router(imports_router)
+app.include_router(exports_router)

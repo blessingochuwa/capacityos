@@ -69,9 +69,15 @@ def make_project(
     status: ProjectStatus = ProjectStatus.PLANNED,
     start_date: date | None = date(2026, 9, 1),
     end_date: date | None = date(2026, 10, 31),
+    external_id: str | None = None,
 ) -> Project:
     project = Project(
-        name=name, description=description, status=status, start_date=start_date, end_date=end_date
+        name=name,
+        description=description,
+        status=status,
+        start_date=start_date,
+        end_date=end_date,
+        external_id=external_id,
     )
     session.add(project)
     session.flush()
@@ -88,6 +94,7 @@ def make_allocation(
     allocation_hours: Decimal = Decimal("20"),
     allocation_unit: AllocationUnit = AllocationUnit.TOTAL_HOURS,
     notes: str | None = None,
+    external_id: str | None = None,
 ) -> Allocation:
     allocation = Allocation(
         person_id=person.id,
@@ -97,6 +104,7 @@ def make_allocation(
         allocation_hours=allocation_hours,
         allocation_unit=allocation_unit,
         notes=notes,
+        external_id=external_id,
     )
     session.add(allocation)
     session.flush()
@@ -110,11 +118,13 @@ def make_working_schedule(
     entries: list[WorkingScheduleEntry] | None = None,
     effective_start_date: date | None = None,
     effective_end_date: date | None = None,
+    external_id: str | None = None,
 ) -> WorkingSchedule:
     schedule = WorkingSchedule(
         person_id=person.id,
         effective_start_date=effective_start_date,
         effective_end_date=effective_end_date,
+        external_id=external_id,
         entries=entries
         if entries is not None
         else [WorkingScheduleEntry(weekday=weekday, hours=Decimal("8")) for weekday in range(5)],
@@ -133,6 +143,7 @@ def make_availability_exception(
     availability_type: AvailabilityType = AvailabilityType.ANNUAL_LEAVE,
     hours: Decimal | None = None,
     notes: str | None = None,
+    external_id: str | None = None,
 ) -> AvailabilityException:
     exception = AvailabilityException(
         person_id=person.id,
@@ -141,6 +152,7 @@ def make_availability_exception(
         availability_type=availability_type,
         hours=hours,
         notes=notes,
+        external_id=external_id,
     )
     session.add(exception)
     session.flush()

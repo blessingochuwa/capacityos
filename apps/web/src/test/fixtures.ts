@@ -21,6 +21,11 @@ import type {
   InsightsSummary,
   Signal,
 } from '@/features/insights/types/insights'
+import type {
+  ImportApplyResult,
+  ImportRowResult,
+  ImportValidationReport,
+} from '@/features/import-export/types/importExport'
 
 export function makePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -319,6 +324,55 @@ export function makeSignal(overrides: Partial<Signal> = {}): Signal {
     trend: null,
     baseline_value: null,
     scenario_value: null,
+    ...overrides,
+  }
+}
+
+export function makeImportRowResult(
+  overrides: Partial<ImportRowResult> = {},
+): ImportRowResult {
+  return {
+    row_number: 1,
+    status: 'valid_create',
+    identity: 'email=jane.doe@example.com',
+    matched_id: null,
+    errors: [],
+    ...overrides,
+  }
+}
+
+export function makeImportValidationReport(
+  overrides: Partial<ImportValidationReport> = {},
+): ImportValidationReport {
+  return {
+    entity_type: 'person',
+    mode: 'upsert',
+    file_error: null,
+    total_rows: 1,
+    valid_create_count: 1,
+    valid_update_count: 0,
+    valid_unchanged_count: 0,
+    invalid_count: 0,
+    ready_to_apply: true,
+    rows: [makeImportRowResult()],
+    ...overrides,
+  }
+}
+
+export function makeImportApplyResult(
+  overrides: Partial<ImportApplyResult> = {},
+): ImportApplyResult {
+  return {
+    entity_type: 'person',
+    mode: 'upsert',
+    file_error: null,
+    applied: true,
+    total_rows: 1,
+    created_count: 1,
+    updated_count: 0,
+    unchanged_count: 0,
+    invalid_count: 0,
+    rows: [makeImportRowResult()],
     ...overrides,
   }
 }
