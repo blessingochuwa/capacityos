@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { usePeople, usePeopleLookup } from '@/hooks/usePeople'
 import { useProjects, useProjectsLookup } from '@/hooks/useProjects'
 import { formatDateRange } from '@/features/capacity/utils/presentation'
+import { SignalList } from '@/features/insights/components/SignalList'
+import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
 import { AddChangeForm } from '../components/AddChangeForm'
 import { ChangeList } from '../components/ChangeList'
 import { ComparisonTable } from '../components/ComparisonTable'
@@ -80,6 +82,10 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
   const [calculatedAt, setCalculatedAt] = useState<number | null>(null)
 
   const comparisonQuery = useScenarioComparison(
+    scenarioId,
+    hasCalculatedOnce && pageActive,
+  )
+  const scenarioSignalsQuery = useScenarioSignals(
     scenarioId,
     hasCalculatedOnce && pageActive,
   )
@@ -356,6 +362,25 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
                         <PeopleComparisonTable people={comparison.people} />
                       )
                     }
+                  </QueryBoundary>
+                </CardBody>
+              </Card>
+            ) : null}
+
+            {hasCalculatedOnce ? (
+              <Card className="mt-6">
+                <CardHeader
+                  title="Operational signals"
+                  description="Severity-classified, explained versions of the risks above (CLAUDE.md §39 Phase 5)."
+                />
+                <CardBody>
+                  <QueryBoundary
+                    query={scenarioSignalsQuery}
+                    loadingLabel="Loading signals…"
+                  >
+                    {(signalsPage) => (
+                      <SignalList signals={signalsPage.items} />
+                    )}
                   </QueryBoundary>
                 </CardBody>
               </Card>

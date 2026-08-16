@@ -30,6 +30,9 @@ export function AppShell() {
               <NavLink to="/scenarios" className={NAV_LINK_CLASS}>
                 Scenarios
               </NavLink>
+              <NavLink to="/insights" className={NAV_LINK_CLASS}>
+                Insights
+              </NavLink>
             </nav>
           </div>
           <div className="w-56">

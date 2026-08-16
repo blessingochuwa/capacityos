@@ -17,6 +17,7 @@ import {
 } from '../hooks/useScenarioOperationMutations'
 import { usePeople, usePeopleLookup } from '@/hooks/usePeople'
 import { useProjects, useProjectsLookup } from '@/hooks/useProjects'
+import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
 import {
   mockQueryError,
   mockQueryPending,
@@ -28,6 +29,7 @@ import {
   makeScenario,
   makeScenarioComparison,
   makeScenarioOperation,
+  makeSignal,
 } from '@/test/fixtures'
 
 vi.mock('../hooks/useScenario')
@@ -38,6 +40,7 @@ vi.mock('../hooks/useScenarioMutations')
 vi.mock('../hooks/useScenarioOperationMutations')
 vi.mock('@/hooks/usePeople')
 vi.mock('@/hooks/useProjects')
+vi.mock('@/features/insights/hooks/useScenarioSignals')
 
 const mockedUseScenario = vi.mocked(useScenario)
 const mockedUseScenarioOperations = vi.mocked(useScenarioOperations)
@@ -51,6 +54,7 @@ const mockedUsePeople = vi.mocked(usePeople)
 const mockedUsePeopleLookup = vi.mocked(usePeopleLookup)
 const mockedUseProjects = vi.mocked(useProjects)
 const mockedUseProjectsLookup = vi.mocked(useProjectsLookup)
+const mockedUseScenarioSignals = vi.mocked(useScenarioSignals)
 
 function mockCommonHooks() {
   mockedUseUpdateScenario.mockReturnValue({
@@ -82,6 +86,7 @@ function mockCommonHooks() {
   mockedUseProjectsLookup.mockReturnValue(
     new Map([['project-1', makeProject({ id: 'project-1' })]]),
   )
+  mockedUseScenarioSignals.mockReturnValue(mockQueryPending())
 }
 
 function renderPage() {
@@ -180,11 +185,21 @@ describe('ScenarioWorkspacePage', () => {
       isPending: false,
       isSuccess: true,
     } as unknown as ReturnType<typeof useCalculateScenario>)
+    mockedUseScenarioSignals.mockReturnValue(
+      mockQuerySuccess({
+        items: [makeSignal({ entity_label: 'Jane Doe' })],
+        total: 1,
+      }),
+    )
 
     renderPage()
 
     expect(screen.getByText('Baseline vs scenario')).toBeInTheDocument()
     expect(screen.getByText('Utilization')).toBeInTheDocument()
     expect(screen.getByText('People affected')).toBeInTheDocument()
+    expect(screen.getByText('Operational signals')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Jane Doe is allocated 6.00h more/),
+    ).toBeInTheDocument()
   })
 })

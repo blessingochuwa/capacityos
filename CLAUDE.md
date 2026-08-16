@@ -1062,16 +1062,32 @@ Core dashboard and planning views.
 Scenario planning.
 
 ### Phase 5
-Import/export.
+Operational insights — deterministic, explainable decision-support signals
+(over-allocation, capacity risk, concentration, imbalance, project pressure,
+scenario deltas) surfaced from the existing capacity and scenario engines.
+No AI, no integrations, no new capacity formulas. See
+docs/adr/0005-phase-5-operational-insights.md.
 
 ### Phase 6
-Skills and bottleneck analysis.
+Import/export.
 
 ### Phase 7
+Skills and bottleneck analysis.
+
+### Phase 8
 AI insight layer.
 
-### Phase 8+
+### Phase 9+
 External integrations, authentication, RBAC, multi-tenancy, and Chrome extension.
+
+**Amendment (2026-08-14):** Operational Insights was originally scoped as a
+later phase but is being pulled forward and renumbered as Phase 5, pushing
+Import/Export and Skills/Bottleneck analysis to Phase 6/7 respectively (AI
+insight layer becomes Phase 8). Rationale: insights sit directly on top of
+the Phase 2 capacity engine and Phase 4 scenario engine with no new
+subsystem dependencies, while import/export and skills/bottleneck each
+introduce their own new domain concepts. See
+docs/adr/0005-phase-5-operational-insights.md.
 
 Do not jump ahead while the underlying domain is unstable.
 

@@ -17,6 +17,10 @@ import type {
   ScenarioOperation,
   ScenarioOperationPayload,
 } from '@/features/scenarios/types/scenario'
+import type {
+  InsightsSummary,
+  Signal,
+} from '@/features/insights/types/insights'
 
 export function makePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -278,6 +282,64 @@ export function makeScenarioComparison(
     projects: [],
     risks: [],
     impact: makeImpact(),
+    ...overrides,
+  }
+}
+
+export function makeSignal(overrides: Partial<Signal> = {}): Signal {
+  return {
+    type: 'over_allocation',
+    severity: 'critical',
+    entity_type: 'person',
+    entity_id: 'person-1',
+    entity_label: 'Jane Doe',
+    start_date: '2026-08-17',
+    end_date: '2026-08-21',
+    explanation:
+      'Jane Doe is allocated 6.00h more than available capacity between Aug 17 and Aug 21.',
+    effective_capacity: '40.00',
+    allocated_hours: '46.00',
+    remaining_capacity: '-6.00',
+    excess_hours: '6.00',
+    utilization: '1.1500',
+    threshold_hours_per_day: null,
+    concentration_ratio: null,
+    concentration_person_ids: null,
+    concentration_person_labels: null,
+    min_utilization: null,
+    min_utilization_person_id: null,
+    min_utilization_person_label: null,
+    max_utilization: null,
+    max_utilization_person_id: null,
+    max_utilization_person_label: null,
+    affected_person_ids: ['person-1'],
+    contributing_allocation_ids: [],
+    scenario_id: null,
+    is_new: null,
+    trend: null,
+    baseline_value: null,
+    scenario_value: null,
+    ...overrides,
+  }
+}
+
+export function makeInsightsSummary(
+  overrides: Partial<InsightsSummary> = {},
+): InsightsSummary {
+  return {
+    team_id: 'team-1',
+    team_label: 'Product Design',
+    start_date: '2026-08-17',
+    end_date: '2026-08-21',
+    capacity: makeAggregateCapacity(),
+    signal_counts: { critical: 0, warning: 0, info: 0 },
+    utilization_distribution: [],
+    concentration_areas: [],
+    projects_under_pressure: [],
+    scenario_id: null,
+    scenario_delta: null,
+    scenario_new_risk_count: 0,
+    scenario_existing_risk_count: 0,
     ...overrides,
   }
 }

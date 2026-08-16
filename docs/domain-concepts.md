@@ -177,3 +177,47 @@ Operations apply in stored **sequence order** — a later operation sees the eff
 ### Comparison semantics
 
 Baseline and scenario numbers are always kept as distinct, explicit fields — never merged into one blob. A `MetricDelta` (`baseline`, `scenario`, `delta`) is used for every compared metric. Risks are limited to two objective facts the engine already computes — over-allocation and exactly-zero remaining capacity — each marked `is_new` (true in the scenario, false in the baseline) so "prioritize new risks" (CLAUDE.md §16) is a fact, not a guess.
+
+## Operational Insights (Phase 5)
+
+Phase 5 answers "where should I look?" — not "what should I do?" — by classifying facts the Phase 2 capacity engine and Phase 4 scenario engine already compute into explainable, prioritized **signals**. See [ADR 0005](adr/0005-phase-5-operational-insights.md) for the full reasoning; this section is the vocabulary and rules.
+
+### Vocabulary
+
+| Term | Meaning |
+|---|---|
+| Fact | A number the capacity or scenario engine already computed (e.g. `over_allocation`, `remaining_capacity`) — never recomputed differently here. |
+| Derived metric | A deterministic function of one or more facts, gated only by an *existence* condition, never an invented magnitude threshold (e.g. concentration ratio, utilization spread). |
+| Threshold | A single backend-owned judgment boundary — LOW_CAPACITY only (see ADR 0005). Every other signal fires on a fact or an existence condition. |
+| Signal | A classified, explained instance of a fact/derived-metric/threshold crossing, surfaced by the Insights API. |
+| Severity | One of `critical` / `warning` / `info`, assigned deterministically per signal type. |
+
+### Signal categories
+
+| Category | Signal type(s) | Classification | Scope |
+|---|---|---|---|
+| A. Over-allocation | `over_allocation` | fact (`over_allocation > 0`) | person, team |
+| B. Zero remaining capacity | `zero_remaining_capacity` | fact (`remaining_capacity == 0`, gated on `effective_capacity > 0`) | person, team |
+| C. Low capacity | `low_capacity` | threshold (`remaining_capacity / period_days <= LOW_CAPACITY`) | person, team |
+| D. Concentration risk | `concentration_risk` | derived metric (top-2 contributors' share of a project's hours) | project |
+| E. Capacity imbalance | `capacity_imbalance` | derived metric (min/max utilization spread across a team) | team |
+| F. Project capacity pressure | `project_capacity_pressure` | fact/threshold, reusing `aggregate_team_capacity` over the project's assigned people | project |
+| G. Scenario delta | `scenario_new_risk`, `scenario_existing_risk` | fact, reusing `ScenarioCalculationService`'s own risk detection | person |
+
+A/B/C/F are mutually exclusive per entity (an `if`/`elif` chain, same style as `ScenarioCalculationService._risks`): over-allocation always wins over zero-remaining, which always wins over low-capacity.
+
+### Severity rules
+
+| Severity | Meaning | Fires for |
+|---|---|---|
+| `critical` | A confirmed, already-happened fact: promised work exceeds available capacity | `over_allocation`, `project_capacity_pressure` (over-allocated), scenario risks whose underlying type is `over_allocation` |
+| `warning` | The one backend-invented threshold (LOW_CAPACITY) has been crossed — worth a look, not yet broken | `low_capacity`, `project_capacity_pressure` (low capacity) |
+| `info` | A shape-of-the-plan observation, not a problem | `zero_remaining_capacity`, `concentration_risk`, `capacity_imbalance`, scenario risks whose underlying type is `zero_remaining_capacity` |
+
+### Priority order
+
+Signals are sorted `(severity, is_new-first, type-family, entity_label, entity_id)` — severity dominates because it is the one objective "how bad" fact every category shares; `is_new` and signal-type family are tiebreakers *within* a severity tier only. This deliberately refines the brief's flat example ordering ("critical over-allocation, new scenario risks, existing warnings, concentration, imbalance, informational"), which would let a merely-informational new scenario signal outrank an existing critical over-allocation.
+
+### What Phase 5 does NOT do
+
+No AI, no external integrations, no new capacity formula, no second invented threshold beyond LOW_CAPACITY, no org-wide unscoped scan (every endpoint is person/team/project/scenario-scoped, matching Phase 2/4). Concentration risk and capacity imbalance never escalate beyond `info` severity — they are structural observations, not confirmed problems.
