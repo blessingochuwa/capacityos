@@ -26,6 +26,12 @@ import type {
   ImportRowResult,
   ImportValidationReport,
 } from '@/features/import-export/types/importExport'
+import type {
+  QualifiedPerson,
+  Skill,
+  SkillCoverage,
+  TeamSkillCapacityEntry,
+} from '@/features/skills/types/skills'
 
 export function makePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -324,6 +330,15 @@ export function makeSignal(overrides: Partial<Signal> = {}): Signal {
     trend: null,
     baseline_value: null,
     scenario_value: null,
+    skill_id: null,
+    skill_label: null,
+    skill_required_hours: null,
+    skill_qualified_available_hours: null,
+    skill_coverage_ratio: null,
+    skill_gap_hours: null,
+    skill_holder_ids: null,
+    skill_holder_labels: null,
+    skill_holder_ratio: null,
     ...overrides,
   }
 }
@@ -394,6 +409,61 @@ export function makeInsightsSummary(
     scenario_delta: null,
     scenario_new_risk_count: 0,
     scenario_existing_risk_count: 0,
+    ...overrides,
+  }
+}
+
+export function makeSkill(overrides: Partial<Skill> = {}): Skill {
+  return {
+    id: 'skill-1',
+    name: 'Backend Development',
+    description: null,
+    category: null,
+    is_active: true,
+    created_at: '2026-08-17T00:00:00Z',
+    updated_at: '2026-08-17T00:00:00Z',
+    person_count: 0,
+    ...overrides,
+  }
+}
+
+export function makeQualifiedPerson(
+  overrides: Partial<QualifiedPerson> = {},
+): QualifiedPerson {
+  return {
+    person_id: 'person-1',
+    person_label: 'Jane Doe',
+    proficiency: 'proficient',
+    qualified_available_hours: '20.00',
+    ...overrides,
+  }
+}
+
+export function makeSkillCoverage(
+  overrides: Partial<SkillCoverage> = {},
+): SkillCoverage {
+  return {
+    requirement_id: 'requirement-1',
+    skill_id: 'skill-1',
+    skill_label: 'Backend Development',
+    required_hours: '80.00',
+    minimum_proficiency: null,
+    qualified_available_hours: '80.00',
+    coverage_ratio: '1.0000',
+    gap_hours: '0.00',
+    qualified_people: [makeQualifiedPerson()],
+    ...overrides,
+  }
+}
+
+export function makeTeamSkillCapacityEntry(
+  overrides: Partial<TeamSkillCapacityEntry> = {},
+): TeamSkillCapacityEntry {
+  return {
+    skill_id: 'skill-1',
+    skill_label: 'Backend Development',
+    qualified_available_hours: '20.00',
+    qualified_people: [makeQualifiedPerson()],
     ...overrides,
   }
 }

@@ -61,7 +61,37 @@ export function SignalDetailPanel({ signal }: { signal: Signal }) {
               value={formatUtilization(signal.concentration_ratio)}
             />
           ) : null}
+          {signal.skill_required_hours !== null ? (
+            <MetricTile
+              label="Required"
+              value={formatHours(signal.skill_required_hours)}
+            />
+          ) : null}
+          {signal.skill_qualified_available_hours !== null ? (
+            <MetricTile
+              label="Qualified available"
+              value={formatHours(signal.skill_qualified_available_hours)}
+            />
+          ) : null}
+          {signal.skill_gap_hours !== null ? (
+            <MetricTile
+              label="Gap"
+              value={formatHours(signal.skill_gap_hours)}
+              tone="danger"
+            />
+          ) : null}
+          {signal.skill_holder_ratio !== null ? (
+            <MetricTile
+              label="Held by"
+              value={formatUtilization(signal.skill_holder_ratio)}
+            />
+          ) : null}
         </div>
+        {signal.skill_holder_labels !== null && signal.skill_holder_labels.length > 0 ? (
+          <p className="text-xs text-slate-400">
+            Holders: {signal.skill_holder_labels.join(', ')}
+          </p>
+        ) : null}
         {signal.affected_person_ids.length > 0 ? (
           <p className="text-xs text-slate-400">
             Affects {signal.affected_person_ids.length}{' '}

@@ -38,6 +38,7 @@ ALLOCATION_A = uuid.UUID(int=30)
 EMPTY_LOOKUP = ReferenceLookup(
     people_by_id={}, people_by_email={}, teams_by_id={}, teams_by_name={},
     projects_by_id={}, projects_by_external_id={},
+    skills_by_id={}, skills_by_name={},
 )
 
 
@@ -50,6 +51,7 @@ def _lookup_with_person() -> ReferenceLookup:
     return ReferenceLookup(
         people_by_id={PERSON_A: fact}, people_by_email={"jane@example.com": fact},
         teams_by_id={}, teams_by_name={}, projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
 
 
@@ -63,6 +65,7 @@ def _lookup_with_person_and_project() -> ReferenceLookup:
         people_by_id=base.people_by_id, people_by_email=base.people_by_email,
         teams_by_id={}, teams_by_name={},
         projects_by_id={PROJECT_A: project_fact}, projects_by_external_id={"PRJ-1": project_fact},
+        skills_by_id={}, skills_by_name={},
     )
 
 
@@ -123,6 +126,7 @@ def test_resolve_team_reference_by_name() -> None:
     lookup = ReferenceLookup(
         people_by_id={}, people_by_email={}, teams_by_id={TEAM_A: fact},
         teams_by_name={"Design": fact}, projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
     assert resolve_team_reference({"team_name": "Design"}, lookup) == TEAM_A
 
@@ -194,6 +198,7 @@ def test_normalize_team_row_unchanged() -> None:
     lookup = ReferenceLookup(
         people_by_id={}, people_by_email={}, teams_by_id={TEAM_A: fact},
         teams_by_name={"Design": fact}, projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
     outcome = normalize_team_row({"name": "Design"}, lookup)
     assert outcome.action == "unchanged"
@@ -215,6 +220,7 @@ def test_normalize_team_membership_row_create() -> None:
         people_by_id={PERSON_A: person_fact}, people_by_email={"jane@example.com": person_fact},
         teams_by_id={TEAM_A: team_fact}, teams_by_name={"Design": team_fact},
         projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
     outcome = normalize_team_membership_row(
         {"person_email": "jane@example.com", "team_name": "Design"}, lookup, {}
@@ -236,6 +242,7 @@ def test_normalize_team_membership_row_unchanged_when_already_member() -> None:
         people_by_id={PERSON_A: person_fact}, people_by_email={"jane@example.com": person_fact},
         teams_by_id={TEAM_A: team_fact}, teams_by_name={"Design": team_fact},
         projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
     existing = {(PERSON_A, TEAM_A): TeamMembershipFact(person_id=PERSON_A, team_id=TEAM_A)}
     outcome = normalize_team_membership_row(
@@ -467,6 +474,7 @@ def test_apply_mode_policy_create_only_rejects_a_match() -> None:
     lookup = ReferenceLookup(
         people_by_id={}, people_by_email={}, teams_by_id={TEAM_A: fact},
         teams_by_name={"Design": fact}, projects_by_id={}, projects_by_external_id={},
+        skills_by_id={}, skills_by_name={},
     )
     outcome = normalize_team_row({"name": "Design"}, lookup)
     result = apply_mode_policy(outcome, ImportMode.CREATE_ONLY)

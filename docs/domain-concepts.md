@@ -275,3 +275,51 @@ There is no destructive "sync" or "replace" mode — an import never deletes a r
 ### What Phase 6 does NOT do
 
 No AI, no external integrations, no new capacity formula, no persisted import-job/history entity (a validation report exists only within its own request/response), no destructive sync mode, no asynchronous/background job infrastructure. Imported facts flow through the unmodified Phase 2 capacity engine and Phase 5 insight classifiers exactly like manually-entered data — Phase 6 introduces no second way for a number to become "true."
+
+## Skills & Bottleneck Analysis (Phase 7)
+
+Phase 7 answers "do we have the *right* capacity, not just *enough* capacity?" by adding a skill dimension on top of the existing capacity engine and insights framework. See [ADR 0007](adr/0007-phase-7-skills-bottleneck-analysis.md) for the full reasoning; this section is the vocabulary and rules.
+
+### The central distinction
+
+**SKILL CAPACITY ≠ TOTAL CAPACITY.** A person with 40h of remaining capacity and no recorded proficiency in a required skill contributes 0h of *qualified* capacity toward that requirement. A team can be well under its aggregate capacity while a specific skill is fully consumed. Every Phase 7 view keeps these two numbers visibly separate — never one blended figure.
+
+### Entities
+
+| Entity | Answers | Lives in |
+|---|---|---|
+| `Skill` | A named capability people can hold and projects can require. | `app/models/skill.py` |
+| `PersonSkill` | This person's explicitly recorded proficiency in one skill. | `app/models/person_skill.py` |
+| `ProjectSkillRequirement` | How much of one skill, at what minimum proficiency, this project needs. | `app/models/project_skill_requirement.py` |
+
+Proficiency (`beginner` / `working` / `proficient` / `advanced` / `expert`) is never inferred — not from job title, not from allocation history, not by AI. It exists only because someone explicitly recorded it. `Skill.is_active` is a soft-delete flag (`DELETE /api/v1/skills/{id}` deactivates, never removes the row) — deactivating preserves history instead of orphaning `PersonSkill`/`ProjectSkillRequirement` rows or silently changing past coverage numbers; every qualification/coverage/signal calculation filters out inactive skills regardless of what still references one.
+
+### Qualification
+
+A person qualifies for a requirement when all three hold:
+
+1. They have an active `PersonSkill` for the required skill.
+2. Their proficiency rank meets the requirement's `minimum_proficiency` (no minimum set = any recorded proficiency qualifies).
+3. They have capacity — but "qualified available hours" is a Phase 7 derived quantity, `max(remaining_capacity, 0)`, not a redefinition of Phase 2's `remaining_capacity` (which stays unclamped, negative when over-allocated). A fully-booked qualified person still counts as a *holder* of the skill (relevant to single-point-of-failure detection) but contributes 0 qualified hours toward closing a gap.
+
+### Coverage
+
+For each `ProjectSkillRequirement`: `required_hours`, `qualified_available_hours` (summed across every qualified holder, org-wide — a project has no fixed eligible roster the way a team has members), `coverage_ratio`, `gap_hours`. The UI distinguishes **not configured** (no requirements exist — `requirements: []`) from **fully covered** (`gap_hours == 0`) from **partially covered** (some qualified capacity, still a gap) from **uncovered** (`qualified_available_hours == 0`) — these are never conflated into one status.
+
+Team skill capacity reports **supply only** — qualified available hours and holders per skill across a team's members — with no "team demand" figure. A team has no stored or derivable skill demand of its own; only `ProjectSkillRequirement` carries one, so demand-vs-supply comparison happens at the project level. Likewise, "allocated hours associated with a skill" is not reported anywhere: `Allocation` has no skill dimension, and inventing a proportional-attribution rule would be the same category of fabricated distribution rule ADR 0004 already declined for project demand.
+
+### Bottleneck signals
+
+Three new signal types plug into the **existing** Phase 5 framework (`SignalRead`, `get_project_signals`/`get_team_signals`, the Insights page) — there is no separate bottlenecks API or page:
+
+| Signal | Scope | Severity | Fires when |
+|---|---|---|---|
+| `skill_gap` | project | `critical` if zero qualified capacity, else `warning` | a requirement's `gap_hours > 0` |
+| `single_skill_holder` | project, team | `warning` | exactly 1 qualified holder |
+| `skill_concentration` | project, team | `info` | exactly 2 qualified holders |
+
+Holder-count gating (1 or 2) is an existence condition, matching Phase 5's discipline of never inventing a magnitude threshold — more than 2 holders is not reported as concentrated at all.
+
+### What Phase 7 does NOT do
+
+No AI, no skill inference, no automated staffing recommendations ("move John to Project Alpha" never appears — only evidence like "28h qualified capacity gap"), no second capacity engine, no second signal system, no `/api/v1/bottlenecks/` endpoint. Full scenario/skill interaction (would a hypothetical hire close this gap?) is a documented seam, not a built integration — see the ADR.

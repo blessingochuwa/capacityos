@@ -22,6 +22,9 @@ class ImportEntityType(StrEnum):
     ALLOCATION = "allocation"
     WORKING_SCHEDULE = "working_schedule"
     AVAILABILITY_EXCEPTION = "availability_exception"
+    SKILL = "skill"
+    PERSON_SKILL = "person_skill"
+    PROJECT_SKILL_REQUIREMENT = "project_skill_requirement"
 
 
 class ImportMode(StrEnum):
@@ -145,6 +148,38 @@ ENTITY_COLUMNS: dict[ImportEntityType, list[ColumnSpec]] = {
         ColumnSpec("end_date", True),
         ColumnSpec("availability_type", True),
         ColumnSpec("hours", False),
+        ColumnSpec("notes", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.SKILL: [
+        ColumnSpec("id", False),
+        ColumnSpec("name", True),
+        ColumnSpec("description", False),
+        ColumnSpec("category", False),
+        ColumnSpec("is_active", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.PERSON_SKILL: [
+        ColumnSpec("id", False),
+        ColumnSpec("person_id", False),
+        ColumnSpec("person_email", False),
+        ColumnSpec("skill_id", False),
+        ColumnSpec("skill_name", False),
+        ColumnSpec("proficiency", True),
+        ColumnSpec("notes", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.PROJECT_SKILL_REQUIREMENT: [
+        ColumnSpec("id", False),
+        ColumnSpec("project_id", False),
+        ColumnSpec("project_external_id", False),
+        ColumnSpec("skill_id", False),
+        ColumnSpec("skill_name", False),
+        ColumnSpec("required_hours", True),
+        ColumnSpec("minimum_proficiency", False),
         ColumnSpec("notes", False),
         ColumnSpec("created_at", False),
         ColumnSpec("updated_at", False),
@@ -335,6 +370,24 @@ _TEMPLATE_EXAMPLES: dict[ImportEntityType, dict[str, str]] = {
         "end_date": "2026-09-18",
         "availability_type": "annual_leave",
         "notes": "Summer holiday",
+    },
+    ImportEntityType.SKILL: {
+        "name": "Backend Development",
+        "description": "Server-side application development",
+        "category": "Engineering",
+        "is_active": "true",
+    },
+    ImportEntityType.PERSON_SKILL: {
+        "person_email": "jane.doe@example.com",
+        "skill_name": "Backend Development",
+        "proficiency": "proficient",
+        "notes": "3 years on the payments platform",
+    },
+    ImportEntityType.PROJECT_SKILL_REQUIREMENT: {
+        "project_external_id": "PRJ-100",
+        "skill_name": "Backend Development",
+        "required_hours": "80",
+        "minimum_proficiency": "working",
     },
 }
 """One realistic, schema-valid example row per entity for build_template.

@@ -12,7 +12,10 @@ from app.domain.import_export_parsing import (
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -21,7 +24,10 @@ from app.services.allocation import AllocationService
 from app.services.availability_exception import AvailabilityExceptionService
 from app.services.import_service import ImportService
 from app.services.person import PersonService
+from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_skill_requirement import ProjectSkillRequirementService
+from app.services.skill import SkillService
 from app.services.team import TeamService
 from app.services.team_membership import TeamMembershipService
 from app.services.working_schedule import WorkingScheduleService
@@ -49,6 +55,14 @@ def get_import_service(
         WorkingScheduleService(WorkingScheduleRepository(db), PersonRepository(db)),
         AvailabilityExceptionRepository(db),
         AvailabilityExceptionService(AvailabilityExceptionRepository(db), PersonRepository(db)),
+        SkillRepository(db),
+        SkillService(SkillRepository(db)),
+        PersonSkillRepository(db),
+        PersonSkillService(PersonSkillRepository(db), PersonRepository(db), SkillRepository(db)),
+        ProjectSkillRequirementRepository(db),
+        ProjectSkillRequirementService(
+            ProjectSkillRequirementRepository(db), ProjectRepository(db), SkillRepository(db)
+        ),
         max_file_size_bytes=settings.import_max_file_size_bytes,
         max_rows=settings.import_max_rows,
     )

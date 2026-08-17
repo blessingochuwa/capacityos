@@ -4,7 +4,7 @@ CapacityOS is an open-source-first resource and capacity planning platform for g
 
 The full product mission, operating philosophy, and architectural rules for this repository are defined in [CLAUDE.md](./CLAUDE.md) — that document is the governing source of truth for how this project is built. See also [docs/architecture.md](./docs/architecture.md) for a shorter technical overview.
 
-> **Status:** Phase 6 — domain foundation, a deterministic capacity engine, a read-only capacity dashboard, scenario/what-if planning, operational insights (prioritized, explainable capacity signals), and CSV/JSON import/export are implemented. Skills/bottleneck analysis, AI, integrations, and auth do not exist yet. See [docs/domain-concepts.md](./docs/domain-concepts.md) for what the domain entities mean and [docs/adr/](./docs/adr/) for the decisions behind them.
+> **Status:** Phase 7 — domain foundation, a deterministic capacity engine, a read-only capacity dashboard, scenario/what-if planning, operational insights (prioritized, explainable capacity signals), CSV/JSON import/export, and skills & bottleneck analysis (SKILL capacity vs TOTAL capacity, skill gaps, single points of failure) are implemented. AI, integrations, and auth do not exist yet. See [docs/domain-concepts.md](./docs/domain-concepts.md) for what the domain entities mean and [docs/adr/](./docs/adr/) for the decisions behind them.
 
 ## Repository layout
 

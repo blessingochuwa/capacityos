@@ -9,7 +9,10 @@ from app.domain.import_export_parsing import ExportFormat, ImportEntityType
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -29,6 +32,9 @@ def get_export_service(
         AllocationRepository(db),
         WorkingScheduleRepository(db),
         AvailabilityExceptionRepository(db),
+        SkillRepository(db),
+        PersonSkillRepository(db),
+        ProjectSkillRequirementRepository(db),
         max_rows=settings.export_max_rows,
     )
 

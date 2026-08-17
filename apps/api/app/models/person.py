@@ -12,6 +12,7 @@ from app.models.enums import EmploymentStatus
 if TYPE_CHECKING:
     from app.models.allocation import Allocation
     from app.models.availability_exception import AvailabilityException
+    from app.models.person_skill import PersonSkill
     from app.models.team_membership import TeamMembership
     from app.models.working_schedule import WorkingSchedule
 
@@ -64,5 +65,8 @@ class Person(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         back_populates="person", cascade="all, delete-orphan"
     )
     availability_exceptions: Mapped[list[AvailabilityException]] = relationship(
+        back_populates="person", cascade="all, delete-orphan"
+    )
+    person_skills: Mapped[list[PersonSkill]] = relationship(
         back_populates="person", cascade="all, delete-orphan"
     )

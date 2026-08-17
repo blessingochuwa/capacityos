@@ -12,6 +12,7 @@ from app.models.enums import ProjectStatus
 
 if TYPE_CHECKING:
     from app.models.allocation import Allocation
+    from app.models.project_skill_requirement import ProjectSkillRequirement
 
 
 class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -56,5 +57,8 @@ class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     UI/API and never imported. See docs/adr/0006-phase-6-import-export.md."""
 
     allocations: Mapped[list[Allocation]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    skill_requirements: Mapped[list[ProjectSkillRequirement]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )

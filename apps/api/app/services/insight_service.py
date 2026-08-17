@@ -33,10 +33,22 @@ from app.domain.insights import (
     scenario_risk_severity,
     scenario_risk_trend,
 )
+from app.domain.skills import (
+    QualifiedPerson,
+    SkillConcentrationResult,
+    SkillCoverageResult,
+    calculate_skill_concentration,
+    calculate_skill_coverage,
+    is_qualified,
+)
+from app.models.person_skill import PersonSkill
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
 from app.schemas.insights import (
@@ -69,9 +81,12 @@ _TYPE_RANK: dict[SignalType, int] = {
     "scenario_existing_risk": 1,
     "low_capacity": 2,
     "project_capacity_pressure": 2,
+    "skill_gap": 2,
+    "single_skill_holder": 2,
     "zero_remaining_capacity": 3,
     "capacity_imbalance": 4,
     "concentration_risk": 5,
+    "skill_concentration": 5,
 }
 """The deterministic sort key used by _prioritize. Severity dominates (tier
 1) because it is the one objective "how bad" fact every signal category
@@ -98,6 +113,9 @@ class InsightService:
         capacity_service: CapacityService,
         scenario_calculation_service: ScenarioCalculationService,
         low_capacity_threshold_hours_per_day: Decimal,
+        person_skill_repository: PersonSkillRepository,
+        skill_repository: SkillRepository,
+        project_skill_requirement_repository: ProjectSkillRequirementRepository,
     ) -> None:
         self.schedule_repository = schedule_repository
         self.availability_repository = availability_repository
@@ -108,6 +126,9 @@ class InsightService:
         self.capacity_service = capacity_service
         self.scenario_calculation_service = scenario_calculation_service
         self.low_capacity_threshold_hours_per_day = low_capacity_threshold_hours_per_day
+        self.person_skill_repository = person_skill_repository
+        self.skill_repository = skill_repository
+        self.project_skill_requirement_repository = project_skill_requirement_repository
 
     # -- Public entry points ------------------------------------------------
 
@@ -153,6 +174,16 @@ class InsightService:
             signals.append(
                 self._imbalance_signal(team_id, team_label, imbalance, labels, start_date, end_date)
             )
+
+        member_ids = [person_id for person_id, _ in members]
+        remaining_by_person = {
+            person_id: result.remaining_capacity for person_id, result in members
+        }
+        signals.extend(
+            self._team_skill_holder_signals(
+                team_id, team_label, member_ids, remaining_by_person, start_date, end_date
+            )
+        )
         return self._prioritize(signals)
 
     def get_project_signals(
@@ -292,7 +323,147 @@ class InsightService:
         pressure_signal = self._pressure_signal(project_id, label, demand, start_date, end_date)
         if pressure_signal is not None:
             signals.append(pressure_signal)
+        signals.extend(self._project_skill_signals(project_id, label, start_date, end_date))
         return label, demand, signals
+
+    # -- Skill signal assembly (Phase 7) ---------------------------------------
+
+    def _project_skill_signals(
+        self, project_id: uuid.UUID, label: str, start_date: date, end_date: date
+    ) -> list[SignalRead]:
+        """skill_gap (coverage shortfall) and single_skill_holder/
+        skill_concentration (holder concentration) for every one of the
+        project's ProjectSkillRequirement rows. The qualified population is
+        ORG-WIDE (everyone who holds the skill, not just people already
+        allocated to this project) — see
+        docs/adr/0007-phase-7-skills-bottleneck-analysis.md for why a
+        project has no fixed "eligible pool" to restrict this to."""
+        requirements = self.project_skill_requirement_repository.list_for_project(project_id)
+        if not requirements:
+            return []
+
+        skill_ids = [requirement.skill_id for requirement in requirements]
+        skills_by_id = {skill.id: skill for skill in self.skill_repository.list_by_ids(skill_ids)}
+        person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = {}
+        for row in self.person_skill_repository.list_for_skills(skill_ids):
+            person_skills_by_skill.setdefault(row.skill_id, []).append(row)
+
+        all_person_ids = sorted(
+            {row.person_id for rows in person_skills_by_skill.values() for row in rows}, key=str
+        )
+        remaining_by_person = self._remaining_capacity_by_person(
+            all_person_ids, start_date, end_date
+        )
+        person_labels = self._person_labels(all_person_ids)
+
+        signals: list[SignalRead] = []
+        for requirement in requirements:
+            skill = skills_by_id.get(requirement.skill_id)
+            if skill is None or not skill.is_active:
+                continue
+            qualified = [
+                QualifiedPerson(
+                    person_id=row.person_id,
+                    proficiency=row.proficiency,
+                    remaining_capacity=remaining_by_person.get(row.person_id, ZERO),
+                )
+                for row in person_skills_by_skill.get(requirement.skill_id, [])
+                if is_qualified(row.proficiency, requirement.minimum_proficiency)
+            ]
+            coverage = calculate_skill_coverage(requirement.required_hours, qualified)
+            if coverage.gap_hours > ZERO:
+                signals.append(
+                    self._skill_gap_signal(
+                        project_id, label, skill.id, skill.name, coverage, start_date, end_date
+                    )
+                )
+            holder_signal = self._skill_holder_signal_from_concentration(
+                "project",
+                project_id,
+                label,
+                skill.id,
+                skill.name,
+                calculate_skill_concentration(qualified),
+                person_labels,
+                start_date,
+                end_date,
+            )
+            if holder_signal is not None:
+                signals.append(holder_signal)
+        return signals
+
+    def _team_skill_holder_signals(
+        self,
+        team_id: uuid.UUID,
+        team_label: str,
+        member_ids: Sequence[uuid.UUID],
+        remaining_by_person: dict[uuid.UUID, Decimal],
+        start_date: date,
+        end_date: date,
+    ) -> list[SignalRead]:
+        """single_skill_holder/skill_concentration for every skill any team
+        member holds — team scope has no required_hours (no skill_gap
+        here), since only Project carries a stored skill demand."""
+        person_skills = self.person_skill_repository.list_for_people(list(member_ids))
+        if not person_skills:
+            return []
+        skill_ids = sorted({row.skill_id for row in person_skills}, key=str)
+        skills_by_id = {skill.id: skill for skill in self.skill_repository.list_by_ids(skill_ids)}
+        person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = {}
+        for row in person_skills:
+            person_skills_by_skill.setdefault(row.skill_id, []).append(row)
+        person_labels = self._person_labels(list(member_ids))
+
+        signals: list[SignalRead] = []
+        for skill_id, rows in person_skills_by_skill.items():
+            skill = skills_by_id.get(skill_id)
+            if skill is None or not skill.is_active:
+                continue
+            qualified = [
+                QualifiedPerson(
+                    person_id=row.person_id,
+                    proficiency=row.proficiency,
+                    remaining_capacity=remaining_by_person.get(row.person_id, ZERO),
+                )
+                for row in rows
+            ]
+            holder_signal = self._skill_holder_signal_from_concentration(
+                "team",
+                team_id,
+                team_label,
+                skill.id,
+                skill.name,
+                calculate_skill_concentration(qualified),
+                person_labels,
+                start_date,
+                end_date,
+            )
+            if holder_signal is not None:
+                signals.append(holder_signal)
+        return signals
+
+    def _remaining_capacity_by_person(
+        self, person_ids: list[uuid.UUID], start_date: date, end_date: date
+    ) -> dict[uuid.UUID, Decimal]:
+        facts_by_person = load_people_facts(
+            self.schedule_repository,
+            self.availability_repository,
+            self.allocation_repository,
+            person_ids,
+            start_date,
+            end_date,
+        )
+        results: dict[uuid.UUID, Decimal] = {}
+        for person_id, facts in facts_by_person.items():
+            result = calculate_period_capacity(
+                start_date,
+                end_date,
+                list(facts.schedules),
+                list(facts.exceptions),
+                list(facts.allocations),
+            )
+            results[person_id] = result.remaining_capacity
+        return results
 
     # -- Signal builders ------------------------------------------------------
 
@@ -486,6 +657,114 @@ class InsightService:
             max_utilization_person_id=imbalance.max_person_id,
             max_utilization_person_label=max_label,
             affected_person_ids=[imbalance.min_person_id, imbalance.max_person_id],
+        )
+
+    def _skill_gap_signal(
+        self,
+        project_id: uuid.UUID,
+        label: str,
+        skill_id: uuid.UUID,
+        skill_label: str,
+        coverage: SkillCoverageResult,
+        start_date: date,
+        end_date: date,
+    ) -> SignalRead:
+        """critical when there is literally no qualified available capacity
+        (a confirmed blocker); warning when some exists but falls short of
+        required_hours (worth a look, not yet fully blocked) — same
+        critical-vs-warning split as capacity_signal_severity's confirmed-
+        fact-vs-threshold distinction."""
+        severity: Severity = "critical" if coverage.qualified_available_hours == ZERO else "warning"
+        explanation = (
+            f"{label} requires {self._format_hours(coverage.required_hours)} of {skill_label} "
+            f"capacity {self._period_phrase(start_date, end_date)}, but only "
+            f"{self._format_hours(coverage.qualified_available_hours)} of qualified available "
+            f"capacity exists — a gap of {self._format_hours(coverage.gap_hours)}."
+        )
+        return SignalRead(
+            type="skill_gap",
+            severity=severity,
+            entity_type="project",
+            entity_id=project_id,
+            entity_label=label,
+            start_date=start_date,
+            end_date=end_date,
+            explanation=explanation,
+            skill_id=skill_id,
+            skill_label=skill_label,
+            skill_required_hours=coverage.required_hours,
+            skill_qualified_available_hours=coverage.qualified_available_hours,
+            skill_coverage_ratio=coverage.coverage_ratio,
+            skill_gap_hours=coverage.gap_hours,
+            affected_person_ids=list(coverage.qualified_person_ids),
+        )
+
+    def _skill_holder_signal_from_concentration(
+        self,
+        entity_type: EntityType,
+        entity_id: uuid.UUID,
+        entity_label: str,
+        skill_id: uuid.UUID,
+        skill_label: str,
+        concentration: SkillConcentrationResult | None,
+        person_labels: dict[uuid.UUID, str],
+        start_date: date,
+        end_date: date,
+    ) -> SignalRead | None:
+        """holder_count == 1 -> single_skill_holder (warning: a single
+        point of failure, a risk worth flagging even though nothing has
+        gone wrong yet). holder_count == 2 -> skill_concentration (info: a
+        structural observation, same severity Phase 5 gives
+        concentration_risk). Mirrors calculate_skill_concentration's own
+        existence-only gate — no invented percentage threshold."""
+        if concentration is None:
+            return None
+        holder_labels = [
+            person_labels.get(person_id, "Unknown")
+            for person_id in concentration.top_contributor_ids
+        ]
+        if concentration.holder_count == 1:
+            explanation = (
+                f"Only one person ({holder_labels[0]}) currently has qualified available "
+                f"capacity for {skill_label} on {entity_label} "
+                f"{self._period_phrase(start_date, end_date)}."
+            )
+            return SignalRead(
+                type="single_skill_holder",
+                severity="warning",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                entity_label=entity_label,
+                start_date=start_date,
+                end_date=end_date,
+                explanation=explanation,
+                skill_id=skill_id,
+                skill_label=skill_label,
+                skill_holder_ids=list(concentration.top_contributor_ids),
+                skill_holder_labels=holder_labels,
+                skill_holder_ratio=concentration.ratio,
+                affected_person_ids=list(concentration.top_contributor_ids),
+            )
+        explanation = (
+            f"{skill_label}'s qualified available capacity on {entity_label} is held by just "
+            f"{concentration.holder_count} people ({', '.join(holder_labels)}) "
+            f"{self._period_phrase(start_date, end_date)}."
+        )
+        return SignalRead(
+            type="skill_concentration",
+            severity="info",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_label=entity_label,
+            start_date=start_date,
+            end_date=end_date,
+            explanation=explanation,
+            skill_id=skill_id,
+            skill_label=skill_label,
+            skill_holder_ids=list(concentration.top_contributor_ids),
+            skill_holder_labels=holder_labels,
+            skill_holder_ratio=concentration.ratio,
+            affected_person_ids=list(concentration.top_contributor_ids),
         )
 
     def _scenario_risk_signal(self, scenario: ScenarioRead, risk: RiskRead) -> SignalRead:

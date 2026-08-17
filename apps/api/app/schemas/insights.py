@@ -30,6 +30,9 @@ SignalType = Literal[
     "project_capacity_pressure",
     "scenario_new_risk",
     "scenario_existing_risk",
+    "skill_gap",
+    "single_skill_holder",
+    "skill_concentration",
 ]
 Severity = Literal["critical", "warning", "info"]
 EntityType = Literal["person", "team", "project"]
@@ -86,6 +89,33 @@ class SignalRead(BaseModel):
     risk has no prior baseline value to trend against."""
     baseline_value: Decimal | None = None
     scenario_value: Decimal | None = None
+
+    # Populated for skill_gap / single_skill_holder / skill_concentration:
+    skill_id: uuid.UUID | None = None
+    skill_label: str | None = None
+
+    # Populated only for type == "skill_gap" (project-scoped: a
+    # ProjectSkillRequirement's coverage, from app/domain/skills.py):
+    skill_required_hours: Decimal | None = None
+    skill_qualified_available_hours: Decimal | None = None
+    skill_coverage_ratio: Decimal | None = None
+    skill_gap_hours: Decimal | None = None
+
+    # Populated only for type == "single_skill_holder" / "skill_concentration"
+    # (team- or project-scoped: how a skill's qualified available capacity is
+    # distributed among its holders, from
+    # app/domain/skills.py::calculate_skill_concentration). Deliberately
+    # separate fields from concentration_ratio/concentration_person_ids above
+    # — that trio is specifically project allocation concentration
+    # (Phase 5); this is skill-holder concentration (Phase 7), a different
+    # fact about a different population that can co-occur on the same
+    # project.
+    skill_holder_ids: list[uuid.UUID] | None = None
+    skill_holder_labels: list[str] | None = None
+    skill_holder_ratio: Decimal | None = None
+    """The top holder's share of the skill's total qualified available
+    capacity among holders who have any. Always 1.0 for
+    single_skill_holder (exactly one holder by definition)."""
 
 
 class SeverityCounts(BaseModel):

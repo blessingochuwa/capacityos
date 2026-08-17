@@ -12,9 +12,18 @@ from sqlalchemy.orm import Session
 
 from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
-from app.models.enums import AllocationUnit, AvailabilityType, EmploymentStatus, ProjectStatus
+from app.models.enums import (
+    AllocationUnit,
+    AvailabilityType,
+    EmploymentStatus,
+    ProjectStatus,
+    SkillProficiency,
+)
 from app.models.person import Person
+from app.models.person_skill import PersonSkill
 from app.models.project import Project
+from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.skill import Skill
 from app.models.team import Team
 from app.models.team_membership import TeamMembership
 from app.models.working_schedule import WorkingSchedule, WorkingScheduleEntry
@@ -157,3 +166,54 @@ def make_availability_exception(
     session.add(exception)
     session.flush()
     return exception
+
+
+def make_skill(
+    session: Session,
+    *,
+    name: str = "Backend Development",
+    description: str | None = None,
+    category: str | None = None,
+    is_active: bool = True,
+) -> Skill:
+    skill = Skill(name=name, description=description, category=category, is_active=is_active)
+    session.add(skill)
+    session.flush()
+    return skill
+
+
+def make_person_skill(
+    session: Session,
+    *,
+    person: Person,
+    skill: Skill,
+    proficiency: SkillProficiency = SkillProficiency.PROFICIENT,
+    notes: str | None = None,
+) -> PersonSkill:
+    person_skill = PersonSkill(
+        person_id=person.id, skill_id=skill.id, proficiency=proficiency, notes=notes
+    )
+    session.add(person_skill)
+    session.flush()
+    return person_skill
+
+
+def make_project_skill_requirement(
+    session: Session,
+    *,
+    project: Project,
+    skill: Skill,
+    required_hours: Decimal = Decimal("40"),
+    minimum_proficiency: SkillProficiency | None = None,
+    notes: str | None = None,
+) -> ProjectSkillRequirement:
+    requirement = ProjectSkillRequirement(
+        project_id=project.id,
+        skill_id=skill.id,
+        required_hours=required_hours,
+        minimum_proficiency=minimum_proficiency,
+        notes=notes,
+    )
+    session.add(requirement)
+    session.flush()
+    return requirement

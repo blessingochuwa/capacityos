@@ -25,14 +25,20 @@ from app.domain.import_export_parsing import (
 from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
 from app.models.person import Person
+from app.models.person_skill import PersonSkill
 from app.models.project import Project
+from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.skill import Skill
 from app.models.team import Team
 from app.models.team_membership import TeamMembership
 from app.models.working_schedule import WorkingSchedule
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -167,6 +173,59 @@ def _availability_exception_row(
     }
 
 
+def _skill_row(skill: Skill) -> dict[str, object]:
+    return {
+        "id": str(skill.id),
+        "name": skill.name,
+        "description": skill.description,
+        "category": skill.category,
+        "is_active": "true" if skill.is_active else "false",
+        "created_at": skill.created_at.isoformat(),
+        "updated_at": skill.updated_at.isoformat(),
+    }
+
+
+def _person_skill_row(
+    person_skill: PersonSkill, people: dict[uuid.UUID, Person], skills: dict[uuid.UUID, Skill]
+) -> dict[str, object]:
+    person = people.get(person_skill.person_id)
+    skill = skills.get(person_skill.skill_id)
+    return {
+        "id": str(person_skill.id),
+        "person_id": str(person_skill.person_id),
+        "person_email": person.email if person else None,
+        "skill_id": str(person_skill.skill_id),
+        "skill_name": skill.name if skill else None,
+        "proficiency": person_skill.proficiency.value,
+        "notes": person_skill.notes,
+        "created_at": person_skill.created_at.isoformat(),
+        "updated_at": person_skill.updated_at.isoformat(),
+    }
+
+
+def _project_skill_requirement_row(
+    requirement: ProjectSkillRequirement,
+    projects: dict[uuid.UUID, Project],
+    skills: dict[uuid.UUID, Skill],
+) -> dict[str, object]:
+    project = projects.get(requirement.project_id)
+    skill = skills.get(requirement.skill_id)
+    return {
+        "id": str(requirement.id),
+        "project_id": str(requirement.project_id),
+        "project_external_id": project.external_id if project else None,
+        "skill_id": str(requirement.skill_id),
+        "skill_name": skill.name if skill else None,
+        "required_hours": str(requirement.required_hours),
+        "minimum_proficiency": (
+            requirement.minimum_proficiency.value if requirement.minimum_proficiency else None
+        ),
+        "notes": requirement.notes,
+        "created_at": requirement.created_at.isoformat(),
+        "updated_at": requirement.updated_at.isoformat(),
+    }
+
+
 class ExportService:
     def __init__(
         self,
@@ -177,6 +236,9 @@ class ExportService:
         allocation_repository: AllocationRepository,
         working_schedule_repository: WorkingScheduleRepository,
         availability_exception_repository: AvailabilityExceptionRepository,
+        skill_repository: SkillRepository,
+        person_skill_repository: PersonSkillRepository,
+        project_skill_requirement_repository: ProjectSkillRequirementRepository,
         *,
         max_rows: int,
     ) -> None:
@@ -187,6 +249,9 @@ class ExportService:
         self.allocation_repository = allocation_repository
         self.working_schedule_repository = working_schedule_repository
         self.availability_exception_repository = availability_exception_repository
+        self.skill_repository = skill_repository
+        self.person_skill_repository = person_skill_repository
+        self.project_skill_requirement_repository = project_skill_requirement_repository
         self.max_rows = max_rows
 
     def export(
@@ -223,6 +288,9 @@ class ExportService:
         return {
             project.id: project for project in self.project_repository.list_by_ids(list(ids))
         }
+
+    def _skills_by_id(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Skill]:
+        return {skill.id: skill for skill in self.skill_repository.list_by_ids(list(ids))}
 
     def _collect_rows(
         self,
@@ -282,12 +350,44 @@ class ExportService:
             people = self._people_by_id({s.person_id for s in schedules})
             return [_working_schedule_row(s, people, fmt) for s in schedules]
 
-        exceptions, total = self.availability_exception_repository.list_filtered(
-            person_id=person_id, limit=self.max_rows, offset=0
-        )
-        self._check_cap(total)
-        people = self._people_by_id({e.person_id for e in exceptions})
-        return [_availability_exception_row(e, people) for e in exceptions]
+        if entity_type == ImportEntityType.AVAILABILITY_EXCEPTION:
+            exceptions, total = self.availability_exception_repository.list_filtered(
+                person_id=person_id, limit=self.max_rows, offset=0
+            )
+            self._check_cap(total)
+            people = self._people_by_id({e.person_id for e in exceptions})
+            return [_availability_exception_row(e, people) for e in exceptions]
+
+        if entity_type == ImportEntityType.SKILL:
+            items, total = self.skill_repository.list_filtered(limit=self.max_rows, offset=0)
+            self._check_cap(total)
+            return [_skill_row(skill) for skill in items]
+
+        if entity_type == ImportEntityType.PERSON_SKILL:
+            if person_id is not None:
+                person_skills = self.person_skill_repository.list_for_person(person_id)
+                self._check_cap(len(person_skills))
+            else:
+                person_skills, total = self.person_skill_repository.list(
+                    limit=self.max_rows, offset=0
+                )
+                self._check_cap(total)
+            people = self._people_by_id({ps.person_id for ps in person_skills})
+            skills = self._skills_by_id({ps.skill_id for ps in person_skills})
+            return [_person_skill_row(ps, people, skills) for ps in person_skills]
+
+        requirements: list[ProjectSkillRequirement]
+        if project_id is not None:
+            requirements = self.project_skill_requirement_repository.list_for_project(project_id)
+            self._check_cap(len(requirements))
+        else:
+            requirements, total = self.project_skill_requirement_repository.list(
+                limit=self.max_rows, offset=0
+            )
+            self._check_cap(total)
+        projects = self._projects_by_id({r.project_id for r in requirements})
+        skills = self._skills_by_id({r.skill_id for r in requirements})
+        return [_project_skill_requirement_row(r, projects, skills) for r in requirements]
 
     def _serialize(
         self, entity_type: ImportEntityType, fmt: ExportFormat, rows: list[dict[str, object]]

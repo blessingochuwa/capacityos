@@ -11,6 +11,7 @@ from app.api.v1.insights import router as insights_router
 from app.api.v1.people import router as people_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.scenarios import router as scenarios_router
+from app.api.v1.skills import router as skills_router
 from app.api.v1.teams import router as teams_router
 from app.api.v1.working_schedules import router as working_schedules_router
 from app.core.config import get_settings
@@ -42,3 +43,4 @@ app.include_router(scenarios_router)
 app.include_router(insights_router)
 app.include_router(imports_router)
 app.include_router(exports_router)
+app.include_router(skills_router)

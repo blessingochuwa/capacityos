@@ -18,11 +18,16 @@ const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
  * Everything else exports unscoped (capped at Settings.export_max_rows). */
 function scopeFieldFor(
   entityType: ImportEntityType,
-): 'team' | 'person' | 'person_and_project' | null {
+): 'team' | 'person' | 'project' | 'person_and_project' | null {
   if (entityType === 'team_membership') return 'team'
-  if (entityType === 'working_schedule' || entityType === 'availability_exception') {
+  if (
+    entityType === 'working_schedule' ||
+    entityType === 'availability_exception' ||
+    entityType === 'person_skill'
+  ) {
     return 'person'
   }
+  if (entityType === 'project_skill_requirement') return 'project'
   if (entityType === 'allocation') return 'person_and_project'
   return null
 }
@@ -52,7 +57,9 @@ export function ExportPanel() {
             : undefined,
         team_id: scopeField === 'team' ? teamId || undefined : undefined,
         project_id:
-          scopeField === 'person_and_project' ? projectId || undefined : undefined,
+          scopeField === 'project' || scopeField === 'person_and_project'
+            ? projectId || undefined
+            : undefined,
       },
     })
   }
@@ -95,7 +102,7 @@ export function ExportPanel() {
         />
       ) : null}
 
-      {scopeField === 'person_and_project' ? (
+      {scopeField === 'project' || scopeField === 'person_and_project' ? (
         <Select
           label="Project"
           value={projectId}

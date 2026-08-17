@@ -8,6 +8,7 @@ import { ImportExportPage } from '@/features/import-export/views/ImportExportPag
 import { InsightsOverviewPage } from '@/features/insights/views/InsightsOverviewPage'
 import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
 import { ScenarioWorkspacePage } from '@/features/scenarios/views/ScenarioWorkspacePage'
+import { SkillsOverviewPage } from '@/features/skills/views/SkillsOverviewPage'
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'scenarios', element: <ScenarioListPage /> },
       { path: 'scenarios/:scenarioId', element: <ScenarioWorkspacePage /> },
       { path: 'insights', element: <InsightsOverviewPage /> },
+      { path: 'skills', element: <SkillsOverviewPage /> },
       { path: 'import-export', element: <ImportExportPage /> },
     ],
   },

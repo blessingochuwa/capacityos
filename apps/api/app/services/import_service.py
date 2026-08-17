@@ -30,8 +30,13 @@ from app.domain.import_export_diff import (
     AvailabilityExceptionFact,
     NormalizeOutcome,
     PersonFact,
+    PersonSkillFact,
+    PersonSkillPayload,
     ProjectFact,
+    ProjectSkillRequirementFact,
+    ProjectSkillRequirementPayload,
     ReferenceLookup,
+    SkillFact,
     TeamFact,
     TeamMembershipFact,
     TeamMembershipPayload,
@@ -40,11 +45,15 @@ from app.domain.import_export_diff import (
     normalize_allocation_row,
     normalize_availability_exception_row,
     normalize_person_row,
+    normalize_person_skill_row,
     normalize_project_row,
+    normalize_project_skill_requirement_row,
+    normalize_skill_row,
     normalize_team_membership_row,
     normalize_team_row,
     normalize_working_schedule_row,
     resolve_person_reference,
+    resolve_project_reference,
 )
 from app.domain.import_export_parsing import (
     ExportFormat,
@@ -60,13 +69,19 @@ from app.domain.import_export_parsing import (
 from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
 from app.models.person import Person
+from app.models.person_skill import PersonSkill
 from app.models.project import Project
+from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.skill import Skill
 from app.models.team import Team
 from app.models.working_schedule import WorkingSchedule
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -83,13 +98,22 @@ from app.schemas.import_export import (
     ImportValidationReport,
 )
 from app.schemas.person import PersonCreate, PersonUpdate
+from app.schemas.person_skill import PersonSkillCreate, PersonSkillUpdate
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.schemas.project_skill_requirement import (
+    ProjectSkillRequirementCreate,
+    ProjectSkillRequirementUpdate,
+)
+from app.schemas.skill import SkillCreate, SkillUpdate
 from app.schemas.team import TeamCreate, TeamUpdate
 from app.schemas.working_schedule import WorkingScheduleCreate, WorkingScheduleUpdate
 from app.services.allocation import AllocationService
 from app.services.availability_exception import AvailabilityExceptionService
 from app.services.person import PersonService
+from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_skill_requirement import ProjectSkillRequirementService
+from app.services.skill import SkillService
 from app.services.team import TeamService
 from app.services.team_membership import TeamMembershipService
 from app.services.working_schedule import WorkingScheduleService
@@ -150,6 +174,30 @@ def _availability_exception_fact(exception: AvailabilityException) -> Availabili
     )
 
 
+def _skill_fact(skill: Skill) -> SkillFact:
+    return SkillFact(
+        id=skill.id, name=skill.name, description=skill.description,
+        category=skill.category, is_active=skill.is_active,
+    )
+
+
+def _person_skill_fact(person_skill: PersonSkill) -> PersonSkillFact:
+    return PersonSkillFact(
+        id=person_skill.id, person_id=person_skill.person_id, skill_id=person_skill.skill_id,
+        proficiency=person_skill.proficiency, notes=person_skill.notes,
+    )
+
+
+def _project_skill_requirement_fact(
+    requirement: ProjectSkillRequirement,
+) -> ProjectSkillRequirementFact:
+    return ProjectSkillRequirementFact(
+        id=requirement.id, project_id=requirement.project_id, skill_id=requirement.skill_id,
+        required_hours=requirement.required_hours,
+        minimum_proficiency=requirement.minimum_proficiency, notes=requirement.notes,
+    )
+
+
 def _collect(rows: Sequence[Mapping[str, object]], column: str) -> set[str]:
     return {v for v in (coerce_optional_str(row.get(column)) for row in rows) if v is not None}
 
@@ -195,6 +243,12 @@ class ImportService:
         working_schedule_service: WorkingScheduleService,
         availability_exception_repository: AvailabilityExceptionRepository,
         availability_exception_service: AvailabilityExceptionService,
+        skill_repository: SkillRepository,
+        skill_service: SkillService,
+        person_skill_repository: PersonSkillRepository,
+        person_skill_service: PersonSkillService,
+        project_skill_requirement_repository: ProjectSkillRequirementRepository,
+        project_skill_requirement_service: ProjectSkillRequirementService,
         *,
         max_file_size_bytes: int,
         max_rows: int,
@@ -213,6 +267,12 @@ class ImportService:
         self.working_schedule_service = working_schedule_service
         self.availability_exception_repository = availability_exception_repository
         self.availability_exception_service = availability_exception_service
+        self.skill_repository = skill_repository
+        self.skill_service = skill_service
+        self.person_skill_repository = person_skill_repository
+        self.person_skill_service = person_skill_service
+        self.project_skill_requirement_repository = project_skill_requirement_repository
+        self.project_skill_requirement_service = project_skill_requirement_service
         self.max_file_size_bytes = max_file_size_bytes
         self.max_rows = max_rows
 
@@ -303,6 +363,9 @@ class ImportService:
             ImportEntityType.ALLOCATION: self._prepare_allocation,
             ImportEntityType.WORKING_SCHEDULE: self._prepare_working_schedule,
             ImportEntityType.AVAILABILITY_EXCEPTION: self._prepare_availability_exception,
+            ImportEntityType.SKILL: self._prepare_skill,
+            ImportEntityType.PERSON_SKILL: self._prepare_person_skill,
+            ImportEntityType.PROJECT_SKILL_REQUIREMENT: self._prepare_project_skill_requirement,
         }
         rows = preparers[entity_type](parsed, mode)
         return _Prepared(None, self._flag_duplicate_identities(rows))
@@ -381,6 +444,19 @@ class ImportService:
         }
         return by_id, by_external_id
 
+    def _skill_lookup_maps(
+        self, rows: Sequence[Mapping[str, object]]
+    ) -> tuple[dict[uuid.UUID, SkillFact], dict[str, SkillFact]]:
+        ids = _collect_uuids(rows, "skill_id")
+        names = _collect(rows, "skill_name")
+        by_id: dict[uuid.UUID, SkillFact] = {}
+        for skill in self.skill_repository.list_by_ids(list(ids)):
+            by_id[skill.id] = _skill_fact(skill)
+        for skill in self.skill_repository.list_by_names(list(names)):
+            by_id[skill.id] = _skill_fact(skill)
+        by_name = {fact.name: fact for fact in by_id.values()}
+        return by_id, by_name
+
     def _build_lookup(
         self,
         rows: Sequence[Mapping[str, object]],
@@ -388,16 +464,19 @@ class ImportService:
         need_people: bool = False,
         need_teams: bool = False,
         need_projects: bool = False,
+        need_skills: bool = False,
     ) -> ReferenceLookup:
         people_by_id, people_by_email = self._person_lookup_maps(rows) if need_people else ({}, {})
         teams_by_id, teams_by_name = self._team_lookup_maps(rows) if need_teams else ({}, {})
         projects_by_id, projects_by_external_id = (
             self._project_lookup_maps(rows) if need_projects else ({}, {})
         )
+        skills_by_id, skills_by_name = self._skill_lookup_maps(rows) if need_skills else ({}, {})
         return ReferenceLookup(
             people_by_id=people_by_id, people_by_email=people_by_email,
             teams_by_id=teams_by_id, teams_by_name=teams_by_name,
             projects_by_id=projects_by_id, projects_by_external_id=projects_by_external_id,
+            skills_by_id=skills_by_id, skills_by_name=skills_by_name,
         )
 
     # -- Per-entity preparation -----------------------------------------------
@@ -417,6 +496,7 @@ class ImportService:
             people_by_id={f.id: f for f in people_by_email.values()},
             people_by_email=people_by_email,
             teams_by_id={}, teams_by_name={}, projects_by_id={}, projects_by_external_id={},
+            skills_by_id={}, skills_by_name={},
         )
         return [
             _PreparedRow(i, apply_mode_policy(normalize_person_row(row, lookup), mode))
@@ -436,6 +516,7 @@ class ImportService:
             people_by_id={}, people_by_email={},
             teams_by_id={f.id: f for f in teams_by_name.values()}, teams_by_name=teams_by_name,
             projects_by_id={}, projects_by_external_id={},
+            skills_by_id={}, skills_by_name={},
         )
         return [
             _PreparedRow(i, apply_mode_policy(normalize_team_row(row, lookup), mode))
@@ -617,6 +698,67 @@ class ImportService:
             for i, row in enumerate(rows, start=1)
         ]
 
+    def _prepare_skill(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        # Self-identity match: Skill's own "name" column — NOT "skill_name"
+        # (see _skill_lookup_maps, which is for reference resolution only,
+        # e.g. a PersonSkill row pointing at a skill).
+        names = _collect(rows, "name")
+        skills_by_name = {
+            skill.name: _skill_fact(skill)
+            for skill in self.skill_repository.list_by_names(list(names))
+        }
+        return [
+            _PreparedRow(i, apply_mode_policy(normalize_skill_row(row, skills_by_name), mode))
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_person_skill(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_people=True, need_skills=True)
+        resolved_person_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_person_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_person_ids.add(ref)
+        existing = {
+            (row.person_id, row.skill_id): _person_skill_fact(row)
+            for row in self.person_skill_repository.list_for_people(list(resolved_person_ids))
+        }
+        return [
+            _PreparedRow(
+                i, apply_mode_policy(normalize_person_skill_row(row, lookup, existing), mode)
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_project_skill_requirement(
+        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(rows, need_projects=True, need_skills=True)
+        resolved_project_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_project_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_project_ids.add(ref)
+        existing = {
+            (row.project_id, row.skill_id): _project_skill_requirement_fact(row)
+            for row in self.project_skill_requirement_repository.list_for_projects(
+                list(resolved_project_ids)
+            )
+        }
+        return [
+            _PreparedRow(
+                i,
+                apply_mode_policy(
+                    normalize_project_skill_requirement_row(row, lookup, existing), mode
+                ),
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
     # -- Writing (apply only; every row already confirmed clean) -------------
 
     def _write_row(self, entity_type: ImportEntityType, outcome: NormalizeOutcome[Any]) -> None:
@@ -662,7 +804,7 @@ class ImportService:
                     cast(uuid.UUID, outcome.matched_id),
                     cast(WorkingScheduleUpdate, outcome.payload),
                 )
-        else:
+        elif entity_type == ImportEntityType.AVAILABILITY_EXCEPTION:
             if outcome.action == "create":
                 self.availability_exception_service.create(
                     cast(AvailabilityExceptionCreate, outcome.payload)
@@ -671,6 +813,38 @@ class ImportService:
                 self.availability_exception_service.update(
                     cast(uuid.UUID, outcome.matched_id),
                     cast(AvailabilityExceptionUpdate, outcome.payload),
+                )
+        elif entity_type == ImportEntityType.SKILL:
+            if outcome.action == "create":
+                self.skill_service.create(cast(SkillCreate, outcome.payload))
+            else:
+                self.skill_service.update(
+                    cast(uuid.UUID, outcome.matched_id), cast(SkillUpdate, outcome.payload)
+                )
+        elif entity_type == ImportEntityType.PERSON_SKILL:
+            payload = cast(PersonSkillPayload, outcome.payload)
+            if outcome.action == "create":
+                self.person_skill_service.add(
+                    payload.person_id, cast(PersonSkillCreate, payload.data)
+                )
+            else:
+                self.person_skill_service.update(
+                    payload.person_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(PersonSkillUpdate, payload.data),
+                )
+        else:
+            requirement_payload = cast(ProjectSkillRequirementPayload, outcome.payload)
+            if outcome.action == "create":
+                self.project_skill_requirement_service.add(
+                    requirement_payload.project_id,
+                    cast(ProjectSkillRequirementCreate, requirement_payload.data),
+                )
+            else:
+                self.project_skill_requirement_service.update(
+                    requirement_payload.project_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(ProjectSkillRequirementUpdate, requirement_payload.data),
                 )
 
     # -- Report assembly -------------------------------------------------

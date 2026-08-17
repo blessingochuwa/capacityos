@@ -14,6 +14,9 @@ export type ImportEntityType =
   | 'allocation'
   | 'working_schedule'
   | 'availability_exception'
+  | 'skill'
+  | 'person_skill'
+  | 'project_skill_requirement'
 
 export type ImportMode = 'upsert' | 'create_only' | 'update_only'
 
@@ -100,4 +103,7 @@ export const IMPORT_ENTITY_TYPES: {
   { value: 'allocation', label: 'Allocations' },
   { value: 'working_schedule', label: 'Working schedules' },
   { value: 'availability_exception', label: 'Availability exceptions' },
+  { value: 'skill', label: 'Skills' },
+  { value: 'person_skill', label: 'Person skills' },
+  { value: 'project_skill_requirement', label: 'Project skill requirements' },
 ]

@@ -20,6 +20,9 @@ export type SignalType =
   | 'project_capacity_pressure'
   | 'scenario_new_risk'
   | 'scenario_existing_risk'
+  | 'skill_gap'
+  | 'single_skill_holder'
+  | 'skill_concentration'
 
 export type Severity = 'critical' | 'warning' | 'info'
 export type EntityType = 'person' | 'team' | 'project'
@@ -63,6 +66,18 @@ export interface Signal {
   trend: SignalTrend | null
   baseline_value: string | null
   scenario_value: string | null
+
+  skill_id: string | null
+  skill_label: string | null
+
+  skill_required_hours: string | null
+  skill_qualified_available_hours: string | null
+  skill_coverage_ratio: string | null
+  skill_gap_hours: string | null
+
+  skill_holder_ids: string[] | null
+  skill_holder_labels: string[] | null
+  skill_holder_ratio: string | null
 }
 
 export interface SeverityCounts {

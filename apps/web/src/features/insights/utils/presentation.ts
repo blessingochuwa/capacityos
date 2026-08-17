@@ -26,6 +26,9 @@ export const SIGNAL_TYPE_LABEL: Record<SignalType, string> = {
   project_capacity_pressure: 'Project capacity pressure',
   scenario_new_risk: 'New scenario risk',
   scenario_existing_risk: 'Existing scenario risk',
+  skill_gap: 'Skill gap',
+  single_skill_holder: 'Single point of failure',
+  skill_concentration: 'Skill concentration',
 }
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -39,9 +42,12 @@ const TYPE_RANK: Record<SignalType, number> = {
   scenario_existing_risk: 1,
   low_capacity: 2,
   project_capacity_pressure: 2,
+  skill_gap: 2,
+  single_skill_holder: 2,
   zero_remaining_capacity: 3,
   capacity_imbalance: 4,
   concentration_risk: 5,
+  skill_concentration: 5,
 }
 
 /** Mirrors InsightService._prioritize's sort key exactly

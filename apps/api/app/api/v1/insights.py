@@ -10,7 +10,10 @@ from app.core.database import get_db
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -44,6 +47,9 @@ def get_insight_service(
         capacity_service,
         get_scenario_calculation_service(db),
         low_capacity_threshold_hours_per_day=settings.low_capacity_threshold_hours_per_day,
+        person_skill_repository=PersonSkillRepository(db),
+        skill_repository=SkillRepository(db),
+        project_skill_requirement_repository=ProjectSkillRequirementRepository(db),
     )
 
 

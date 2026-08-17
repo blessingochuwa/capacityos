@@ -1,15 +1,25 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.repositories.allocation import AllocationRepository
+from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
+from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.project import ProjectRepository
+from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
+from app.repositories.working_schedule import WorkingScheduleRepository
 from app.schemas.common import Page
+from app.schemas.skill_capacity import TeamSkillCapacityRead
 from app.schemas.team import TeamCreate, TeamRead, TeamUpdate
 from app.schemas.team_membership import TeamMembershipCreate, TeamMembershipRead
+from app.services.skill_capacity import SkillCapacityService
 from app.services.team import TeamService
 from app.services.team_membership import TeamMembershipService
 
@@ -23,6 +33,21 @@ def get_team_service(db: Session = Depends(get_db)) -> TeamService:
 def get_team_membership_service(db: Session = Depends(get_db)) -> TeamMembershipService:
     return TeamMembershipService(
         TeamMembershipRepository(db), PersonRepository(db), TeamRepository(db)
+    )
+
+
+def get_skill_capacity_service(db: Session = Depends(get_db)) -> SkillCapacityService:
+    return SkillCapacityService(
+        PersonSkillRepository(db),
+        SkillRepository(db),
+        PersonRepository(db),
+        ProjectRepository(db),
+        ProjectSkillRequirementRepository(db),
+        TeamRepository(db),
+        TeamMembershipRepository(db),
+        WorkingScheduleRepository(db),
+        AvailabilityExceptionRepository(db),
+        AllocationRepository(db),
     )
 
 
@@ -83,3 +108,13 @@ def remove_team_member(
     service: TeamMembershipService = Depends(get_team_membership_service),
 ) -> None:
     service.remove_member(team_id, person_id)
+
+
+@router.get("/{team_id}/skill-capacity", response_model=TeamSkillCapacityRead)
+def get_team_skill_capacity(
+    team_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    service: SkillCapacityService = Depends(get_skill_capacity_service),
+) -> TeamSkillCapacityRead:
+    return service.get_team_skill_capacity(team_id, start_date, end_date)

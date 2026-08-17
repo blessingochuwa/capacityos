@@ -87,3 +87,24 @@ class ScenarioOperationType(StrEnum):
     AVAILABILITY_OVERRIDE = "availability_override"
     AVAILABILITY_CLEAR = "availability_clear"
     ADD_HYPOTHETICAL_RESOURCE = "add_hypothetical_resource"
+
+
+class SkillProficiency(StrEnum):
+    """Controlled vocabulary for PersonSkill.proficiency and
+    ProjectSkillRequirement.minimum_proficiency (Phase 7).
+
+    An ordered scale, deliberately small and fixed (a DB CHECK constraint,
+    like EmploymentStatus/ProjectStatus — proficiency has real business
+    meaning for qualification, unlike AvailabilityType's open vocabulary).
+    Ordering is not expressed by enum member order (Python StrEnum has none)
+    but by the explicit PROFICIENCY_RANK table in app/domain/skills.py — the
+    single place proficiency comparison happens, matching this codebase's
+    existing convention of explicit rank dicts (_SEVERITY_RANK, _TYPE_RANK in
+    app/services/insight_service.py) over relying on enum declaration order.
+    """
+
+    BEGINNER = "beginner"
+    WORKING = "working"
+    PROFICIENT = "proficient"
+    ADVANCED = "advanced"
+    EXPERT = "expert"

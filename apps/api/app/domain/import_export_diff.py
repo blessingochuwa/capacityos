@@ -22,7 +22,13 @@ from typing import Literal, NamedTuple, cast
 from pydantic import BaseModel, ValidationError
 
 from app.domain.import_export_parsing import coerce_entries_cell, coerce_optional_str
-from app.models.enums import AllocationUnit, AvailabilityType, EmploymentStatus, ProjectStatus
+from app.models.enums import (
+    AllocationUnit,
+    AvailabilityType,
+    EmploymentStatus,
+    ProjectStatus,
+    SkillProficiency,
+)
 from app.schemas.allocation import AllocationCreate, AllocationUpdate
 from app.schemas.availability_exception import (
     AvailabilityExceptionCreate,
@@ -30,7 +36,13 @@ from app.schemas.availability_exception import (
 )
 from app.schemas.import_export import ImportErrorCode, ImportFieldError, ImportMode
 from app.schemas.person import PersonCreate, PersonUpdate
+from app.schemas.person_skill import PersonSkillCreate, PersonSkillUpdate
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.schemas.project_skill_requirement import (
+    ProjectSkillRequirementCreate,
+    ProjectSkillRequirementUpdate,
+)
+from app.schemas.skill import SkillCreate, SkillUpdate
 from app.schemas.team import TeamCreate, TeamUpdate
 from app.schemas.team_membership import TeamMembershipCreate
 from app.schemas.working_schedule import (
@@ -118,6 +130,34 @@ class TeamMembershipFact:
 
 
 @dataclass(frozen=True)
+class SkillFact:
+    id: uuid.UUID
+    name: str
+    description: str | None
+    category: str | None
+    is_active: bool
+
+
+@dataclass(frozen=True)
+class PersonSkillFact:
+    id: uuid.UUID
+    person_id: uuid.UUID
+    skill_id: uuid.UUID
+    proficiency: SkillProficiency
+    notes: str | None
+
+
+@dataclass(frozen=True)
+class ProjectSkillRequirementFact:
+    id: uuid.UUID
+    project_id: uuid.UUID
+    skill_id: uuid.UUID
+    required_hours: Decimal
+    minimum_proficiency: SkillProficiency | None
+    notes: str | None
+
+
+@dataclass(frozen=True)
 class ReferenceLookup:
     """Batch-loaded once per request via repository list_by_ids/
     list_by_emails/list_by_names/list_by_external_ids calls, then passed to
@@ -130,6 +170,8 @@ class ReferenceLookup:
     teams_by_name: Mapping[str, TeamFact]
     projects_by_id: Mapping[uuid.UUID, ProjectFact]
     projects_by_external_id: Mapping[str, ProjectFact]
+    skills_by_id: Mapping[uuid.UUID, SkillFact]
+    skills_by_name: Mapping[str, SkillFact]
 
 
 class NormalizeOutcome[PayloadT](NamedTuple):
@@ -151,6 +193,22 @@ class TeamMembershipPayload(NamedTuple):
 
     team_id: uuid.UUID
     data: TeamMembershipCreate
+
+
+class PersonSkillPayload(NamedTuple):
+    """PersonSkillCreate/Update only carry skill_id/proficiency/notes
+    (person_id normally comes from the URL path) — this wrapper carries the
+    resolved person_id alongside it, the same reason TeamMembershipPayload
+    exists, but for BOTH create and update since PersonSkillService.update
+    also takes person_id (for its ownership check)."""
+
+    person_id: uuid.UUID
+    data: PersonSkillCreate | PersonSkillUpdate
+
+
+class ProjectSkillRequirementPayload(NamedTuple):
+    project_id: uuid.UUID
+    data: ProjectSkillRequirementCreate | ProjectSkillRequirementUpdate
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +315,36 @@ def resolve_team_reference(
     return ImportFieldError(
         field=None, code=ImportErrorCode.INVALID_REFERENCE,
         message="Provide team_id or team_name.",
+    )
+
+
+def resolve_skill_reference(
+    row: Mapping[str, object], lookup: ReferenceLookup
+) -> uuid.UUID | ImportFieldError:
+    id_raw = coerce_optional_str(row.get("skill_id"))
+    if id_raw:
+        parsed = _parse_uuid(id_raw, "skill_id")
+        if isinstance(parsed, ImportFieldError):
+            return parsed
+        fact = lookup.skills_by_id.get(parsed)
+        if fact is None:
+            return ImportFieldError(
+                field="skill_id", code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No skill with id {id_raw}.",
+            )
+        return fact.id
+    name = coerce_optional_str(row.get("skill_name"))
+    if name:
+        fact = lookup.skills_by_name.get(name)
+        if fact is None:
+            return ImportFieldError(
+                field="skill_name", code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No skill named '{name}'.",
+            )
+        return fact.id
+    return ImportFieldError(
+        field=None, code=ImportErrorCode.INVALID_REFERENCE,
+        message="Provide skill_id or skill_name.",
     )
 
 
@@ -746,3 +834,176 @@ def normalize_availability_exception_row(
     )
     action = "unchanged" if _unchanged(payload, current) else "update"
     return NormalizeOutcome(action, payload, existing.id, identity, [])
+
+
+# ---------------------------------------------------------------------------
+# Skill — matched by name (Phase 7). is_active on a CREATE row is ignored
+# (SkillCreate has no such field — a newly imported skill always starts
+# active); is_active on an UPDATE row can deactivate/reactivate an existing
+# skill, same as the API's PATCH endpoint.
+# ---------------------------------------------------------------------------
+
+
+def normalize_skill_row(
+    row: Mapping[str, object], existing_by_name: Mapping[str, SkillFact]
+) -> NormalizeOutcome[SkillCreate | SkillUpdate]:
+    name = coerce_optional_str(row.get("name"))
+    existing = existing_by_name.get(name) if name else None
+    identity = f"name={name}" if name else None
+    description = coerce_optional_str(row.get("description"))
+    category = coerce_optional_str(row.get("category"))
+
+    if existing is None:
+        fields = {"name": name, "description": description, "category": category}
+        try:
+            payload = SkillCreate.model_validate(
+                {k: v for k, v in fields.items() if v is not None}
+            )
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome("create", payload, None, identity, [])
+
+    is_active = coerce_optional_str(row.get("is_active"))
+    fields = {
+        "name": name, "description": description, "category": category, "is_active": is_active,
+    }
+    try:
+        payload = SkillUpdate.model_validate(_present_fields(fields))
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = SkillUpdate(
+        name=existing.name, description=existing.description, category=existing.category,
+        is_active=existing.is_active,
+    )
+    action = "unchanged" if _unchanged(payload, current) else "update"
+    return NormalizeOutcome(action, payload, existing.id, identity, [])
+
+
+# ---------------------------------------------------------------------------
+# PersonSkill — matched by the resolved (person_id, skill_id) pair; HAS an
+# update path (proficiency/notes are mutable), unlike TeamMembership.
+# ---------------------------------------------------------------------------
+
+
+def normalize_person_skill_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing_by_pair: Mapping[tuple[uuid.UUID, uuid.UUID], PersonSkillFact],
+) -> NormalizeOutcome[PersonSkillPayload]:
+    person_ref = resolve_person_reference(row, lookup)
+    if isinstance(person_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [person_ref])
+    skill_ref = resolve_skill_reference(row, lookup)
+    if isinstance(skill_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [skill_ref])
+
+    identity = (
+        f"{_reference_display(row, 'person_id', 'person_email')},"
+        f"{_reference_display(row, 'skill_id', 'skill_name')}"
+    )
+    existing = existing_by_pair.get((person_ref, skill_ref))
+    fields = {
+        "proficiency": coerce_optional_str(row.get("proficiency")),
+        "notes": coerce_optional_str(row.get("notes")),
+    }
+
+    if existing is None:
+        skill_fact = lookup.skills_by_id.get(skill_ref)
+        if skill_fact is not None and not skill_fact.is_active:
+            return NormalizeOutcome(
+                None, None, None, identity,
+                [ImportFieldError(
+                    field="skill_id", code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                    message=f"Skill '{skill_fact.name}' is not active.",
+                )],
+            )
+        try:
+            payload = PersonSkillCreate.model_validate(
+                {"skill_id": skill_ref, **{k: v for k, v in fields.items() if v is not None}}
+            )
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome(
+            "create", PersonSkillPayload(person_id=person_ref, data=payload), None, identity, []
+        )
+
+    try:
+        payload = PersonSkillUpdate.model_validate(_present_fields(fields))
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = PersonSkillUpdate(proficiency=existing.proficiency, notes=existing.notes)
+    action = "unchanged" if _unchanged(payload, current) else "update"
+    return NormalizeOutcome(
+        action, PersonSkillPayload(person_id=person_ref, data=payload), existing.id, identity, []
+    )
+
+
+# ---------------------------------------------------------------------------
+# ProjectSkillRequirement — matched by the resolved (project_id, skill_id)
+# pair; has an update path (required_hours/minimum_proficiency/notes).
+# ---------------------------------------------------------------------------
+
+
+def normalize_project_skill_requirement_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing_by_pair: Mapping[tuple[uuid.UUID, uuid.UUID], ProjectSkillRequirementFact],
+) -> NormalizeOutcome[ProjectSkillRequirementPayload]:
+    project_ref = resolve_project_reference(row, lookup)
+    if isinstance(project_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [project_ref])
+    skill_ref = resolve_skill_reference(row, lookup)
+    if isinstance(skill_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [skill_ref])
+
+    identity = (
+        f"{_reference_display(row, 'project_id', 'project_external_id')},"
+        f"{_reference_display(row, 'skill_id', 'skill_name')}"
+    )
+    existing = existing_by_pair.get((project_ref, skill_ref))
+    fields = {
+        "required_hours": coerce_optional_str(row.get("required_hours")),
+        "minimum_proficiency": coerce_optional_str(row.get("minimum_proficiency")),
+        "notes": coerce_optional_str(row.get("notes")),
+    }
+
+    if existing is None:
+        skill_fact = lookup.skills_by_id.get(skill_ref)
+        if skill_fact is not None and not skill_fact.is_active:
+            return NormalizeOutcome(
+                None, None, None, identity,
+                [ImportFieldError(
+                    field="skill_id", code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                    message=f"Skill '{skill_fact.name}' is not active.",
+                )],
+            )
+        try:
+            payload = ProjectSkillRequirementCreate.model_validate(
+                {"skill_id": skill_ref, **{k: v for k, v in fields.items() if v is not None}}
+            )
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome(
+            "create",
+            ProjectSkillRequirementPayload(project_id=project_ref, data=payload),
+            None, identity, [],
+        )
+
+    try:
+        payload = ProjectSkillRequirementUpdate.model_validate(_present_fields(fields))
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = ProjectSkillRequirementUpdate(
+        required_hours=existing.required_hours,
+        minimum_proficiency=existing.minimum_proficiency,
+        notes=existing.notes,
+    )
+    action = "unchanged" if _unchanged(payload, current) else "update"
+    return NormalizeOutcome(
+        action,
+        ProjectSkillRequirementPayload(project_id=project_ref, data=payload),
+        existing.id, identity, [],
+    )
