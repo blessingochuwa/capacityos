@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TeamBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class TeamCreate(TeamBase):
@@ -15,7 +15,7 @@ class TeamCreate(TeamBase):
 
 class TeamUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class TeamRead(TeamBase):

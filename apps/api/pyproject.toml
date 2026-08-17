@@ -11,6 +11,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.14",
     "python-multipart>=0.0.18",
+    "anthropic>=0.68",
 ]
 
 [dependency-groups]
@@ -21,6 +22,17 @@ dev = [
     "ruff>=0.14",
     "pyright>=1.1",
 ]
+
+# Pins the uv binary version itself (distinct from Python/dependency pinning
+# above) — the single source of truth CI's setup-uv step reads via
+# `version-file: apps/api/pyproject.toml` (see .github/workflows/api-ci.yml),
+# instead of an unresolvable floating selector like "0.11.x". `uv` also
+# enforces this at runtime: any `uv` invocation with a non-matching version
+# exits with an error, so drift between a developer's local uv and CI's is
+# caught immediately rather than only showing up as a hard-to-diagnose
+# dependency-resolution difference.
+[tool.uv]
+required-version = "==0.11.25"
 
 [tool.ruff]
 line-length = 100

@@ -5,18 +5,28 @@ import { ProjectCapacityPage } from './ProjectCapacityPage'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { useProjectsLookup } from '@/hooks/useProjects'
 import { useProjectDemand } from '../hooks/useProjectDemand'
+import { useAiSummary } from '@/features/ai/hooks/useAiSummary'
 import { mockQuerySuccess } from '@/test/mockQueryResult'
 import { makePerson, makeProject, makeProjectDemand } from '@/test/fixtures'
 
 vi.mock('@/hooks/usePeople')
 vi.mock('@/hooks/useProjects')
 vi.mock('../hooks/useProjectDemand')
+vi.mock('@/features/ai/hooks/useAiSummary')
 
 const mockedUsePeopleLookup = vi.mocked(usePeopleLookup)
 const mockedUseProjectsLookup = vi.mocked(useProjectsLookup)
 const mockedUseProjectDemand = vi.mocked(useProjectDemand)
+const mockedUseAiSummary = vi.mocked(useAiSummary)
 
 function renderPage(projectId = 'proj-1') {
+  mockedUseAiSummary.mockReturnValue({
+    mutate: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAiSummary>)
   return render(
     <MemoryRouter initialEntries={[`/capacity/projects/${projectId}`]}>
       <Routes>

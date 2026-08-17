@@ -32,6 +32,10 @@ import type {
   SkillCoverage,
   TeamSkillCapacityEntry,
 } from '@/features/skills/types/skills'
+import type {
+  AIInsightResponse,
+  AIResponseEnvelope,
+} from '@/features/ai/types/ai'
 
 export function makePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -452,6 +456,33 @@ export function makeSkillCoverage(
     coverage_ratio: '1.0000',
     gap_hours: '0.00',
     qualified_people: [makeQualifiedPerson()],
+    ...overrides,
+  }
+}
+
+export function makeAIInsightResponse(
+  overrides: Partial<AIInsightResponse> = {},
+): AIInsightResponse {
+  return {
+    summary: 'No material capacity risk is currently detected for this scope.',
+    key_findings: [],
+    risks: [],
+    recommendations: [],
+    confidence: 'high',
+    generated_at: '2026-08-17T12:00:00Z',
+    provider: 'mock',
+    model: 'claude-sonnet-5',
+    ...overrides,
+  }
+}
+
+export function makeAIResponseEnvelope(
+  overrides: Partial<AIResponseEnvelope> = {},
+): AIResponseEnvelope {
+  return {
+    status: 'ok',
+    response: makeAIInsightResponse(),
+    message: null,
     ...overrides,
   }
 }

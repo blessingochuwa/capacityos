@@ -5,6 +5,7 @@ import { CapacityOverviewPage } from './CapacityOverviewPage'
 import { useTeams } from '@/hooks/useTeams'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { useTeamCapacity } from '../hooks/useTeamCapacity'
+import { useAiSummary } from '@/features/ai/hooks/useAiSummary'
 import {
   mockQueryError,
   mockQueryPending,
@@ -20,12 +21,21 @@ import {
 vi.mock('@/hooks/useTeams')
 vi.mock('@/hooks/usePeople')
 vi.mock('../hooks/useTeamCapacity')
+vi.mock('@/features/ai/hooks/useAiSummary')
 
 const mockedUseTeams = vi.mocked(useTeams)
 const mockedUsePeopleLookup = vi.mocked(usePeopleLookup)
 const mockedUseTeamCapacity = vi.mocked(useTeamCapacity)
+const mockedUseAiSummary = vi.mocked(useAiSummary)
 
 function renderAt(path: string) {
+  mockedUseAiSummary.mockReturnValue({
+    mutate: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAiSummary>)
   return render(
     <MemoryRouter initialEntries={[path]}>
       <CapacityOverviewPage />

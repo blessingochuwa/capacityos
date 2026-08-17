@@ -5,6 +5,7 @@ import {
   formatHours,
   formatUtilization,
 } from '@/features/capacity/utils/presentation'
+import { ExplainSignalButton } from '@/features/ai/components/ExplainSignalButton'
 import { SeverityBadge } from './SeverityBadge'
 import { SIGNAL_TYPE_LABEL } from '../utils/presentation'
 import type { Signal } from '../types/insights'
@@ -105,6 +106,9 @@ export function SignalDetailPanel({ signal }: { signal: Signal }) {
               : `Existing risk — ${signal.trend ?? 'unchanged'} compared to baseline.`}
           </p>
         ) : null}
+        <div className="border-t border-slate-800 pt-4">
+          <ExplainSignalButton signal={signal} />
+        </div>
       </CardBody>
     </Card>
   )

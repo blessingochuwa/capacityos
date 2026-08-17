@@ -10,6 +10,8 @@ import { useTeamSummary } from '../hooks/useTeamSummary'
 import { useTeamSignals } from '../hooks/useTeamSignals'
 import { useProjectSignals } from '../hooks/useProjectSignals'
 import { useScenarioSignals } from '../hooks/useScenarioSignals'
+import { useAiSummary } from '@/features/ai/hooks/useAiSummary'
+import { useAiExplainSignal } from '@/features/ai/hooks/useAiExplainSignal'
 import {
   mockQueryError,
   mockQueryPending,
@@ -24,6 +26,8 @@ vi.mock('../hooks/useTeamSummary')
 vi.mock('../hooks/useTeamSignals')
 vi.mock('../hooks/useProjectSignals')
 vi.mock('../hooks/useScenarioSignals')
+vi.mock('@/features/ai/hooks/useAiSummary')
+vi.mock('@/features/ai/hooks/useAiExplainSignal')
 
 const mockedUseTeams = vi.mocked(useTeams)
 const mockedUseProjects = vi.mocked(useProjects)
@@ -32,6 +36,8 @@ const mockedUseTeamSummary = vi.mocked(useTeamSummary)
 const mockedUseTeamSignals = vi.mocked(useTeamSignals)
 const mockedUseProjectSignals = vi.mocked(useProjectSignals)
 const mockedUseScenarioSignals = vi.mocked(useScenarioSignals)
+const mockedUseAiSummary = vi.mocked(useAiSummary)
+const mockedUseAiExplainSignal = vi.mocked(useAiExplainSignal)
 
 function mockPickerHooks() {
   mockedUseTeams.mockReturnValue(
@@ -44,6 +50,20 @@ function mockPickerHooks() {
   mockedUseScenarios.mockReturnValue(mockQuerySuccess({ items: [], total: 0 }))
   mockedUseProjectSignals.mockReturnValue(mockQuerySuccess({ items: [], total: 0 }))
   mockedUseScenarioSignals.mockReturnValue(mockQuerySuccess({ items: [], total: 0 }))
+  mockedUseAiSummary.mockReturnValue({
+    mutate: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAiSummary>)
+  mockedUseAiExplainSignal.mockReturnValue({
+    mutate: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAiExplainSignal>)
 }
 
 function renderPage(initialEntry: string) {

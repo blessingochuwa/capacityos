@@ -14,13 +14,13 @@ class ProjectSkillRequirementCreate(BaseModel):
     skill_id: uuid.UUID
     required_hours: Decimal = Field(gt=0)
     minimum_proficiency: SkillProficiency | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ProjectSkillRequirementUpdate(BaseModel):
     required_hours: Decimal | None = Field(default=None, gt=0)
     minimum_proficiency: SkillProficiency | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ProjectSkillRequirementRead(BaseModel):

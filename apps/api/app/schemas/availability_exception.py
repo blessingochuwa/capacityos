@@ -20,7 +20,7 @@ class AvailabilityExceptionBase(BaseModel):
             "None = fully unavailable; a value = hours available per day during the period."
         ),
     )
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     external_id: str | None = Field(default=None, max_length=200)
     """The Phase 6 import identity key for this entity (AvailabilityException
     has no natural key). Nullable — most exceptions are created directly and
@@ -42,7 +42,7 @@ class AvailabilityExceptionUpdate(BaseModel):
     end_date: date | None = None
     availability_type: AvailabilityType | None = None
     hours: Decimal | None = Field(default=None, ge=0, le=24)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")

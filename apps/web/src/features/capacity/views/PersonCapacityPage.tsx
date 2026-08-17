@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { useProjectsLookup } from '@/hooks/useProjects'
+import { SummarizeButton } from '@/features/ai/components/SummarizeButton'
 import { CapacitySummary } from '../components/CapacitySummary'
 import { DailyCapacityTimeline } from '../components/DailyCapacityTimeline'
 import { AllocationsList } from '../components/AllocationsList'
@@ -91,6 +92,15 @@ export function PersonCapacityPage() {
             </QueryBoundary>
           </CardBody>
         </Card>
+
+        {personId ? (
+          <SummarizeButton
+            entityType="person"
+            entityId={personId}
+            startDate={start}
+            endDate={end}
+          />
+        ) : null}
 
         <Card>
           <CardHeader

@@ -13,7 +13,7 @@ class AllocationBase(BaseModel):
     end_date: date
     allocation_hours: Decimal = Field(ge=0)
     allocation_unit: AllocationUnit = AllocationUnit.TOTAL_HOURS
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     external_id: str | None = Field(default=None, max_length=200)
     """The Phase 6 import identity key for this entity (Allocation has no
     natural key). Nullable — most allocations are created directly and
@@ -36,7 +36,7 @@ class AllocationUpdate(BaseModel):
     end_date: date | None = None
     allocation_hours: Decimal | None = Field(default=None, ge=0)
     allocation_unit: AllocationUnit | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     external_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")

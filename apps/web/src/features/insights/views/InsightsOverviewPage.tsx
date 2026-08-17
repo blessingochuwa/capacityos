@@ -8,6 +8,7 @@ import { useTeams } from '@/hooks/useTeams'
 import { TeamPicker } from '@/features/capacity/components/TeamPicker'
 import { DateRangeControl } from '@/features/capacity/components/DateRangeControl'
 import { thisWeek } from '@/features/capacity/utils/dateRange'
+import { SummarizeButton } from '@/features/ai/components/SummarizeButton'
 import { ConcentrationAreasList } from '../components/ConcentrationAreasList'
 import { PlanningHealthSummary } from '../components/PlanningHealthSummary'
 import { ProjectFilterPicker } from '../components/ProjectFilterPicker'
@@ -153,10 +154,18 @@ export function InsightsOverviewPage() {
             return (
               <div className="space-y-6">
                 <Card>
+                  <CardHeader title="Planning health" />
                   <CardBody>
                     <PlanningHealthSummary summary={summary} />
                   </CardBody>
                 </Card>
+
+                <SummarizeButton
+                  entityType="team"
+                  entityId={teamId}
+                  startDate={start}
+                  endDate={end}
+                />
 
                 <Card>
                   <CardHeader

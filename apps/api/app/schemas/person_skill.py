@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import SkillProficiency
 
@@ -12,12 +12,12 @@ class PersonSkillCreate(BaseModel):
 
     skill_id: uuid.UUID
     proficiency: SkillProficiency
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class PersonSkillUpdate(BaseModel):
     proficiency: SkillProficiency | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class PersonSkillRead(BaseModel):

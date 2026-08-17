@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
@@ -33,6 +35,7 @@ from app.services.team_membership import TeamMembershipService
 from app.services.working_schedule import WorkingScheduleService
 
 router = APIRouter(prefix="/api/v1/imports", tags=["imports"])
+logger = logging.getLogger("capacityos.imports")
 
 
 def get_import_service(
@@ -98,7 +101,21 @@ def validate_import(
     stage A of the two-stage validate-then-apply flow (CLAUDE.md §39
     Phase 6). Never mutates live data."""
     raw_bytes = file.file.read()
-    return service.validate(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    report = service.validate(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    # File name and row counts only — never the file's content.
+    if report.file_error is not None or report.invalid_count > 0:
+        logger.info(
+            "import validation found errors",
+            extra={
+                "entity_type": entity_type.value,
+                "mode": mode.value,
+                "upload_filename": file.filename,
+                "file_error": report.file_error,
+                "invalid_count": report.invalid_count,
+                "total_rows": report.total_rows,
+            },
+        )
+    return report
 
 
 @router.post("/{entity_type}/apply", response_model=ImportApplyResult)
@@ -113,4 +130,19 @@ def apply_import(
     identical file it already validated (see
     docs/adr/0006-phase-6-import-export.md)."""
     raw_bytes = file.file.read()
-    return service.apply(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    result = service.apply(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    log_level = logging.INFO if result.applied else logging.WARNING
+    logger.log(
+        log_level,
+        "import apply completed",
+        extra={
+            "entity_type": entity_type.value,
+            "mode": mode.value,
+            "upload_filename": file.filename,
+            "applied": result.applied,
+            "created_count": result.created_count,
+            "updated_count": result.updated_count,
+            "invalid_count": result.invalid_count,
+        },
+    )
+    return result

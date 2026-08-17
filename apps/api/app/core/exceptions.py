@@ -4,11 +4,22 @@ Services raise these instead of letting SQLAlchemy/database errors escape to
 routes. main.py registers the handlers below so callers always get a clean
 JSON error body — never a raw traceback or database error message (CLAUDE.md
 §27/§28: don't expose internal stack traces or raw database errors).
+
+Every handler logs before responding, so an operator can always answer "what
+happened, on which request, in which subsystem" from logs alone (Phase 9
+spec §5) — client-caused errors (404/409/422) log at INFO since they're
+normal, expected flow; infrastructure/unexpected failures log at ERROR with
+a full traceback via logger.exception. See
+docs/adr/0009-phase-9-production-readiness.md.
 """
+
+import logging
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+logger = logging.getLogger("capacityos.errors")
 
 
 class DomainError(Exception):
@@ -40,33 +51,92 @@ def register_exception_handlers(app: FastAPI) -> None:
     # trade-off: pyright's reportUnusedFunction can't see that FastAPI
     # calls these locally-nested functions at runtime via the decorator,
     # so it's suppressed explicitly below rather than left unexplained.
+    #
+    # Dispatch is by the exception's MRO (Starlette walks type(exc).__mro__
+    # and returns the first registered class it finds), not registration
+    # order — so IntegrityError's specific handler always wins over the
+    # broader SQLAlchemyError handler below for that one subtype, and every
+    # DomainError subtype's specific handler always wins over the final
+    # catch-all Exception handler, regardless of what order these are
+    # registered in.
     @app.exception_handler(NotFoundError)
     async def handle_not_found(  # pyright: ignore[reportUnusedFunction]
-        _request: Request, exc: NotFoundError
+        request: Request, exc: NotFoundError
     ) -> JSONResponse:
+        logger.info(
+            "not found",
+            extra={"path": request.url.path, "entity": exc.entity},
+        )
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(exc)})
 
     @app.exception_handler(ConflictError)
     async def handle_conflict(  # pyright: ignore[reportUnusedFunction]
-        _request: Request, exc: ConflictError
+        request: Request, exc: ConflictError
     ) -> JSONResponse:
+        logger.info("conflict", extra={"path": request.url.path})
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
 
     @app.exception_handler(DomainValidationError)
     async def handle_validation(  # pyright: ignore[reportUnusedFunction]
-        _request: Request, exc: DomainValidationError
+        request: Request, exc: DomainValidationError
     ) -> JSONResponse:
+        logger.info("business rule violation", extra={"path": request.url.path})
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": str(exc)}
         )
 
     @app.exception_handler(IntegrityError)
     async def handle_integrity_error(  # pyright: ignore[reportUnusedFunction]
-        _request: Request, _exc: IntegrityError
+        request: Request, _exc: IntegrityError
     ) -> JSONResponse:
         # Defense in depth: service-layer checks should catch conflicts first,
         # but never let a raw DB error/message reach the client.
+        logger.warning(
+            "integrity error reached the API layer unhandled by a service-level "
+            "check — investigate the route/service for a missing conflict check",
+            extra={"path": request.url.path},
+        )
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": "Request conflicts with existing data."},
+        )
+
+    @app.exception_handler(SQLAlchemyError)
+    async def handle_database_unavailable(  # pyright: ignore[reportUnusedFunction]
+        request: Request, exc: SQLAlchemyError
+    ) -> JSONResponse:
+        # Any database failure that ISN'T an IntegrityError (that handler
+        # takes precedence for its subtype) — a connection drop, a timeout, a
+        # locked SQLite file. Distinguished from a generic 500 so the client
+        # can tell "the database is unavailable" from "the application has a
+        # bug" (Phase 9 spec §7). Never includes exc's own message — it can
+        # contain a connection string, table/column names, or raw SQL.
+        logger.error(
+            "database error",
+            extra={"path": request.url.path, "exception_type": type(exc).__name__},
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "The database is temporarily unavailable. Please try again."},
+        )
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(  # pyright: ignore[reportUnusedFunction]
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        # The last-resort handler — anything not already caught by a more
+        # specific handler above (including FastAPI's own built-in
+        # HTTPException/RequestValidationError handlers, which are
+        # registered separately and always take precedence via MRO lookup).
+        # Never echoes exc's message to the client (CLAUDE.md §27) — only
+        # the server-side log gets the real exception and traceback.
+        logger.error(
+            "unexpected error",
+            extra={"path": request.url.path, "exception_type": type(exc).__name__},
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An unexpected error occurred. Please try again."},
         )

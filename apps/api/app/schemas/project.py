@@ -9,7 +9,7 @@ from app.models.enums import ProjectStatus
 
 class ProjectBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
     status: ProjectStatus = ProjectStatus.PLANNED
     start_date: date | None = None
     end_date: date | None = None
@@ -37,7 +37,7 @@ class ProjectUpdate(BaseModel):
     self-contradictory on its own."""
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
     status: ProjectStatus | None = None
     start_date: date | None = None
     end_date: date | None = None

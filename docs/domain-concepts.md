@@ -323,3 +323,40 @@ Holder-count gating (1 or 2) is an existence condition, matching Phase 5's disci
 ### What Phase 7 does NOT do
 
 No AI, no skill inference, no automated staffing recommendations ("move John to Project Alpha" never appears — only evidence like "28h qualified capacity gap"), no second capacity engine, no second signal system, no `/api/v1/bottlenecks/` endpoint. Full scenario/skill interaction (would a hypothetical hire close this gap?) is a documented seam, not a built integration — see the ADR.
+
+## AI Insight Layer (Phase 8)
+
+Phase 8 answers "why does this matter, and what might I consider?" — strictly on top of the facts Phases 2, 5, and 7 already computed. See [ADR 0008](adr/0008-phase-8-ai-insight-layer.md) for the full reasoning; this section is the vocabulary and rules.
+
+### The central rule
+
+**AI never calculates.** Capacity, utilization, over-allocation, signal severity, scenario deltas, skill coverage — every number an AI response references was computed by the deterministic engine before the AI ever sees it. The architecture is one direction only: `FACTS → DETERMINISTIC ENGINE → SIGNALS → AI INTERPRETATION`, never `RAW DATA → LLM → BUSINESS DECISION`.
+
+### Provider abstraction
+
+`AIProvider` is a single-method interface (`generate`). `AnthropicAIProvider` is the production implementation; `MockAIProvider` is a deterministic, non-LLM stand-in used by the entire backend test suite and by local development with no API key. `Settings.ai_provider` (`"anthropic"` / `"mock"` / `"none"`, default `"none"`) selects between them — with `"none"`, or `"anthropic"` with no `ANTHROPIC_API_KEY`, every AI endpoint returns a first-class `unavailable` response instead of erroring, and every deterministic feature in the app is completely unaffected.
+
+### AI context
+
+`AIInsightContext` (and its component `AICapacityFact`/`AISignalFact`/`AISkillCoverageFact`/`AIScenarioFact`) is an explicit, minimal, typed snapshot built from the same `CapacityService`/`InsightService`/`ScenarioCalculationService`/`SkillCapacityService` calls every other phase's UI already uses. No SQLAlchemy row and no field outside this typed shape is ever sent to a provider. Entity labels are display names, never emails — data minimization by construction.
+
+### Structured output and grounding
+
+The provider returns a validated `AIModelOutput`: a `summary`, `key_findings`/`risks` (each a claim plus `source_references`), `recommendations` (each with a rationale, `source_references`, and stated `assumptions`), and a `confidence` category (`high`/`medium`/`low` — never a numeric probability). Every `source_reference` the model returns is checked against an allow-list of the facts actually present in the context that was sent (`AIInsightContext.known_references()`); anything that doesn't match is stripped before the response leaves the backend. A claim the model can't support with an in-context fact is dropped, not fabricated into looking supported.
+
+### Response envelope
+
+Every `/api/v1/ai/*` endpoint returns `{status, response, message}` with **HTTP 200 always**: `ok` (a grounded response), `unavailable` (no provider configured — expected, not an error), or `error` (a provider is configured but the call failed — timeout, rate limit, malformed output). The frontend branches on `status`, never on an HTTP error code, for these three cases.
+
+### Capabilities
+
+| Capability | Endpoint | Answers |
+|---|---|---|
+| Summary | `POST /api/v1/ai/summary` | What's the operational picture for this person/team/project and period? |
+| Explain signal | `POST /api/v1/ai/explain-signal` | Why does this existing signal exist, and what's the evidence? (also covers skill bottlenecks — `skill_gap`/`single_skill_holder`/`skill_concentration` are signal types like any other) |
+| Explain scenario | `POST /api/v1/ai/explain-scenario` | What changed between baseline and scenario, and why? |
+| Ask | `POST /api/v1/ai/ask` | A controlled natural-language question about one scope, answered only from that scope's assembled facts — never generated SQL, never arbitrary tool/endpoint calls. |
+
+### What Phase 8 does NOT do
+
+No second capacity/signal/bottleneck engine. No AI-initiated writes of any kind — recommendations are always phrased as suggestions ("Consider...") and the schema gives them no path to mutate data. No skill or capability inference from job titles, project names, or allocation history. No hiring, performance, or health/legal judgments about any person. No persistent AI conversation history or analytics table (every request is stateless). No response caching (every explanation is generated fresh against current facts). No automatic AI generation on page load — every capability is triggered by an explicit user action.

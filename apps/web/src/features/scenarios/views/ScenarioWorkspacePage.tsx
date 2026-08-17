@@ -11,6 +11,7 @@ import { useProjects, useProjectsLookup } from '@/hooks/useProjects'
 import { formatDateRange } from '@/features/capacity/utils/presentation'
 import { SignalList } from '@/features/insights/components/SignalList'
 import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
+import { ExplainScenarioButton } from '@/features/ai/components/ExplainScenarioButton'
 import { AddChangeForm } from '../components/AddChangeForm'
 import { ChangeList } from '../components/ChangeList'
 import { ComparisonTable } from '../components/ComparisonTable'
@@ -384,6 +385,12 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
                   </QueryBoundary>
                 </CardBody>
               </Card>
+            ) : null}
+
+            {hasCalculatedOnce ? (
+              <div className="mt-6">
+                <ExplainScenarioButton scenarioId={scenarioId} />
+              </div>
             ) : null}
           </>
         )}

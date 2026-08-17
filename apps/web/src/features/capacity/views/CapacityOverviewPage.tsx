@@ -9,6 +9,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { useTeams } from '@/hooks/useTeams'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { toNumber } from '@/lib/decimal'
+import { SummarizeButton } from '@/features/ai/components/SummarizeButton'
 import { CapacitySummary } from '../components/CapacitySummary'
 import { TeamCapacityTable } from '../components/TeamCapacityTable'
 import { OverAllocationPanel } from '../components/OverAllocationPanel'
@@ -140,6 +141,13 @@ export function CapacityOverviewPage() {
                     </div>
                   </CardBody>
                 </Card>
+
+                <SummarizeButton
+                  entityType="team"
+                  entityId={teamId}
+                  startDate={start}
+                  endDate={end}
+                />
 
                 <div className="grid gap-6 lg:grid-cols-2">
                   <Card>

@@ -26,7 +26,7 @@ from app.schemas.capacity import ProjectDemandRead
 
 class ScenarioBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
     baseline_start_date: date
     baseline_end_date: date
     created_by: str | None = None
@@ -46,7 +46,7 @@ class ScenarioCreate(ScenarioBase):
 
 class ScenarioUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
     status: ScenarioStatus | None = None
     baseline_start_date: date | None = None
     baseline_end_date: date | None = None

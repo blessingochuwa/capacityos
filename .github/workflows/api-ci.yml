@@ -19,10 +19,19 @@ jobs:
         working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: '0.11.x'
+          version-file: apps/api/pyproject.toml
       - run: uv sync
+      # Migration consistency: proves every migration applies cleanly from
+      # an empty database, in order, with no manual intervention (Phase 9
+      # spec §3/§9). Deliberately NOT `alembic check` — that command's
+      # autogenerate-diff comparison has a known SQLite CHECK-constraint
+      # reflection false-positive, already documented in
+      # docs/adr/0007-phase-7-skills-bottleneck-analysis.md and
+      # docs/adr/0009-phase-9-production-readiness.md, that would fail CI
+      # on every run for a reason that isn't a real migration problem.
+      - run: uv run alembic upgrade head
       - run: uv run ruff check .
       - run: uv run pyright
       - run: uv run pytest

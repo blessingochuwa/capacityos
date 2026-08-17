@@ -9,6 +9,7 @@ import {
   usePersonAllocations,
   usePersonAvailabilityExceptions,
 } from '../hooks/usePersonAllocations'
+import { useAiSummary } from '@/features/ai/hooks/useAiSummary'
 import { mockQuerySuccess } from '@/test/mockQueryResult'
 import { makePerson, makePersonCapacity } from '@/test/fixtures'
 
@@ -16,6 +17,7 @@ vi.mock('@/hooks/usePeople')
 vi.mock('@/hooks/useProjects')
 vi.mock('../hooks/usePersonCapacity')
 vi.mock('../hooks/usePersonAllocations')
+vi.mock('@/features/ai/hooks/useAiSummary')
 
 const mockedUsePeopleLookup = vi.mocked(usePeopleLookup)
 const mockedUseProjectsLookup = vi.mocked(useProjectsLookup)
@@ -24,8 +26,16 @@ const mockedUsePersonAllocations = vi.mocked(usePersonAllocations)
 const mockedUsePersonAvailabilityExceptions = vi.mocked(
   usePersonAvailabilityExceptions,
 )
+const mockedUseAiSummary = vi.mocked(useAiSummary)
 
 function renderPage(personId = 'p-1') {
+  mockedUseAiSummary.mockReturnValue({
+    mutate: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAiSummary>)
   return render(
     <MemoryRouter initialEntries={[`/capacity/people/${personId}`]}>
       <Routes>

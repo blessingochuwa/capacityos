@@ -5,6 +5,7 @@ import { MetricTile } from '@/components/ui/MetricTile'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { useProjectsLookup } from '@/hooks/useProjects'
+import { SummarizeButton } from '@/features/ai/components/SummarizeButton'
 import { ProjectDemandTimeline } from '../components/ProjectDemandTimeline'
 import { ProjectPersonBreakdown } from '../components/ProjectPersonBreakdown'
 import { DateRangeControl } from '../components/DateRangeControl'
@@ -88,6 +89,15 @@ export function ProjectCapacityPage() {
             </QueryBoundary>
           </CardBody>
         </Card>
+
+        {projectId ? (
+          <SummarizeButton
+            entityType="project"
+            entityId={projectId}
+            startDate={start}
+            endDate={end}
+          />
+        ) : null}
 
         <Card>
           <CardHeader
