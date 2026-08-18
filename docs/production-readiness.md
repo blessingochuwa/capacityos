@@ -32,6 +32,21 @@ zero paid infrastructure. Set `AI_PROVIDER=mock` for deterministic,
 non-LLM AI panels during local development, or `AI_PROVIDER=anthropic` plus
 `ANTHROPIC_API_KEY` for real AI explanations.
 
+**First-time setup requires one more step (Phase 10): create the first
+Owner account.** There is no open self-registration — run this once,
+after migrating:
+
+```bash
+uv run python ../../scripts/create_first_owner.py
+```
+
+Prompts for an email/display name/password (or set
+`CAPACITYOS_OWNER_EMAIL`/`CAPACITYOS_OWNER_NAME`/`CAPACITYOS_OWNER_PASSWORD`
+for scripted bootstrap). Refuses to run if an Owner already exists — every
+subsequent user, including additional Owners, is created via `POST
+/api/v1/users` by an existing Owner/Admin. See
+[docs/adr/0010-authentication-rbac-audit.md](adr/0010-authentication-rbac-audit.md).
+
 ## Environment configuration
 
 See `.env.example` for the full, documented list. The variables introduced
@@ -42,6 +57,12 @@ in Phase 9:
 | `ENVIRONMENT` | `development` | `development` \| `test` \| `production`. Drives `validate_production_config` (see below) — nothing else in the app branches on it. |
 | `LOG_LEVEL` | `INFO` | Standard Python logging level name. |
 | `MAX_REQUEST_BODY_BYTES` | `5242880` (5 MiB) | Hard cap on every request body, enforced before any body is read. |
+
+The variable introduced in Phase 10:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SESSION_TTL_HOURS` | `24` | Fixed absolute session lifetime from login — no silent sliding renewal. There is no `SESSION_SECRET_KEY`: session tokens are random opaque values compared by hash, never signed/encrypted, so there is nothing to provision or rotate. The session cookie is automatically `Secure` (HTTPS-only) whenever `ENVIRONMENT=production` — this is computed, not a separate setting an operator could forget to flip. |
 
 ## Running checks
 
@@ -197,6 +218,24 @@ provider, and permissive CORS are all intentional defaults there.
   handlers log full detail server-side and return a fixed, generic message.
 - **CORS**: explicit allowlist via `API_CORS_ORIGINS`; a wildcard is
   refused outright in `production`.
+- **Authentication (Phase 10)**: httpOnly, Secure-in-production session
+  cookies; passwords hashed with Argon2id; per-account lockout after 5
+  failed attempts (15 minutes); login failure responses are identical
+  regardless of whether the email exists, the password is wrong, or the
+  account is locked (enumeration resistance). See
+  [docs/adr/0010-authentication-rbac-audit.md](adr/0010-authentication-rbac-audit.md).
+- **Authorization (Phase 10)**: every route requires an authenticated
+  session; every mutating route additionally requires a specific
+  permission via one centralized `require_permission` dependency — never a
+  scattered `if user.role == ...` check. 401 (no/invalid session) is
+  always distinguished from 403 (authenticated, insufficient role).
+- **CSRF (Phase 10)**: double-submit token (`X-CSRF-Token` header, checked
+  against a non-httpOnly cookie) required on every mutating route, as
+  defense-in-depth alongside SameSite=Lax and the CORS allowlist.
+- **Audit (Phase 10)**: every mutation, login event, and permission denial
+  is recorded to an append-only `audit_events` table (`GET /api/v1/audit`,
+  Admin/Owner only) — never a raw request body, uploaded file, AI prompt,
+  password, or token.
 
 ## Operational troubleshooting
 
@@ -265,3 +304,15 @@ structured logs for that request's `request_id` — obtainable from the
 - [x] Import/export works
 - [x] AI-disabled mode works
 - [x] AI mock mode works
+
+### Authentication, authorization & audit (Phase 10)
+- [x] login/logout works
+- [x] session expiry works
+- [x] account lockout works
+- [x] RBAC enforced on every mutating route
+- [x] 401 vs 403 correctly distinguished
+- [x] CSRF protection works
+- [x] audit events recorded for mutations, logins, and permission denials
+- [x] audit log never contains secrets or file content
+- [x] first-Owner bootstrap script works
+- [x] last-Owner protections work (cannot demote/disable)

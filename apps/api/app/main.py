@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.middleware import MaxBodySizeMiddleware, RequestContextMiddleware
 from app.api.v1.ai import router as ai_router
 from app.api.v1.allocations import router as allocations_router
+from app.api.v1.audit import router as audit_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.availability_exceptions import router as availability_exceptions_router
 from app.api.v1.capacity import router as capacity_router
 from app.api.v1.exports import router as exports_router
@@ -19,6 +21,7 @@ from app.api.v1.projects import router as projects_router
 from app.api.v1.scenarios import router as scenarios_router
 from app.api.v1.skills import router as skills_router
 from app.api.v1.teams import router as teams_router
+from app.api.v1.users import router as users_router
 from app.api.v1.working_schedules import router as working_schedules_router
 from app.core.config import ProductionConfigError, get_settings, validate_production_config
 from app.core.exceptions import register_exception_handlers
@@ -76,6 +79,9 @@ app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 
 app.include_router(health_router)
+app.include_router(auth_router)
+app.include_router(users_router)
+app.include_router(audit_router)
 app.include_router(people_router)
 app.include_router(teams_router)
 app.include_router(projects_router)

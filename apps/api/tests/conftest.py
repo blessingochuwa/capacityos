@@ -1,4 +1,6 @@
-from collections.abc import Generator
+import uuid
+from collections.abc import Callable, Generator
+from contextlib import ExitStack
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,8 +10,11 @@ from sqlalchemy.pool import StaticPool
 
 # Registers all models on Base.metadata before create_all() is called below.
 import app.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+from app.api.deps import get_current_user, require_csrf
 from app.core.database import Base, get_db
 from app.main import app
+from app.models.enums import UserRole, UserStatus
+from app.models.user import User
 
 
 @pytest.fixture
@@ -39,12 +44,8 @@ def db_session() -> Generator[Session]:
         engine.dispose()
 
 
-@pytest.fixture
-def client(db_session: Session) -> Generator[TestClient]:
-    """A TestClient sharing db_session for the whole test, so the test can
-    both drive the API and inspect resulting DB state directly."""
-
-    def _get_db_override() -> Generator[Session]:
+def _get_db_override(db_session: Session) -> Callable[[], Generator[Session]]:
+    def _override() -> Generator[Session]:
         try:
             yield db_session
             db_session.commit()
@@ -52,9 +53,79 @@ def client(db_session: Session) -> Generator[TestClient]:
             db_session.rollback()
             raise
 
-    app.dependency_overrides[get_db] = _get_db_override
+    return _override
+
+
+def make_test_user(
+    session: Session, role: UserRole = UserRole.OWNER, *, email: str | None = None
+) -> User:
+    """A persisted User row for dependency-override-based test
+    authentication (see `client`/`client_as` below) — this bypasses
+    get_current_user entirely rather than going through AuthService.login,
+    so password_hash is a placeholder no login attempt ever verifies
+    against. It exists purely to give routes/AuditService a real
+    User.id/.email/.role to work with. Real login-flow behavior (password
+    verification, cookies, lockout, CSRF) is exercised separately via
+    `unauthenticated_client` and a genuine POST /api/v1/auth/login — see
+    tests/api/test_auth.py."""
+    user = User(
+        email=email or f"test-{role.value}-{uuid.uuid4().hex[:8]}@example.com",
+        password_hash="!unused! — see make_test_user docstring",
+        display_name=f"Test {role.value.title()}",
+        role=role,
+        status=UserStatus.ACTIVE,
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+@pytest.fixture
+def unauthenticated_client(db_session: Session) -> Generator[TestClient]:
+    """A TestClient with no auth bypass at all — DB wiring only. Used to
+    exercise the real login/logout/session/CSRF flow end-to-end (Phase 10),
+    where a dependency-override shortcut would defeat the point of the
+    test."""
+    app.dependency_overrides[get_db] = _get_db_override(db_session)
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_as(db_session: Session) -> Generator[Callable[[UserRole], TestClient]]:
+    """Factory for a TestClient pre-authenticated as a given role, bypassing
+    the real login flow via FastAPI dependency overrides (Phase 10) — the
+    same pattern this fixture module already used for get_db, extended to
+    get_current_user/require_csrf. CSRF is bypassed here by design: CSRF
+    has its own dedicated real-login-flow test (see
+    tests/api/test_auth.py), and re-deriving a CSRF token for every one of
+    this suite's hundreds of pre-existing mutation tests would test
+    plumbing, not behavior. Every pre-Phase-10 test keeps using the plain
+    `client` fixture below (always Owner) — new Phase 10 RBAC tests use
+    this factory to exercise other roles."""
+    app.dependency_overrides[get_db] = _get_db_override(db_session)
+    app.dependency_overrides[require_csrf] = lambda: None
+    stack = ExitStack()
+
+    def _make(role: UserRole) -> TestClient:
+        user = make_test_user(db_session, role)
+        app.dependency_overrides[get_current_user] = lambda: user
+        return stack.enter_context(TestClient(app))
+
+    try:
+        yield _make
+    finally:
+        stack.close()
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(client_as: Callable[[UserRole], TestClient]) -> TestClient:
+    """The default authenticated client used by every pre-Phase-10 test —
+    always an Owner (the superset-permission role), so none of those tests
+    needed to change: this fixture's only job before Phase 10 was DB
+    wiring, and it still is, from every existing test's perspective."""
+    return client_as(UserRole.OWNER)

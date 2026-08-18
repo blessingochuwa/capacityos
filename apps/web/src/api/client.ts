@@ -3,10 +3,22 @@
  * (./entities.ts, features/capacity/api/capacityApi.ts) goes through this —
  * no raw fetch() calls anywhere else in the app (CLAUDE.md §6/§28: routes
  * orchestrate, they don't reimplement transport concerns per call site).
+ *
+ * Phase 10: every request carries `credentials: 'include'` so the httpOnly
+ * session cookie (and the readable CSRF cookie) are sent with same-site
+ * requests; every mutating request additionally echoes the CSRF cookie back
+ * as an X-CSRF-Token header (double-submit defense-in-depth — see
+ * docs/adr/0010-authentication-rbac-audit.md). A 401 from ANY request
+ * (except the login endpoint itself, which handles its own failure inline)
+ * invokes the registered unauthorized handler — see setUnauthorizedHandler,
+ * called once by features/auth/context/AuthProvider.tsx.
  */
 
 const API_BASE_URL: string =
   import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+const CSRF_COOKIE_NAME = 'capacityos_csrf'
+const LOGIN_PATH = '/api/v1/auth/login'
 
 export class ApiError extends Error {
   readonly status: number
@@ -16,6 +28,24 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+}
+
+/** Registered by AuthProvider on mount — reacts to a 401 from anywhere in
+ * the app (session expired mid-use, cookie cleared, etc.) by clearing
+ * cached session state and redirecting to /login. Kept as a simple
+ * settable callback, not a React context, since this module is plain
+ * functions with no component tree of its own. */
+let unauthorizedHandler: (() => void) | null = null
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler
+}
+
+function readCsrfCookie(): string | null {
+  const match = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${CSRF_COOKIE_NAME}=`))
+  return match ? decodeURIComponent(match.slice(CSRF_COOKIE_NAME.length + 1)) : null
 }
 
 /** FastAPI error bodies come in two shapes: domain errors (app/core/exceptions.py)
@@ -57,8 +87,11 @@ function buildQueryString(params?: QueryParams): string {
   return query ? `?${query}` : ''
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(response: Response, path: string): Promise<T> {
   if (!response.ok) {
+    if (response.status === 401 && path !== LOGIN_PATH) {
+      unauthorizedHandler?.()
+    }
     let detail: string | null = null
     try {
       detail = extractDetail(await response.json())
@@ -76,6 +109,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
+
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
@@ -84,11 +119,18 @@ async function request<T>(
   const url = `${API_BASE_URL}${path}${buildQueryString(options?.params)}`
   const init: RequestInit = {
     method,
+    credentials: 'include',
     headers: { Accept: 'application/json' },
   }
   if (options?.body !== undefined) {
     init.headers = { ...init.headers, 'Content-Type': 'application/json' }
     init.body = JSON.stringify(options.body)
+  }
+  if (MUTATING_METHODS.has(method)) {
+    const csrfToken = readCsrfCookie()
+    if (csrfToken) {
+      init.headers = { ...init.headers, 'X-CSRF-Token': csrfToken }
+    }
   }
 
   let response: Response
@@ -100,7 +142,7 @@ async function request<T>(
       'Could not reach the CapacityOS API. Check your connection.',
     )
   }
-  return handleResponse<T>(response)
+  return handleResponse<T>(response, path)
 }
 
 export function apiGet<T>(path: string, params?: QueryParams): Promise<T> {
@@ -134,11 +176,16 @@ export async function apiPostFormData<T>(
   params?: QueryParams,
 ): Promise<T> {
   const url = `${API_BASE_URL}${path}${buildQueryString(params)}`
+  const csrfToken = readCsrfCookie()
   let response: Response
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      },
       body: formData,
     })
   } catch {
@@ -147,7 +194,7 @@ export async function apiPostFormData<T>(
       'Could not reach the CapacityOS API. Check your connection.',
     )
   }
-  return handleResponse<T>(response)
+  return handleResponse<T>(response, path)
 }
 
 /** Extracts the server-suggested filename from a
@@ -172,7 +219,7 @@ export async function apiGetBlob(
   const url = `${API_BASE_URL}${path}${buildQueryString(params)}`
   let response: Response
   try {
-    response = await fetch(url, { method: 'GET' })
+    response = await fetch(url, { method: 'GET', credentials: 'include' })
   } catch {
     throw new ApiError(
       0,
@@ -180,6 +227,9 @@ export async function apiGetBlob(
     )
   }
   if (!response.ok) {
+    if (response.status === 401) {
+      unauthorizedHandler?.()
+    }
     let detail: string | null = null
     try {
       detail = extractDetail(await response.json())

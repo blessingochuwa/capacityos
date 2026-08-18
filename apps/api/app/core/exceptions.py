@@ -42,6 +42,19 @@ class DomainValidationError(DomainError):
     can't express on its own (e.g. a cross-entity or merged-state check)."""
 
 
+class UnauthenticatedError(DomainError):
+    """No valid session — raised by app/api/deps.py::get_current_user
+    (Phase 10). Distinguished from ForbiddenError below so a caller can
+    always tell "you're not logged in" (401) from "you're logged in but not
+    allowed" (403) — see docs/adr/0010-authentication-rbac-audit.md."""
+
+
+class ForbiddenError(DomainError):
+    """A valid, authenticated caller lacks the permission or role required
+    for this action — raised by app/api/deps.py::require_permission and by
+    UserService's Owner-escalation checks (Phase 10)."""
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     # The @app.exception_handler(SomeException) decorator (rather than
     # add_exception_handler) is what gives each handler's `exc` parameter
@@ -68,6 +81,27 @@ def register_exception_handlers(app: FastAPI) -> None:
             extra={"path": request.url.path, "entity": exc.entity},
         )
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(exc)})
+
+    @app.exception_handler(UnauthenticatedError)
+    async def handle_unauthenticated(  # pyright: ignore[reportUnusedFunction]
+        request: Request, exc: UnauthenticatedError
+    ) -> JSONResponse:
+        logger.info("unauthenticated", extra={"path": request.url.path})
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": str(exc) or "Authentication required."},
+            headers={"WWW-Authenticate": "Cookie"},
+        )
+
+    @app.exception_handler(ForbiddenError)
+    async def handle_forbidden(  # pyright: ignore[reportUnusedFunction]
+        request: Request, exc: ForbiddenError
+    ) -> JSONResponse:
+        logger.info("forbidden", extra={"path": request.url.path})
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": str(exc) or "You do not have permission to perform this action."},
+        )
 
     @app.exception_handler(ConflictError)
     async def handle_conflict(  # pyright: ignore[reportUnusedFunction]

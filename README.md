@@ -4,7 +4,7 @@ CapacityOS is an open-source-first resource and capacity planning platform for g
 
 The full product mission, operating philosophy, and architectural rules for this repository are defined in [CLAUDE.md](./CLAUDE.md) — that document is the governing source of truth for how this project is built. See also [docs/architecture.md](./docs/architecture.md) for a shorter technical overview.
 
-> **Status:** Phase 9 — domain foundation, a deterministic capacity engine, a read-only capacity dashboard, scenario/what-if planning, operational insights (prioritized, explainable capacity signals), CSV/JSON import/export, skills & bottleneck analysis (SKILL capacity vs TOTAL capacity, skill gaps, single points of failure), an optional AI insight layer (explains existing deterministic facts — summaries, signal/scenario/bottleneck explanations, grounded recommendations — never a second calculation engine), and a production-readiness/observability foundation (structured logging, request correlation, health/readiness, configuration safety, consistent error handling) are implemented. The app runs fully without any AI provider configured. Integrations and auth do not exist yet. See [docs/production-readiness.md](./docs/production-readiness.md) for the operational reference, [docs/domain-concepts.md](./docs/domain-concepts.md) for what the domain entities mean, and [docs/adr/](./docs/adr/) for the decisions behind them.
+> **Status:** Phase 10 — domain foundation, a deterministic capacity engine, a read-only capacity dashboard, scenario/what-if planning, operational insights (prioritized, explainable capacity signals), CSV/JSON import/export, skills & bottleneck analysis (SKILL capacity vs TOTAL capacity, skill gaps, single points of failure), an optional AI insight layer (explains existing deterministic facts — summaries, signal/scenario/bottleneck explanations, grounded recommendations — never a second calculation engine), a production-readiness/observability foundation (structured logging, request correlation, health/readiness, configuration safety, consistent error handling), and an identity/authentication/RBAC/audit foundation (session-cookie login, a five-role permission model, and a persistent audit trail — see [docs/adr/0010-authentication-rbac-audit.md](./docs/adr/0010-authentication-rbac-audit.md)) are implemented. The app runs fully without any AI provider configured. External integrations and multi-tenancy do not exist yet. See [docs/production-readiness.md](./docs/production-readiness.md) for the operational reference, [docs/domain-concepts.md](./docs/domain-concepts.md) for what the domain entities mean, and [docs/adr/](./docs/adr/) for the decisions behind them.
 
 ## Repository layout
 
@@ -46,6 +46,12 @@ uv run uvicorn app.main:app --reload
 ```
 
 The API runs at `http://localhost:8000`. A health check is available at `GET /api/v1/health`; domain CRUD routes (people, teams, projects, allocations, working schedules, availability exceptions) are under `/api/v1/`.
+
+**First run only:** create the first Owner account (there is no open self-registration — see [docs/adr/0010-authentication-rbac-audit.md](./docs/adr/0010-authentication-rbac-audit.md)):
+
+```bash
+uv run python ../../scripts/create_first_owner.py
+```
 
 ### Environment variables
 

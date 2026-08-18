@@ -1,6 +1,7 @@
 from collections.abc import Generator
+from typing import Any
 
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
@@ -9,6 +10,33 @@ settings = get_settings()
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 engine = create_engine(settings.database_url, connect_args=connect_args)
+
+if settings.database_url.startswith("sqlite"):
+    # WAL mode lets one writer proceed concurrently with readers on OTHER
+    # connections — SQLite's default rollback-journal mode does not, and a
+    # second connection's write can raise "database is locked" while a
+    # first connection still holds an open (even read-only) transaction.
+    # This became a real, observed failure in Phase 10: AuditService
+    # (app/api/deps.py::get_audit_service) deliberately writes through a
+    # SECOND connection, independent of the request-scoped `db` connection
+    # every other repository/service uses (see that module's docstring for
+    # why) — against a file-backed database, that is two connections in
+    # the same request. busy_timeout is a defensive second layer: a brief
+    # wait-and-retry at the SQLite level before raising, rather than
+    # failing immediately on any residual contention. Both PRAGMAs are
+    # silently no-ops on `:memory:` (this codebase's test database — see
+    # tests/conftest.py) — SQLite always uses its own in-memory journal
+    # there regardless of what journal_mode is requested — so this changes
+    # no test behavior, only real file-backed dev/production databases.
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
+        dbapi_connection: Any, _connection_record: object
+    ) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Standard Alembic-recommended naming convention: gives every constraint a

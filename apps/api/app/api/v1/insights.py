@@ -4,9 +4,12 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_permission
 from app.api.v1.scenarios import get_scenario_calculation_service
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.domain.authorization import Permission
+from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -58,6 +61,7 @@ def get_person_signals(
     person_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.INSIGHT_READ)),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
     items = service.get_person_signals(person_id, start_date, end_date)
@@ -69,6 +73,7 @@ def get_team_signals(
     team_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.INSIGHT_READ)),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
     items = service.get_team_signals(team_id, start_date, end_date)
@@ -80,6 +85,7 @@ def get_project_signals(
     project_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.INSIGHT_READ)),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
     items = service.get_project_signals(project_id, start_date, end_date)
@@ -89,6 +95,7 @@ def get_project_signals(
 @router.get("/scenarios/{scenario_id}/signals", response_model=Page[SignalRead])
 def get_scenario_signals(
     scenario_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.INSIGHT_READ)),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
     items = service.get_scenario_signals(scenario_id)
@@ -102,6 +109,7 @@ def get_team_summary(
     end_date: date,
     project_id: uuid.UUID | None = Query(default=None),
     scenario_id: uuid.UUID | None = Query(default=None),
+    _: User = Depends(require_permission(Permission.INSIGHT_READ)),
     service: InsightService = Depends(get_insight_service),
 ) -> InsightsSummaryRead:
     return service.get_team_summary(team_id, start_date, end_date, project_id, scenario_id)

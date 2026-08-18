@@ -108,3 +108,117 @@ class SkillProficiency(StrEnum):
     PROFICIENT = "proficient"
     ADVANCED = "advanced"
     EXPERT = "expert"
+
+
+class UserRole(StrEnum):
+    """Controlled vocabulary for User.role (Phase 10).
+
+    Ordering/precedence is not expressed by enum declaration order — see the
+    explicit ROLE_PERMISSIONS table in app/domain/authorization.py, the
+    single place a role's grants are decided (matching this codebase's
+    existing convention of explicit rank/grant tables over relying on enum
+    member order, e.g. PROFICIENCY_RANK, _SEVERITY_RANK).
+    """
+
+    OWNER = "owner"
+    ADMIN = "admin"
+    MANAGER = "manager"
+    MEMBER = "member"
+    VIEWER = "viewer"
+
+
+class UserStatus(StrEnum):
+    """Controlled vocabulary for User.status (Phase 10).
+
+    "invited" is a user created by an admin but who has not yet completed
+    account setup (Phase 10 has no invite-email flow — see
+    docs/adr/0010-authentication-rbac-audit.md — but the status exists so a
+    future phase can add one without a schema change). "disabled" blocks
+    login entirely without deleting audit/history-relevant rows.
+    """
+
+    ACTIVE = "active"
+    INVITED = "invited"
+    DISABLED = "disabled"
+
+
+class AuditOutcome(StrEnum):
+    """Controlled vocabulary for AuditEvent.outcome (Phase 10).
+
+    A small, fixed, closed set with real meaning to every audit consumer
+    (e.g. filtering "show me every denial") — DB CHECK-constrained like
+    EmploymentStatus/ProjectStatus/UserStatus, unlike AuditAction below.
+    """
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    DENIED = "denied"
+
+
+class AuditAction(StrEnum):
+    """Controlled vocabulary for AuditEvent.action (Phase 10).
+
+    Deliberately NOT DB-CHECK-constrained, unlike AuditOutcome — matching
+    AvailabilityType's precedent (open vocabulary, application-layer only)
+    rather than EmploymentStatus's (fixed, DB-enforced): new audited actions
+    are expected to be added as the product grows, and that must be a pure
+    code change, never a migration. One systematic `{entity}.{verb}` member
+    per mutating capability in the system.
+    """
+
+    AUTH_LOGIN_SUCCESS = "auth.login_success"
+    AUTH_LOGIN_FAILURE = "auth.login_failure"
+    AUTH_LOGOUT = "auth.logout"
+    AUTH_ACCOUNT_LOCKED = "auth.account_locked"
+    PERMISSION_DENIED = "permission.denied"
+
+    USER_CREATE = "user.create"
+    USER_UPDATE = "user.update"
+    USER_ROLE_CHANGE = "user.role_change"
+    USER_STATUS_CHANGE = "user.status_change"
+
+    PERSON_CREATE = "person.create"
+    PERSON_UPDATE = "person.update"
+    PERSON_DELETE = "person.delete"
+    PERSON_SKILL_ADD = "person_skill.add"
+    PERSON_SKILL_UPDATE = "person_skill.update"
+    PERSON_SKILL_REMOVE = "person_skill.remove"
+
+    TEAM_CREATE = "team.create"
+    TEAM_UPDATE = "team.update"
+    TEAM_DELETE = "team.delete"
+    TEAM_MEMBER_ADD = "team.member_add"
+    TEAM_MEMBER_REMOVE = "team.member_remove"
+
+    PROJECT_CREATE = "project.create"
+    PROJECT_UPDATE = "project.update"
+    PROJECT_DELETE = "project.delete"
+    PROJECT_SKILL_REQUIREMENT_ADD = "project_skill_requirement.add"
+    PROJECT_SKILL_REQUIREMENT_UPDATE = "project_skill_requirement.update"
+    PROJECT_SKILL_REQUIREMENT_REMOVE = "project_skill_requirement.remove"
+
+    ALLOCATION_CREATE = "allocation.create"
+    ALLOCATION_UPDATE = "allocation.update"
+    ALLOCATION_DELETE = "allocation.delete"
+
+    WORKING_SCHEDULE_CREATE = "working_schedule.create"
+    WORKING_SCHEDULE_UPDATE = "working_schedule.update"
+    WORKING_SCHEDULE_DELETE = "working_schedule.delete"
+
+    AVAILABILITY_EXCEPTION_CREATE = "availability_exception.create"
+    AVAILABILITY_EXCEPTION_UPDATE = "availability_exception.update"
+    AVAILABILITY_EXCEPTION_DELETE = "availability_exception.delete"
+
+    SKILL_CREATE = "skill.create"
+    SKILL_UPDATE = "skill.update"
+    SKILL_DELETE = "skill.delete"
+
+    SCENARIO_CREATE = "scenario.create"
+    SCENARIO_UPDATE = "scenario.update"
+    SCENARIO_DELETE = "scenario.delete"
+    SCENARIO_OPERATION_CREATE = "scenario_operation.create"
+    SCENARIO_OPERATION_UPDATE = "scenario_operation.update"
+    SCENARIO_OPERATION_DELETE = "scenario_operation.delete"
+
+    IMPORT_APPLY = "import.apply"
+    EXPORT_USE = "export.use"

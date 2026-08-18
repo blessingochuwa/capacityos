@@ -3,9 +3,13 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_audit_service, require_csrf, require_permission
 from app.core.database import get_db
-from app.models.enums import ScenarioStatus
+from app.core.logging import request_id_var
+from app.domain.authorization import Permission
+from app.models.enums import AuditAction, AuditOutcome, ScenarioStatus
 from app.models.scenario import ScenarioOperation
+from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -25,6 +29,7 @@ from app.schemas.scenario import (
     ScenarioUpdate,
     operation_payload_from_dict,
 )
+from app.services.audit import AuditService
 from app.services.scenario import ScenarioService
 from app.services.scenario_calculation import ScenarioCalculationService
 
@@ -71,11 +76,27 @@ def _operation_to_read(operation: ScenarioOperation) -> ScenarioOperationRead:
 # ---------------------------------------------------------------------------
 
 
-@router.post("", response_model=ScenarioRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ScenarioRead, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
 def create_scenario(
-    data: ScenarioCreate, service: ScenarioService = Depends(get_scenario_service)
+    data: ScenarioCreate,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_WRITE)),
+    service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> ScenarioRead:
-    return ScenarioRead.model_validate(service.create(data))
+    scenario = service.create(data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario",
+        resource_id=str(scenario.id),
+        request_id=request_id_var.get(),
+    )
+    return ScenarioRead.model_validate(scenario)
 
 
 @router.get("", response_model=Page[ScenarioRead])
@@ -83,6 +104,7 @@ def list_scenarios(
     status_filter: ScenarioStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
     service: ScenarioService = Depends(get_scenario_service),
 ) -> Page[ScenarioRead]:
     items, total = service.list(status=status_filter, limit=limit, offset=offset)
@@ -93,25 +115,54 @@ def list_scenarios(
 
 @router.get("/{scenario_id}", response_model=ScenarioRead)
 def get_scenario(
-    scenario_id: uuid.UUID, service: ScenarioService = Depends(get_scenario_service)
+    scenario_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
+    service: ScenarioService = Depends(get_scenario_service),
 ) -> ScenarioRead:
     return ScenarioRead.model_validate(service.get(scenario_id))
 
 
-@router.patch("/{scenario_id}", response_model=ScenarioRead)
+@router.patch("/{scenario_id}", response_model=ScenarioRead, dependencies=[Depends(require_csrf)])
 def update_scenario(
     scenario_id: uuid.UUID,
     data: ScenarioUpdate,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_WRITE)),
     service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> ScenarioRead:
-    return ScenarioRead.model_validate(service.update(scenario_id, data))
+    scenario = service.update(scenario_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_UPDATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario",
+        resource_id=str(scenario.id),
+        request_id=request_id_var.get(),
+        metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
+    )
+    return ScenarioRead.model_validate(scenario)
 
 
-@router.delete("/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)]
+)
 def delete_scenario(
-    scenario_id: uuid.UUID, service: ScenarioService = Depends(get_scenario_service)
+    scenario_id: uuid.UUID,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_DELETE)),
+    service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
     service.delete(scenario_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario",
+        resource_id=str(scenario_id),
+        request_id=request_id_var.get(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -123,13 +174,30 @@ def delete_scenario(
     "/{scenario_id}/operations",
     response_model=ScenarioOperationRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
 )
 def create_operation(
     scenario_id: uuid.UUID,
     payload: ScenarioOperationCreate,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_WRITE)),
     service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> ScenarioOperationRead:
-    return _operation_to_read(service.create_operation(scenario_id, payload))
+    operation = service.create_operation(scenario_id, payload)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_OPERATION_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario_operation",
+        resource_id=str(operation.id),
+        request_id=request_id_var.get(),
+        metadata={
+            "scenario_id": str(scenario_id),
+            "operation_type": operation.operation_type.value,
+        },
+    )
+    return _operation_to_read(operation)
 
 
 @router.get("/{scenario_id}/operations", response_model=Page[ScenarioOperationRead])
@@ -137,6 +205,7 @@ def list_operations(
     scenario_id: uuid.UUID,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
     service: ScenarioService = Depends(get_scenario_service),
 ) -> Page[ScenarioOperationRead]:
     items, total = service.list_operations(scenario_id, limit=limit, offset=offset)
@@ -145,35 +214,64 @@ def list_operations(
     )
 
 
-@router.patch("/{scenario_id}/operations/{operation_id}", response_model=ScenarioOperationRead)
+@router.patch(
+    "/{scenario_id}/operations/{operation_id}", response_model=ScenarioOperationRead,
+    dependencies=[Depends(require_csrf)],
+)
 def update_operation(
     scenario_id: uuid.UUID,
     operation_id: uuid.UUID,
     payload: ScenarioOperationUpdate,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_WRITE)),
     service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> ScenarioOperationRead:
-    return _operation_to_read(service.update_operation(scenario_id, operation_id, payload))
+    operation = service.update_operation(scenario_id, operation_id, payload)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_OPERATION_UPDATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario_operation",
+        resource_id=str(operation_id),
+        request_id=request_id_var.get(),
+    )
+    return _operation_to_read(operation)
 
 
 @router.delete(
-    "/{scenario_id}/operations/{operation_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{scenario_id}/operations/{operation_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
 )
 def delete_operation(
     scenario_id: uuid.UUID,
     operation_id: uuid.UUID,
+    current_user: User = Depends(require_permission(Permission.SCENARIO_DELETE)),
     service: ScenarioService = Depends(get_scenario_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
     service.delete_operation(scenario_id, operation_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.SCENARIO_OPERATION_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="scenario_operation",
+        resource_id=str(operation_id),
+        request_id=request_id_var.get(),
+    )
 
 
 # ---------------------------------------------------------------------------
-# Calculation
+# Calculation — read-only (never writes a stored result, see
+# docs/adr/0004-phase-4-scenario-planning.md), no audit event
 # ---------------------------------------------------------------------------
 
 
 @router.post("/{scenario_id}/calculate", response_model=ScenarioResultsRead)
 def calculate_scenario(
     scenario_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
     service: ScenarioCalculationService = Depends(get_scenario_calculation_service),
 ) -> ScenarioResultsRead:
     """Validates every stored operation still resolves against current
@@ -187,6 +285,7 @@ def calculate_scenario(
 @router.get("/{scenario_id}/results", response_model=ScenarioResultsRead)
 def get_scenario_results(
     scenario_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
     service: ScenarioCalculationService = Depends(get_scenario_calculation_service),
 ) -> ScenarioResultsRead:
     return service.results(scenario_id)
@@ -195,6 +294,7 @@ def get_scenario_results(
 @router.get("/{scenario_id}/comparison", response_model=ScenarioComparisonRead)
 def get_scenario_comparison(
     scenario_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.SCENARIO_READ)),
     service: ScenarioCalculationService = Depends(get_scenario_calculation_service),
 ) -> ScenarioComparisonRead:
     return service.comparison(scenario_id)

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ScenarioListPage } from './ScenarioListPage'
@@ -10,12 +10,20 @@ import {
   mockQuerySuccess,
 } from '@/test/mockQueryResult'
 import { makeScenario } from '@/test/fixtures'
+import { useAuth } from '@/features/auth/context/AuthContext'
 
 vi.mock('../hooks/useScenarios')
 vi.mock('../hooks/useScenarioMutations')
+// Owner-equivalent permissions by default, matching every pre-Phase-10 test's
+// implicit assumption of full access — see apps/api/tests/conftest.py's
+// identical "client fixture defaults to Owner" reasoning.
+vi.mock('@/features/auth/context/AuthContext', () => ({
+  useAuth: vi.fn(),
+}))
 
 const mockedUseScenarios = vi.mocked(useScenarios)
 const mockedUseCreateScenario = vi.mocked(useCreateScenario)
+const mockedUseAuth = vi.mocked(useAuth)
 
 function renderPage() {
   return render(
@@ -26,6 +34,16 @@ function renderPage() {
 }
 
 describe('ScenarioListPage', () => {
+  beforeEach(() => {
+    mockedUseAuth.mockReturnValue({
+      user: null,
+      status: 'authenticated',
+      can: () => true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    })
+  })
+
   it('renders a loading state while scenarios are being fetched', () => {
     mockedUseScenarios.mockReturnValue(mockQueryPending())
     mockedUseCreateScenario.mockReturnValue({
@@ -89,5 +107,31 @@ describe('ScenarioListPage', () => {
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('hides the create-scenario form for a role without scenario.write (Phase 10)', () => {
+    mockedUseAuth.mockReturnValue({
+      user: null,
+      status: 'authenticated',
+      can: () => false,
+      login: vi.fn(),
+      logout: vi.fn(),
+    })
+    mockedUseScenarios.mockReturnValue(
+      mockQuerySuccess({ items: [], total: 0 }),
+    )
+    mockedUseCreateScenario.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateScenario>)
+
+    renderPage()
+
+    expect(
+      screen.queryByRole('button', { name: 'Create scenario' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/can view scenarios but not create/i),
+    ).toBeInTheDocument()
   })
 })

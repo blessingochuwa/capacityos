@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { ProjectSwitcher } from '@/features/capacity/components/ProjectSwitcher'
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { UserMenu } from '@/features/auth/components/UserMenu'
 
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }) =>
   `rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 ${
@@ -9,6 +11,8 @@ const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }) =>
   }`
 
 export function AppShell() {
+  const { can } = useAuth()
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <a
@@ -36,13 +40,21 @@ export function AppShell() {
               <NavLink to="/skills" className={NAV_LINK_CLASS}>
                 Skills
               </NavLink>
-              <NavLink to="/import-export" className={NAV_LINK_CLASS}>
-                Import / Export
-              </NavLink>
+              {/* Hidden entirely, not disabled, for a role that can never
+               * export (CLAUDE.md §13's "view-only access" principle) —
+               * the backend independently enforces this regardless. */}
+              {can('export.use') ? (
+                <NavLink to="/import-export" className={NAV_LINK_CLASS}>
+                  Import / Export
+                </NavLink>
+              ) : null}
             </nav>
           </div>
-          <div className="w-56">
-            <ProjectSwitcher />
+          <div className="flex items-center gap-4">
+            <div className="w-56">
+              <ProjectSwitcher />
+            </div>
+            <UserMenu />
           </div>
         </div>
       </header>

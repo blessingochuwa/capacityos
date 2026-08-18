@@ -89,9 +89,26 @@ class Settings(BaseSettings):
     """AI generation is explicitly user-triggered (never on page load), so a
     bounded timeout with a clear failure state is preferable to a long hang."""
 
+    session_ttl_hours: int = 24
+    """Fixed absolute session lifetime from login — deliberately no silent
+    sliding renewal (docs/adr/0010-authentication-rbac-audit.md). A stolen-
+    but-unused session token still expires; re-login is required after this
+    many hours regardless of activity."""
+
+    session_cookie_name: str = "capacityos_session"
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        """Deliberately NOT a settable field — deriving this from
+        `environment` means there is no insecure-by-omission default an
+        operator could forget to flip for a production deployment (unlike
+        every other production risk in validate_production_config below,
+        which requires an operator to have left something unconfigured)."""
+        return self.environment == "production"
 
 
 @lru_cache

@@ -3,14 +3,19 @@ import logging
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_audit_service, require_csrf, require_permission
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.core.logging import request_id_var
+from app.domain.authorization import Permission
 from app.domain.import_export_parsing import (
     ExportFormat,
     ImportEntityType,
     ImportMode,
     build_template,
 )
+from app.models.enums import AuditAction, AuditOutcome
+from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -23,6 +28,7 @@ from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
 from app.schemas.import_export import ImportApplyResult, ImportValidationReport
 from app.services.allocation import AllocationService
+from app.services.audit import AuditService
 from app.services.availability_exception import AvailabilityExceptionService
 from app.services.import_service import ImportService
 from app.services.person import PersonService
@@ -75,6 +81,7 @@ def get_import_service(
 def get_import_template(
     entity_type: ImportEntityType,
     format: ExportFormat = Query(default=ExportFormat.CSV),
+    _: User = Depends(require_permission(Permission.IMPORT_USE)),
 ) -> Response:
     """A downloadable example file for this entity type — the real headers
     plus one realistic, schema-valid row (CLAUDE.md §39 Phase 6 spec Step
@@ -95,6 +102,7 @@ def validate_import(
     entity_type: ImportEntityType,
     file: UploadFile = File(...),
     mode: ImportMode = Query(default=ImportMode.UPSERT),
+    _: User = Depends(require_permission(Permission.IMPORT_USE)),
     service: ImportService = Depends(get_import_service),
 ) -> ImportValidationReport:
     """Parses and validates the uploaded file without writing anything —
@@ -118,12 +126,16 @@ def validate_import(
     return report
 
 
-@router.post("/{entity_type}/apply", response_model=ImportApplyResult)
+@router.post(
+    "/{entity_type}/apply", response_model=ImportApplyResult, dependencies=[Depends(require_csrf)]
+)
 def apply_import(
     entity_type: ImportEntityType,
     file: UploadFile = File(...),
     mode: ImportMode = Query(default=ImportMode.UPSERT),
+    current_user: User = Depends(require_permission(Permission.IMPORT_USE)),
     service: ImportService = Depends(get_import_service),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> ImportApplyResult:
     """Re-validates the SAME file and, only if every row is clean, applies
     it atomically — stage B. The client is responsible for re-uploading the
@@ -139,6 +151,23 @@ def apply_import(
             "entity_type": entity_type.value,
             "mode": mode.value,
             "upload_filename": file.filename,
+            "applied": result.applied,
+            "created_count": result.created_count,
+            "updated_count": result.updated_count,
+            "invalid_count": result.invalid_count,
+        },
+    )
+    # Never the file content — entity type, mode, and result counts only
+    # (see docs/adr/0010-authentication-rbac-audit.md).
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.IMPORT_APPLY,
+        outcome=AuditOutcome.SUCCESS if result.applied else AuditOutcome.FAILURE,
+        resource_type=entity_type.value,
+        request_id=request_id_var.get(),
+        metadata={
+            "mode": mode.value,
             "applied": result.applied,
             "created_count": result.created_count,
             "updated_count": result.updated_count,

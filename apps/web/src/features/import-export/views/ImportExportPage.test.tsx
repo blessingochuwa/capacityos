@@ -11,6 +11,7 @@ import {
   makePerson,
 } from '@/test/fixtures'
 import { mockQuerySuccess } from '@/test/mockQueryResult'
+import { useAuth } from '@/features/auth/context/AuthContext'
 import { ImportExportPage } from './ImportExportPage'
 import { useApplyImport } from '../hooks/useApplyImport'
 import { useDownloadTemplate } from '../hooks/useDownloadTemplate'
@@ -24,6 +25,11 @@ vi.mock('../hooks/useExportEntities')
 vi.mock('@/hooks/usePeople')
 vi.mock('@/hooks/useProjects')
 vi.mock('@/hooks/useTeams')
+// Owner-equivalent permissions by default — see ScenarioListPage.test.tsx's
+// identical comment for why.
+vi.mock('@/features/auth/context/AuthContext', () => ({
+  useAuth: vi.fn(),
+}))
 
 const mockedUseDownloadTemplate = vi.mocked(useDownloadTemplate)
 const mockedUseValidateImport = vi.mocked(useValidateImport)
@@ -32,8 +38,16 @@ const mockedUseExportEntities = vi.mocked(useExportEntities)
 const mockedUsePeople = vi.mocked(usePeople)
 const mockedUseProjects = vi.mocked(useProjects)
 const mockedUseTeams = vi.mocked(useTeams)
+const mockedUseAuth = vi.mocked(useAuth)
 
 function mockCommonHooks() {
+  mockedUseAuth.mockReturnValue({
+    user: null,
+    status: 'authenticated',
+    can: () => true,
+    login: vi.fn(),
+    logout: vi.fn(),
+  })
   mockedUseDownloadTemplate.mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
@@ -216,5 +230,42 @@ describe('ImportExportPage', () => {
     render(<ImportExportPage />)
 
     expect(screen.getByText('Something went wrong.')).toBeInTheDocument()
+  })
+
+  it('hides import and export controls for a role without those permissions (Phase 10)', () => {
+    mockCommonHooks()
+    mockedUseAuth.mockReturnValue({
+      user: null,
+      status: 'authenticated',
+      can: () => false,
+      login: vi.fn(),
+      logout: vi.fn(),
+    })
+    mockedUseValidateImport.mockReturnValue({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      data: undefined,
+    } as unknown as ReturnType<typeof useValidateImport>)
+    mockedUseApplyImport.mockReturnValue({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      data: undefined,
+    } as unknown as ReturnType<typeof useApplyImport>)
+
+    render(<ImportExportPage />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Validate' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/can view operational data but not import it/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/doesn't include permission to export/i),
+    ).toBeInTheDocument()
   })
 })

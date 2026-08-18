@@ -3,6 +3,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { DateRangeControl } from '@/features/capacity/components/DateRangeControl'
 import { ProjectFilterPicker } from '@/features/insights/components/ProjectFilterPicker'
 import { TeamPicker } from '@/features/capacity/components/TeamPicker'
@@ -34,6 +36,8 @@ const DEFAULT_RANGE = thisWeek()
  * decision-support view. See docs/adr/0007-phase-7-skills-bottleneck-analysis.md.
  */
 export function SkillsOverviewPage() {
+  const { can } = useAuth()
+  const canManageSkills = can('skill.write')
   const [searchParams, setSearchParams] = useSearchParams()
   const teamId = searchParams.get('team') ?? undefined
   const projectId = searchParams.get('project') ?? undefined
@@ -68,7 +72,11 @@ export function SkillsOverviewPage() {
           description="Every skill people can hold and projects can require."
         />
         <CardBody className="space-y-4">
-          <CreateSkillForm />
+          {canManageSkills ? (
+            <CreateSkillForm />
+          ) : (
+            <ViewOnlyNotice message="Your role can view skills but not create or edit them." />
+          )}
           <QueryBoundary query={skillsQuery} loadingLabel="Loading skills…">
             {(data) => (
               <SkillsTable
@@ -79,6 +87,7 @@ export function SkillsOverviewPage() {
                     ? (deactivateSkill.variables as string | undefined)
                     : undefined
                 }
+                canManage={canManageSkills}
               />
             )}
           </QueryBoundary>

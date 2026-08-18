@@ -24,3 +24,21 @@ This project follows the security rules defined in [CLAUDE.md §27](./CLAUDE.md)
 - Arbitrary uploaded code is never executed.
 - Production stack traces are never exposed to clients.
 - Environment variables are used for configuration; `.env` is git-ignored, `.env.example` documents required variables without real values.
+
+## Authentication and authorization (Phase 10)
+
+CapacityOS uses httpOnly, Secure-in-production session cookies (opaque,
+random tokens — never JWTs, never a signed/encrypted value, so there is no
+`SESSION_SECRET_KEY` to leak) and Argon2id password hashing. A five-role
+RBAC model (Owner/Admin/Manager/Member/Viewer) is enforced on every
+mutating API route through one centralized permission check. Every
+mutation, login event, and permission denial is recorded in an
+append-only audit log. See
+[docs/adr/0010-authentication-rbac-audit.md](./docs/adr/0010-authentication-rbac-audit.md)
+for the full authentication architecture, threat model, and known
+limitations (no distributed rate limiting, no instance-level "only your
+own team" authorization yet).
+
+There is no open self-registration. The first Owner account is created
+via `scripts/create_first_owner.py`, run once by an operator — never a
+hardcoded or auto-created credential.

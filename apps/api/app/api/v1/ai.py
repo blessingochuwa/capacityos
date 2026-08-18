@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_permission
 from app.api.v1.capacity import get_capacity_service
 from app.api.v1.insights import get_insight_service
 from app.api.v1.scenarios import get_scenario_calculation_service
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.domain.authorization import Permission
 from app.integrations.ai.anthropic_provider import AnthropicAIProvider
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.mock import MockAIProvider
+from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -88,7 +91,10 @@ def get_ai_service(
 
 
 @router.get("/status", response_model=AIStatusRead)
-def get_ai_status(service: AIService = Depends(get_ai_service)) -> AIStatusRead:
+def get_ai_status(
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    service: AIService = Depends(get_ai_service),
+) -> AIStatusRead:
     """Read-only capability check — no generation happens here, so the
     frontend can decide whether to show AI affordances at all without
     triggering an expensive call (spec §18: no AI call on page load)."""
@@ -97,7 +103,9 @@ def get_ai_status(service: AIService = Depends(get_ai_service)) -> AIStatusRead:
 
 @router.post("/summary", response_model=AIResponseEnvelope)
 def post_ai_summary(
-    data: AISummaryRequest, service: AIService = Depends(get_ai_service)
+    data: AISummaryRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.summarize(
         data.scope.entity_type, data.scope.entity_id, data.start_date, data.end_date
@@ -106,7 +114,9 @@ def post_ai_summary(
 
 @router.post("/explain-signal", response_model=AIResponseEnvelope)
 def post_ai_explain_signal(
-    data: AIExplainSignalRequest, service: AIService = Depends(get_ai_service)
+    data: AIExplainSignalRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.explain_signal(
         data.scope.entity_type,
@@ -119,14 +129,18 @@ def post_ai_explain_signal(
 
 @router.post("/explain-scenario", response_model=AIResponseEnvelope)
 def post_ai_explain_scenario(
-    data: AIExplainScenarioRequest, service: AIService = Depends(get_ai_service)
+    data: AIExplainScenarioRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.explain_scenario(data.scenario_id)
 
 
 @router.post("/ask", response_model=AIResponseEnvelope)
 def post_ai_ask(
-    data: AIAskRequest, service: AIService = Depends(get_ai_service)
+    data: AIAskRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.ask(
         data.scope.entity_type,

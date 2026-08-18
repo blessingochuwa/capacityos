@@ -7,6 +7,8 @@ import { DateField } from '@/components/ui/DateField'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { Table, Td, Th } from '@/components/ui/Table'
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { formatDateRange } from '@/features/capacity/utils/presentation'
 import { thisWeek } from '@/features/capacity/utils/dateRange'
 import { useCreateScenario } from '../hooks/useScenarioMutations'
@@ -21,6 +23,8 @@ const DEFAULT_RANGE = thisWeek()
  * workspace for the same distinction made explicit there too). */
 export function ScenarioListPage() {
   const navigate = useNavigate()
+  const { can } = useAuth()
+  const canCreate = can('scenario.write')
   const scenariosQuery = useScenarios()
   const createScenario = useCreateScenario()
 
@@ -58,41 +62,49 @@ export function ScenarioListPage() {
           description="Give it a name and a baseline period to plan against."
         />
         <CardBody>
-          <form
-            onSubmit={handleCreate}
-            className="flex flex-wrap items-end gap-3"
-          >
-            <label className="flex min-w-48 flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-slate-400">Name</span>
-              <input
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Launch campaign earlier"
-                className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100"
-              />
-            </label>
-            <DateField
-              label="Baseline start"
-              value={start}
-              onChange={(event) => setStart(event.target.value)}
-            />
-            <DateField
-              label="Baseline end"
-              value={end}
-              onChange={(event) => setEnd(event.target.value)}
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={createScenario.isPending}
-            >
-              {createScenario.isPending ? 'Creating…' : 'Create scenario'}
-            </Button>
-          </form>
-          {formError ? (
-            <p className="mt-2 text-xs text-rose-300">{formError}</p>
-          ) : null}
+          {canCreate ? (
+            <>
+              <form
+                onSubmit={handleCreate}
+                className="flex flex-wrap items-end gap-3"
+              >
+                <label className="flex min-w-48 flex-1 flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-400">
+                    Name
+                  </span>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="e.g. Launch campaign earlier"
+                    className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100"
+                  />
+                </label>
+                <DateField
+                  label="Baseline start"
+                  value={start}
+                  onChange={(event) => setStart(event.target.value)}
+                />
+                <DateField
+                  label="Baseline end"
+                  value={end}
+                  onChange={(event) => setEnd(event.target.value)}
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={createScenario.isPending}
+                >
+                  {createScenario.isPending ? 'Creating…' : 'Create scenario'}
+                </Button>
+              </form>
+              {formError ? (
+                <p className="mt-2 text-xs text-rose-300">{formError}</p>
+              ) : null}
+            </>
+          ) : (
+            <ViewOnlyNotice message="Your role can view scenarios but not create new ones." />
+          )}
         </CardBody>
       </Card>
 

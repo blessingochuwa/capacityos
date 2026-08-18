@@ -8,12 +8,17 @@ interface SkillsTableProps {
   skills: Skill[]
   onDeactivate: (skillId: string) => void
   deactivatingId?: string
+  /** Defaults to true so every existing call site/test keeps its current
+   * behavior unless it explicitly opts into role-based gating (see
+   * SkillsOverviewPage, which passes `can('skill.write')`). */
+  canManage?: boolean
 }
 
 export function SkillsTable({
   skills,
   onDeactivate,
   deactivatingId,
+  canManage = true,
 }: SkillsTableProps) {
   if (skills.length === 0) {
     return (
@@ -54,7 +59,7 @@ export function SkillsTable({
               </Badge>
             </Td>
             <Td>
-              {skill.is_active ? (
+              {skill.is_active && canManage ? (
                 <Button
                   variant="ghost"
                   onClick={() => onDeactivate(skill.id)}

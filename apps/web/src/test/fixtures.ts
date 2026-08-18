@@ -1,4 +1,5 @@
 import type { Person, Project, Team } from '@/types/entities'
+import type { CurrentUser } from '@/features/auth/types/auth'
 import type {
   PersonCapacity,
   ProjectDemand,
@@ -36,6 +37,40 @@ import type {
   AIInsightResponse,
   AIResponseEnvelope,
 } from '@/features/ai/types/ai'
+
+export function makeCurrentUser(
+  overrides: Partial<CurrentUser> = {},
+): CurrentUser {
+  return {
+    id: 'user-1',
+    email: 'owner@example.com',
+    display_name: 'Owner Person',
+    status: 'active',
+    role: 'owner',
+    person_id: null,
+    last_login_at: '2026-01-01T00:00:00Z',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    permissions: [
+      'person.read',
+      'person.write',
+      'person.delete',
+      'team.read',
+      'team.write',
+      'scenario.read',
+      'scenario.write',
+      'skill.read',
+      'skill.write',
+      'import.use',
+      'export.use',
+      'ai.use',
+      'user.read',
+      'user.write',
+      'audit.read',
+    ],
+    ...overrides,
+  }
+}
 
 export function makePerson(overrides: Partial<Person> = {}): Person {
   return {

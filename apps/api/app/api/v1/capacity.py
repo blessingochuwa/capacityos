@@ -4,8 +4,11 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_permission
 from app.core.database import get_db
+from app.domain.authorization import Permission
 from app.domain.capacity import DailyCapacity, PersonCapacityResult
+from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -74,6 +77,7 @@ def get_person_capacity(
     person_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.PERSON_READ)),
     service: CapacityService = Depends(get_capacity_service),
 ) -> PersonCapacityRead:
     result = service.get_person_capacity(person_id, start_date, end_date)
@@ -85,6 +89,7 @@ def get_team_capacity(
     team_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.TEAM_READ)),
     service: CapacityService = Depends(get_capacity_service),
 ) -> TeamCapacityRead:
     team_result, members = service.get_team_capacity(team_id, start_date, end_date)
@@ -108,6 +113,7 @@ def get_project_demand(
     project_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    _: User = Depends(require_permission(Permission.PROJECT_READ)),
     service: CapacityService = Depends(get_capacity_service),
 ) -> ProjectDemandRead:
     result = service.get_project_demand(project_id, start_date, end_date)
