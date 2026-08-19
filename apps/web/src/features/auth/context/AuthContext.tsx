@@ -17,6 +17,17 @@ interface AuthContextValue {
    * isolated component test with no session context) this safely denies
    * everything rather than crashing or defaulting to "allowed." */
   can: (permission: string) => boolean
+  /** Phase 11: does the current user hold write/delete authority on THIS
+   * specific team/project instance? Owner/Admin are always true (their
+   * bypass is role-based, not grant-based, matching the backend's
+   * has_permission — see docs/adr/0011-instance-level-resource-authorization.md).
+   * Everyone else needs BOTH the underlying type-level permission (via
+   * `can`) AND the resource id present in their accessible-ids list — this
+   * mirrors the backend's two-layer check so the UI never shows an
+   * affordance the API would actually reject. Still UX-only: the backend
+   * re-checks independently on every request regardless of what this
+   * returns. */
+  canManageResource: (resourceType: 'team' | 'project', resourceId: string) => boolean
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
 }
@@ -25,6 +36,7 @@ const DEFAULT_CONTEXT: AuthContextValue = {
   user: null,
   status: 'unauthenticated',
   can: () => false,
+  canManageResource: () => false,
   login: async () => {
     throw new Error('AuthProvider is not mounted.')
   },
@@ -88,10 +100,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? 'authenticated'
       : 'unauthenticated'
 
+  const can = (permission: string): boolean => user?.permissions.includes(permission) ?? false
+
+  const canManageResource = (resourceType: 'team' | 'project', resourceId: string): boolean => {
+    if (!user) return false
+    if (user.role === 'owner' || user.role === 'admin') return true
+    const permission = resourceType === 'team' ? 'team.write' : 'project.write'
+    if (!can(permission)) return false
+    const accessibleIds =
+      resourceType === 'team' ? user.accessible_team_ids : user.accessible_project_ids
+    return accessibleIds.includes(resourceId)
+  }
+
   const value: AuthContextValue = {
     user,
     status,
-    can: (permission) => user?.permissions.includes(permission) ?? false,
+    can,
+    canManageResource,
     login: async (input) => {
       await loginMutation.mutateAsync(input)
     },

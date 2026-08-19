@@ -35,6 +35,7 @@ describe('RequireAuth', () => {
       user: null,
       status: 'loading',
       can: () => false,
+      canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
     })
@@ -48,6 +49,7 @@ describe('RequireAuth', () => {
       user: null,
       status: 'unauthenticated',
       can: () => false,
+      canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
     })
@@ -61,6 +63,7 @@ describe('RequireAuth', () => {
       user: makeCurrentUser(),
       status: 'authenticated',
       can: () => true,
+      canManageResource: () => true,
       login: vi.fn(),
       logout: vi.fn(),
     })

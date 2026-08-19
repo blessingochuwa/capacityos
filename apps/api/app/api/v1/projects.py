@@ -4,7 +4,12 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission
+from app.api.deps import (
+    get_audit_service,
+    require_csrf,
+    require_permission,
+    require_project_access,
+)
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
@@ -112,7 +117,7 @@ def get_project(
 def update_project(
     project_id: uuid.UUID,
     data: ProjectUpdate,
-    current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
+    current_user: User = Depends(require_project_access(Permission.PROJECT_WRITE)),
     service: ProjectService = Depends(get_project_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectRead:
@@ -135,7 +140,7 @@ def update_project(
 )
 def delete_project(
     project_id: uuid.UUID,
-    current_user: User = Depends(require_permission(Permission.PROJECT_DELETE)),
+    current_user: User = Depends(require_project_access(Permission.PROJECT_DELETE)),
     service: ProjectService = Depends(get_project_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
@@ -174,7 +179,7 @@ def list_project_skill_requirements(
 def add_project_skill_requirement(
     project_id: uuid.UUID,
     data: ProjectSkillRequirementCreate,
-    current_user: User = Depends(require_permission(Permission.SKILL_WRITE)),
+    current_user: User = Depends(require_project_access(Permission.SKILL_WRITE)),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectSkillRequirementRead:
@@ -201,7 +206,7 @@ def update_project_skill_requirement(
     project_id: uuid.UUID,
     requirement_id: uuid.UUID,
     data: ProjectSkillRequirementUpdate,
-    current_user: User = Depends(require_permission(Permission.SKILL_WRITE)),
+    current_user: User = Depends(require_project_access(Permission.SKILL_WRITE)),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectSkillRequirementRead:
@@ -226,7 +231,7 @@ def update_project_skill_requirement(
 def remove_project_skill_requirement(
     project_id: uuid.UUID,
     requirement_id: uuid.UUID,
-    current_user: User = Depends(require_permission(Permission.SKILL_DELETE)),
+    current_user: User = Depends(require_project_access(Permission.SKILL_DELETE)),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:

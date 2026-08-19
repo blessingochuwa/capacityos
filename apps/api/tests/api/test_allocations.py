@@ -1,6 +1,10 @@
 import uuid
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
+
+from app.models.enums import UserRole
+from tests.conftest import user_id_of
 
 
 def _create_person(client: TestClient) -> dict[str, object]:
@@ -142,3 +146,127 @@ def test_delete_allocation(client: TestClient) -> None:
 
     assert client.delete(f"/api/v1/allocations/{created['id']}").status_code == 204
     assert client.get(f"/api/v1/allocations/{created['id']}").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Phase 11: Allocation is Project-scoped, resolved from the request body on
+# create and from the existing row on update/delete (AllocationUpdate has no
+# project_id field — an allocation can't be re-pointed to a different
+# project). See docs/adr/0011-instance-level-resource-authorization.md.
+# ---------------------------------------------------------------------------
+
+
+def _grant_project_access(owner: TestClient, project_id: object, user_id: str) -> None:
+    owner.activate()  # type: ignore[attr-defined]
+    response = owner.post(
+        f"/api/v1/projects/{project_id}/access-grants", json={"user_id": user_id}
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_manager_cannot_create_allocation_without_project_grant(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    person = _create_person(owner)
+    project = _create_project(owner)
+    manager = client_as(UserRole.MANAGER)
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        "/api/v1/allocations",
+        json={
+            "person_id": person["id"],
+            "project_id": project["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+            "allocation_hours": 20,
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_manager_can_create_update_delete_allocation_once_granted(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    person = _create_person(owner)
+    project = _create_project(owner)
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    create_response = manager.post(
+        "/api/v1/allocations",
+        json={
+            "person_id": person["id"],
+            "project_id": project["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+            "allocation_hours": 20,
+        },
+    )
+    assert create_response.status_code == 201
+    allocation_id = create_response.json()["id"]
+
+    update_response = manager.patch(
+        f"/api/v1/allocations/{allocation_id}", json={"allocation_hours": 30}
+    )
+    assert update_response.status_code == 200
+
+    delete_response = manager.delete(f"/api/v1/allocations/{allocation_id}")
+    assert delete_response.status_code == 204
+
+
+def test_manager_granted_project_q_cannot_touch_allocation_under_project_p(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    """Cross-project IDOR: an existing allocation under Project P must stay
+    protected even for a Manager who has been granted access to a
+    different, unrelated Project Q."""
+    owner = client_as(UserRole.OWNER)
+    person = _create_person(owner)
+    project_p = _create_project(owner)
+    project_q = owner.post("/api/v1/projects", json={"name": "Unrelated Project Q"}).json()
+    allocation = owner.post(
+        "/api/v1/allocations",
+        json={
+            "person_id": person["id"],
+            "project_id": project_p["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+            "allocation_hours": 20,
+        },
+    ).json()
+
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project_q["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    update_response = manager.patch(
+        f"/api/v1/allocations/{allocation['id']}", json={"allocation_hours": 99}
+    )
+    assert update_response.status_code == 403
+
+    delete_response = manager.delete(f"/api/v1/allocations/{allocation['id']}")
+    assert delete_response.status_code == 403
+
+
+def test_owner_can_create_allocation_without_any_grant(client: TestClient) -> None:
+    """Regression guard: Owner (the `client` fixture's role) must never
+    need a ProjectAccessGrant — this is the existing
+    test_create_allocation_returns_201 behavior re-asserted explicitly
+    under the Phase 11 scoping change."""
+    person = _create_person(client)
+    project = _create_project(client)
+    response = client.post(
+        "/api/v1/allocations",
+        json={
+            "person_id": person["id"],
+            "project_id": project["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+            "allocation_hours": 20,
+        },
+    )
+    assert response.status_code == 201

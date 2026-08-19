@@ -1,12 +1,15 @@
-"""Shared authentication/authorization FastAPI dependencies (Phase 10).
+"""Shared authentication/authorization FastAPI dependencies (Phase 10 + 11).
 
 The one cross-cutting dependency module in this codebase — every other
 `get_x_service` factory lives in its own router file (matching the existing
 per-router convention), but get_current_user/require_permission/require_csrf
-are used by every router, so they live here instead of being duplicated or
-imported awkwardly from one arbitrary router module.
+(and, as of Phase 11, get_access_grant_service/require_team_access/
+require_project_access) are used by more than one router, so they live here
+instead of being duplicated or imported awkwardly from one arbitrary router
+module.
 """
 
+import uuid
 from collections.abc import Callable
 
 from fastapi import Depends, Request
@@ -14,15 +17,20 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.exceptions import ForbiddenError, UnauthenticatedError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthenticatedError
 from app.core.logging import request_id_var
 from app.core.security import hash_token
 from app.domain.authorization import Permission, has_permission
 from app.models.enums import AuditAction, AuditOutcome
 from app.models.user import User
 from app.repositories.audit_event import AuditEventRepository
+from app.repositories.project import ProjectRepository
+from app.repositories.project_access_grant import ProjectAccessGrantRepository
 from app.repositories.session import UserSessionRepository
+from app.repositories.team import TeamRepository
+from app.repositories.team_access_grant import TeamAccessGrantRepository
 from app.repositories.user import UserRepository
+from app.services.access_grant import AccessGrantService
 from app.services.audit import AuditService
 from app.services.auth import AuthService
 
@@ -34,6 +42,16 @@ def get_auth_service(
         UserRepository(db),
         UserSessionRepository(db),
         session_ttl_hours=settings.session_ttl_hours,
+    )
+
+
+def get_access_grant_service(db: Session = Depends(get_db)) -> AccessGrantService:
+    return AccessGrantService(
+        TeamAccessGrantRepository(db),
+        ProjectAccessGrantRepository(db),
+        UserRepository(db),
+        TeamRepository(db),
+        ProjectRepository(db),
     )
 
 
@@ -104,6 +122,63 @@ def require_permission(permission: Permission) -> Callable[..., User]:
             raise ForbiddenError(
                 f"You do not have permission to perform this action ({permission.value})."
             )
+        return current_user
+
+    return dependency
+
+
+def require_team_access(permission: Permission) -> Callable[..., User]:
+    """Dependency factory for routes with a `team_id` path parameter —
+    `Depends(require_team_access(Permission.TEAM_WRITE))` is a drop-in
+    replacement for `Depends(require_permission(Permission.TEAM_WRITE))`
+    (Phase 11). Ordering matters: require_permission runs FIRST as the
+    inner dependency, so Member/Viewer are denied by the existing
+    type-level check and never reach the resource-scope query at all —
+    they hold no team.write/team.delete permission regardless of grants.
+    404s before the scope check if the team itself doesn't exist (Phase 10
+    behavior, unchanged)."""
+
+    def dependency(
+        team_id: uuid.UUID,
+        current_user: User = Depends(require_permission(permission)),
+        db: Session = Depends(get_db),
+        audit_service: AuditService = Depends(get_audit_service),
+        access_grants: AccessGrantService = Depends(get_access_grant_service),
+    ) -> User:
+        if TeamRepository(db).get(team_id) is None:
+            raise NotFoundError("Team", team_id)
+        access_grants.enforce_team_access(
+            current_user,
+            team_id,
+            permission,
+            audit_service=audit_service,
+            request_id=request_id_var.get(),
+        )
+        return current_user
+
+    return dependency
+
+
+def require_project_access(permission: Permission) -> Callable[..., User]:
+    """Project equivalent of require_team_access above — see its docstring
+    for the full rationale."""
+
+    def dependency(
+        project_id: uuid.UUID,
+        current_user: User = Depends(require_permission(permission)),
+        db: Session = Depends(get_db),
+        audit_service: AuditService = Depends(get_audit_service),
+        access_grants: AccessGrantService = Depends(get_access_grant_service),
+    ) -> User:
+        if ProjectRepository(db).get(project_id) is None:
+            raise NotFoundError("Project", project_id)
+        access_grants.enforce_project_access(
+            current_user,
+            project_id,
+            permission,
+            audit_service=audit_service,
+            request_id=request_id_var.get(),
+        )
         return current_user
 
     return dependency

@@ -48,6 +48,11 @@ export function AppShell() {
                   Import / Export
                 </NavLink>
               ) : null}
+              {can('access.manage') ? (
+                <NavLink to="/admin/access" className={NAV_LINK_CLASS}>
+                  Access
+                </NavLink>
+              ) : null}
             </nav>
           </div>
           <div className="flex items-center gap-4">

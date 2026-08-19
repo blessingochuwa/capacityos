@@ -67,7 +67,10 @@ export function makeCurrentUser(
       'user.read',
       'user.write',
       'audit.read',
+      'access.manage',
     ],
+    accessible_team_ids: [],
+    accessible_project_ids: [],
     ...overrides,
   }
 }

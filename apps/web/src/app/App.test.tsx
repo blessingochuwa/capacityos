@@ -13,6 +13,8 @@ const CURRENT_USER_PAYLOAD = {
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   permissions: ['person.read', 'export.use'],
+  accessible_team_ids: [],
+  accessible_project_ids: [],
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

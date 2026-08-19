@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { RouteErrorBoundary } from '@/components/layout/RouteErrorBoundary'
+import { AccessManagementPage } from '@/features/access/views/AccessManagementPage'
 import { CapacityOverviewPage } from '@/features/capacity/views/CapacityOverviewPage'
 import { PersonCapacityPage } from '@/features/capacity/views/PersonCapacityPage'
 import { ProjectCapacityPage } from '@/features/capacity/views/ProjectCapacityPage'
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
       { path: 'insights', element: <InsightsOverviewPage /> },
       { path: 'skills', element: <SkillsOverviewPage /> },
       { path: 'import-export', element: <ImportExportPage /> },
+      { path: 'admin/access', element: <AccessManagementPage /> },
     ],
   },
 ])

@@ -222,3 +222,13 @@ class AuditAction(StrEnum):
 
     IMPORT_APPLY = "import.apply"
     EXPORT_USE = "export.use"
+
+    RESOURCE_ACCESS_DENIED = "resource_access.denied"
+    """A caller held the type-level permission but not an instance-level
+    grant for this specific Team/Project (Phase 11) — distinct from
+    PERMISSION_DENIED above, which fires when the role lacks the permission
+    entirely. Always carries resource_id (unlike PERMISSION_DENIED, which
+    never knows a specific instance)."""
+
+    ACCESS_GRANT_CREATE = "access_grant.create"
+    ACCESS_GRANT_REVOKE = "access_grant.revoke"

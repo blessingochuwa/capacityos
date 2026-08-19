@@ -1,4 +1,5 @@
-"""Centralized RBAC policy (Phase 10) — pure, DB-free, no HTTP.
+"""Centralized RBAC policy (Phase 10) + instance-level resource scoping
+(Phase 11) — pure, DB-free, no HTTP.
 
 The single place a role's grants are decided, matching this codebase's
 existing convention of explicit rank/grant tables over scattered
@@ -6,15 +7,19 @@ conditionals (e.g. PROFICIENCY_RANK in app/domain/skills.py, _SEVERITY_RANK
 in app/services/insight_service.py). Routes and dependencies call
 has_permission(role, permission) — never `if user.role == "admin"` inline.
 
-Phase 10 implements TYPE-level authorization only (role -> permission on an
-entity TYPE). The `resource` parameter on has_permission is accepted but
-unused today — a deliberate forward-compat seam so a future phase can add
-instance-level scoping (e.g. "only this team's Manager") without changing
-every call site's signature. See docs/adr/0010-authentication-rbac-audit.md.
+Phase 10 implemented TYPE-level authorization only (role -> permission on an
+entity TYPE). Phase 11 fills in the `resource` parameter, which Phase 10 left
+accepted-but-unused as a deliberate forward-compat seam: a caller who has
+already resolved whether an explicit TeamAccessGrant/ProjectAccessGrant row
+exists for this user and this specific instance passes that result in as a
+ResourceScope. has_permission itself still performs no I/O — the DB lookup
+happens in app/services/access_grant.py::AccessGrantService, which is the
+only thing that constructs a ResourceScope. See
+docs/adr/0011-instance-level-resource-authorization.md.
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 from app.models.enums import UserRole
 
@@ -63,6 +68,13 @@ class Permission(StrEnum):
     USER_WRITE = "user.write"
     AUDIT_READ = "audit.read"
 
+    ACCESS_MANAGE = "access.manage"
+    """Grant/revoke a TeamAccessGrant or ProjectAccessGrant (Phase 11).
+    Deliberately not folded into _WRITE_PERMISSIONS below — Manager holds
+    every other write permission but must never hold this one, since it is
+    what would let a Manager grant themselves (or anyone) instance-level
+    access. Only Admin/Owner receive it, directly in ROLE_PERMISSIONS."""
+
 
 _READ_PERMISSIONS: frozenset[Permission] = frozenset(
     {
@@ -110,12 +122,14 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
         | {Permission.EXPORT_USE}
         | _WRITE_PERMISSIONS
         | {Permission.USER_READ, Permission.USER_WRITE, Permission.AUDIT_READ}
+        | {Permission.ACCESS_MANAGE}
     ),
     UserRole.OWNER: (
         _READ_PERMISSIONS
         | {Permission.EXPORT_USE}
         | _WRITE_PERMISSIONS
         | {Permission.USER_READ, Permission.USER_WRITE, Permission.AUDIT_READ}
+        | {Permission.ACCESS_MANAGE}
     ),
     # Owner and Admin share an identical permission SET — what distinguishes
     # Owner is procedural, enforced in UserService, not an extra Permission:
@@ -124,8 +138,45 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
 }
 
 
-def has_permission(role: UserRole, permission: Permission, resource: Any = None) -> bool:
-    """resource is accepted for forward compatibility (see module docstring)
-    but ignored in Phase 10 — every check today is purely role-based."""
-    del resource
-    return permission in ROLE_PERMISSIONS[role]
+@dataclass(frozen=True)
+class ResourceScope:
+    """A precomputed instance-level grant result for a single Team/Project
+    resource (Phase 11), resolved by the CALLER — AccessGrantService — via a
+    database lookup before calling has_permission. has_permission itself
+    performs no I/O, preserving its Phase 10 pure-function invariant.
+
+    granted=True means an explicit TeamAccessGrant/ProjectAccessGrant row
+    exists for this user and this specific resource id. It means nothing on
+    its own for Owner/Admin (see has_permission below) — those roles bypass
+    resource scoping entirely regardless of granted, since their authority
+    is role-based, not grant-based.
+    """
+
+    granted: bool
+
+
+def has_permission(
+    role: UserRole, permission: Permission, resource: ResourceScope | None = None
+) -> bool:
+    """Type-level check first (Phase 10, unchanged): a role without the
+    permission at all is denied regardless of resource. If resource is None,
+    this is a pure type-level check — every Phase 10 call site, and every
+    Phase 11 call site for a permission Phase 11 doesn't scope, passes no
+    resource and behaves exactly as before.
+
+    If resource is provided, Owner/Admin unconditionally bypass it (their
+    authority was never meant to be instance-scoped — see ADR 0011). Every
+    other role's access is exactly resource.granted — for Manager (the only
+    role that both holds write permissions and is ever passed a
+    ResourceScope in Phase 11) this is the instance-grant check; for
+    Member/Viewer it's moot in practice since they never reach the write
+    permissions Phase 11 scopes in the first place, but the check is applied
+    uniformly rather than special-cased.
+    """
+    if permission not in ROLE_PERMISSIONS[role]:
+        return False
+    if resource is None:
+        return True
+    if role in (UserRole.OWNER, UserRole.ADMIN):
+        return True
+    return resource.granted

@@ -18,15 +18,45 @@ from app.models.enums import (
     EmploymentStatus,
     ProjectStatus,
     SkillProficiency,
+    UserRole,
+    UserStatus,
 )
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
 from app.models.project import Project
+from app.models.project_access_grant import ProjectAccessGrant
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.skill import Skill
 from app.models.team import Team
+from app.models.team_access_grant import TeamAccessGrant
 from app.models.team_membership import TeamMembership
+from app.models.user import User
 from app.models.working_schedule import WorkingSchedule, WorkingScheduleEntry
+
+
+def make_user(
+    session: Session,
+    *,
+    email: str = "user@example.com",
+    display_name: str = "Test User",
+    role: UserRole = UserRole.MANAGER,
+    status: UserStatus = UserStatus.ACTIVE,
+) -> User:
+    """A persisted User row for tests that need a real FK target (e.g.
+    TeamAccessGrant.user_id) but aren't exercising authentication itself —
+    password_hash is a placeholder no login attempt ever verifies against,
+    same convention as tests/conftest.py::make_test_user (which exists
+    separately for dependency-override-based route authentication)."""
+    user = User(
+        email=email,
+        password_hash="!unused! — see make_user docstring",
+        display_name=display_name,
+        role=role,
+        status=status,
+    )
+    session.add(user)
+    session.flush()
+    return user
 
 
 def make_person(
@@ -196,6 +226,32 @@ def make_person_skill(
     session.add(person_skill)
     session.flush()
     return person_skill
+
+
+def make_team_access_grant(
+    session: Session, *, user: User, team: Team, granted_by: User | None = None
+) -> TeamAccessGrant:
+    grant = TeamAccessGrant(
+        user_id=user.id,
+        team_id=team.id,
+        granted_by_user_id=granted_by.id if granted_by is not None else None,
+    )
+    session.add(grant)
+    session.flush()
+    return grant
+
+
+def make_project_access_grant(
+    session: Session, *, user: User, project: Project, granted_by: User | None = None
+) -> ProjectAccessGrant:
+    grant = ProjectAccessGrant(
+        user_id=user.id,
+        project_id=project.id,
+        granted_by_user_id=granted_by.id if granted_by is not None else None,
+    )
+    session.add(grant)
+    session.flush()
+    return grant
 
 
 def make_project_skill_requirement(

@@ -80,6 +80,18 @@ def make_test_user(
     return user
 
 
+def user_id_of(client: TestClient) -> str:
+    """The string id of a client_as()-created TestClient's underlying
+    User — Phase 11 tests that grant/revoke instance-level access need
+    this. `client.user` is a dynamic attribute (see client_as's `_make`
+    below), which plain `# type: ignore[attr-defined]` comments at call
+    sites don't reliably narrow back to `str` everywhere they're used —
+    this helper's explicit `-> str` return annotation is the one place
+    that conversion is declared, so every call site gets a real `str`
+    without repeating the workaround."""
+    return str(client.user.id)  # type: ignore[attr-defined]
+
+
 @pytest.fixture
 def unauthenticated_client(db_session: Session) -> Generator[TestClient]:
     """A TestClient with no auth bypass at all — DB wiring only. Used to
@@ -112,8 +124,31 @@ def client_as(db_session: Session) -> Generator[Callable[[UserRole], TestClient]
 
     def _make(role: UserRole) -> TestClient:
         user = make_test_user(db_session, role)
-        app.dependency_overrides[get_current_user] = lambda: user
-        return stack.enter_context(TestClient(app))
+
+        def _activate() -> None:
+            app.dependency_overrides[get_current_user] = lambda: user
+
+        _activate()
+        test_client = stack.enter_context(TestClient(app))
+        test_client.user = user  # type: ignore[attr-defined]
+        # Phase 11 tests that need to grant/revoke instance-level access for
+        # THIS specific test client's user (e.g. "grant this Manager access
+        # to Team A") need its real User.id, which client_as's Callable
+        # signature otherwise has no way to expose — attaching it here
+        # keeps every pre-Phase-11 call site (which only uses the returned
+        # TestClient) unchanged.
+        #
+        # get_current_user is overridden via ONE shared mutable slot on the
+        # `app` object, not per-client state — so creating a second client
+        # via client_as() silently repoints EVERY previously-returned
+        # TestClient at the new identity too (they all read
+        # app.dependency_overrides dynamically per request). Multi-actor
+        # Phase 11 tests (owner grants access, then the manager acts, then
+        # the owner revokes it, then the manager acts again) need to switch
+        # back to an earlier client's identity without minting a brand-new
+        # user each time — test_client.activate() does exactly that.
+        test_client.activate = _activate  # type: ignore[attr-defined]
+        return test_client
 
     try:
         yield _make

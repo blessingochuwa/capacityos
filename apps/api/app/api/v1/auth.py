@@ -2,7 +2,13 @@ import logging
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from app.api.deps import get_audit_service, get_auth_service, get_current_user, require_csrf
+from app.api.deps import (
+    get_access_grant_service,
+    get_audit_service,
+    get_auth_service,
+    get_current_user,
+    require_csrf,
+)
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UnauthenticatedError
 from app.core.logging import request_id_var
@@ -10,6 +16,7 @@ from app.models.enums import AuditAction, AuditOutcome
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest
 from app.schemas.user import UserRead, user_to_read
+from app.services.access_grant import AccessGrantService
 from app.services.audit import AuditService
 from app.services.auth import AuthService
 
@@ -55,6 +62,7 @@ def login(
     settings: Settings = Depends(get_settings),
     auth_service: AuthService = Depends(get_auth_service),
     audit_service: AuditService = Depends(get_audit_service),
+    access_grants: AccessGrantService = Depends(get_access_grant_service),
 ) -> UserRead:
     result = auth_service.login(data.email, data.password)
     request_id = request_id_var.get()
@@ -91,7 +99,11 @@ def login(
         request_id=request_id,
     )
     security_logger.info("login succeeded", extra={"user_id": str(result.user.id)})
-    return user_to_read(result.user)
+    return user_to_read(
+        result.user,
+        accessible_team_ids=access_grants.accessible_team_ids(result.user.id),
+        accessible_project_ids=access_grants.accessible_project_ids(result.user.id),
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -120,8 +132,15 @@ def logout(
 
 
 @router.get("/me", response_model=UserRead)
-def get_me(current_user: User = Depends(get_current_user)) -> UserRead:
-    return user_to_read(current_user)
+def get_me(
+    current_user: User = Depends(get_current_user),
+    access_grants: AccessGrantService = Depends(get_access_grant_service),
+) -> UserRead:
+    return user_to_read(
+        current_user,
+        accessible_team_ids=access_grants.accessible_team_ids(current_user.id),
+        accessible_project_ids=access_grants.accessible_project_ids(current_user.id),
+    )
 
 
 @router.post(

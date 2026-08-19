@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import MaxBodySizeMiddleware, RequestContextMiddleware
+from app.api.v1.access_grants import router as access_grants_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.allocations import router as allocations_router
 from app.api.v1.audit import router as audit_router
@@ -85,6 +86,7 @@ app.include_router(audit_router)
 app.include_router(people_router)
 app.include_router(teams_router)
 app.include_router(projects_router)
+app.include_router(access_grants_router)
 app.include_router(allocations_router)
 app.include_router(working_schedules_router)
 app.include_router(availability_exceptions_router)

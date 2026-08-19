@@ -39,6 +39,7 @@ describe('ScenarioListPage', () => {
       user: null,
       status: 'authenticated',
       can: () => true,
+      canManageResource: () => true,
       login: vi.fn(),
       logout: vi.fn(),
     })
@@ -114,6 +115,7 @@ describe('ScenarioListPage', () => {
       user: null,
       status: 'authenticated',
       can: () => false,
+      canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
     })

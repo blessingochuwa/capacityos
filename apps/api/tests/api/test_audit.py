@@ -7,6 +7,7 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 
 from app.models.enums import UserRole
+from tests.conftest import user_id_of
 
 
 def test_creating_a_person_produces_an_audit_event(client: TestClient) -> None:
@@ -61,6 +62,58 @@ def test_audit_metadata_never_contains_a_password_or_token(client: TestClient) -
         blob = str(event)
         assert "correct horse battery staple" not in blob
         assert "password" not in (event.get("event_metadata") or {})
+
+
+def test_resource_access_denial_produces_an_audit_event_with_resource_id(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    """Phase 11: unlike permission.denied (which never knows a specific
+    instance), resource_access.denied always carries resource_id — see
+    docs/adr/0011-instance-level-resource-authorization.md."""
+    owner = client_as(UserRole.OWNER)
+    team = owner.post("/api/v1/teams", json={"name": "Design"}).json()
+    manager = client_as(UserRole.MANAGER)
+
+    manager.activate()  # type: ignore[attr-defined]
+    manager.patch(f"/api/v1/teams/{team['id']}", json={"name": "Should be denied"})
+
+    owner.activate()  # type: ignore[attr-defined]
+    events = owner.get(
+        "/api/v1/audit", params={"action": "resource_access.denied"}
+    ).json()["items"]
+    matching = [e for e in events if e["resource_id"] == team["id"]]
+    assert len(matching) == 1
+    assert matching[0]["outcome"] == "denied"
+    assert matching[0]["resource_type"] == "team"
+    assert matching[0]["event_metadata"] == {"permission": "team.write", "role": "manager"}
+
+
+def test_access_grant_and_revoke_produce_audit_events(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    team = owner.post("/api/v1/teams", json={"name": "Design"}).json()
+    manager = client_as(UserRole.MANAGER)
+    manager_id = user_id_of(manager)
+
+    owner.activate()  # type: ignore[attr-defined]
+    owner.post(f"/api/v1/teams/{team['id']}/access-grants", json={"user_id": manager_id})
+    owner.delete(f"/api/v1/teams/{team['id']}/access-grants/{manager_id}")
+
+    grant_events = owner.get(
+        "/api/v1/audit", params={"action": "access_grant.create"}
+    ).json()["items"]
+    matching_grant = [e for e in grant_events if e["resource_id"] == team["id"]]
+    assert len(matching_grant) == 1
+    assert matching_grant[0]["outcome"] == "success"
+    assert matching_grant[0]["event_metadata"] == {"target_user_id": manager_id}
+
+    revoke_events = owner.get(
+        "/api/v1/audit", params={"action": "access_grant.revoke"}
+    ).json()["items"]
+    matching_revoke = [e for e in revoke_events if e["resource_id"] == team["id"]]
+    assert len(matching_revoke) == 1
+    assert matching_revoke[0]["event_metadata"] == {"target_user_id": manager_id}
 
 
 def test_import_apply_audit_metadata_never_contains_file_content(client: TestClient) -> None:

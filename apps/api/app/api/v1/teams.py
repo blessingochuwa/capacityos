@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission
+from app.api.deps import get_audit_service, require_csrf, require_permission, require_team_access
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
@@ -104,7 +104,7 @@ def get_team(
 def update_team(
     team_id: uuid.UUID,
     data: TeamUpdate,
-    current_user: User = Depends(require_permission(Permission.TEAM_WRITE)),
+    current_user: User = Depends(require_team_access(Permission.TEAM_WRITE)),
     service: TeamService = Depends(get_team_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamRead:
@@ -127,7 +127,7 @@ def update_team(
 )
 def delete_team(
     team_id: uuid.UUID,
-    current_user: User = Depends(require_permission(Permission.TEAM_DELETE)),
+    current_user: User = Depends(require_team_access(Permission.TEAM_DELETE)),
     service: TeamService = Depends(get_team_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
@@ -159,7 +159,7 @@ def list_team_members(
 def add_team_member(
     team_id: uuid.UUID,
     data: TeamMembershipCreate,
-    current_user: User = Depends(require_permission(Permission.TEAM_WRITE)),
+    current_user: User = Depends(require_team_access(Permission.TEAM_WRITE)),
     service: TeamMembershipService = Depends(get_team_membership_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamMembershipRead:
@@ -184,7 +184,7 @@ def add_team_member(
 def remove_team_member(
     team_id: uuid.UUID,
     person_id: uuid.UUID,
-    current_user: User = Depends(require_permission(Permission.TEAM_DELETE)),
+    current_user: User = Depends(require_team_access(Permission.TEAM_DELETE)),
     service: TeamMembershipService = Depends(get_team_membership_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:

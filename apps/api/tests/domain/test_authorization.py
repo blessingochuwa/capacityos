@@ -1,7 +1,8 @@
 """has_permission is a pure function (no I/O, no app, no database) — see
-docs/adr/0010-authentication-rbac-audit.md."""
+docs/adr/0010-authentication-rbac-audit.md and
+docs/adr/0011-instance-level-resource-authorization.md."""
 
-from app.domain.authorization import Permission, has_permission
+from app.domain.authorization import Permission, ResourceScope, has_permission
 from app.models.enums import UserRole
 
 
@@ -70,9 +71,49 @@ def test_every_role_can_read_all_operational_entities() -> None:
             assert has_permission(role, permission), f"{role} should have {permission}"
 
 
-def test_resource_parameter_is_accepted_but_ignored() -> None:
-    """Phase 10 implements type-level authorization only — see the module
-    docstring's forward-compat seam."""
-    assert has_permission(UserRole.VIEWER, Permission.PERSON_READ, resource=object()) == (
-        has_permission(UserRole.VIEWER, Permission.PERSON_READ)
-    )
+def test_no_resource_argument_is_a_pure_type_level_check() -> None:
+    """Phase 11: passing no `resource` at all preserves Phase 10 behavior
+    exactly — every call site that doesn't scope a permission (i.e. every
+    call site except the Team/Project write/delete checks) is unaffected."""
+    assert has_permission(UserRole.VIEWER, Permission.PERSON_READ) is True
+    assert has_permission(UserRole.MANAGER, Permission.PERSON_WRITE) is True
+
+
+def test_owner_and_admin_bypass_resource_scope_even_when_ungranted() -> None:
+    """Owner/Admin authority is role-based, never grant-based — they must
+    never need a TeamAccessGrant/ProjectAccessGrant row to act."""
+    ungranted = ResourceScope(granted=False)
+    assert has_permission(UserRole.OWNER, Permission.TEAM_WRITE, resource=ungranted) is True
+    assert has_permission(UserRole.ADMIN, Permission.PROJECT_DELETE, resource=ungranted) is True
+
+
+def test_manager_denied_resource_scope_without_a_grant() -> None:
+    ungranted = ResourceScope(granted=False)
+    assert has_permission(UserRole.MANAGER, Permission.TEAM_WRITE, resource=ungranted) is False
+    assert has_permission(UserRole.MANAGER, Permission.PROJECT_DELETE, resource=ungranted) is False
+
+
+def test_manager_allowed_resource_scope_with_a_grant() -> None:
+    granted = ResourceScope(granted=True)
+    assert has_permission(UserRole.MANAGER, Permission.TEAM_WRITE, resource=granted) is True
+    assert has_permission(UserRole.MANAGER, Permission.PROJECT_DELETE, resource=granted) is True
+
+
+def test_member_and_viewer_still_denied_even_with_a_grant() -> None:
+    """The type-level check (ROLE_PERMISSIONS) always runs first — Member
+    and Viewer hold no *_WRITE/*_DELETE permission at all, so a ResourceScope
+    can never grant them write access regardless of its `granted` value."""
+    granted = ResourceScope(granted=True)
+    assert has_permission(UserRole.MEMBER, Permission.TEAM_WRITE, resource=granted) is False
+    assert has_permission(UserRole.VIEWER, Permission.PROJECT_DELETE, resource=granted) is False
+
+
+def test_access_manage_is_admin_and_owner_only() -> None:
+    """The permission that lets someone grant/revoke instance access must
+    never be held by Manager — otherwise a Manager could grant themselves
+    access to any team/project, defeating the entire scope model."""
+    assert has_permission(UserRole.OWNER, Permission.ACCESS_MANAGE) is True
+    assert has_permission(UserRole.ADMIN, Permission.ACCESS_MANAGE) is True
+    assert has_permission(UserRole.MANAGER, Permission.ACCESS_MANAGE) is False
+    assert has_permission(UserRole.MEMBER, Permission.ACCESS_MANAGE) is False
+    assert has_permission(UserRole.VIEWER, Permission.ACCESS_MANAGE) is False

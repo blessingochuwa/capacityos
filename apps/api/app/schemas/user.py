@@ -46,7 +46,18 @@ class UserRead(BaseModel):
     re-checks require_permission independently); this field exists purely
     so the frontend can gate UI affordances from one authoritative source
     instead of hand-maintaining a second copy of the role/permission table
-    in TypeScript, which would drift."""
+    in TypeScript, which would drift.
+
+    accessible_team_ids/accessible_project_ids (Phase 11) are this user's
+    OWN explicit TeamAccessGrant/ProjectAccessGrant instance ids — default
+    empty so every existing call site that doesn't pass them (e.g.
+    app/api/v1/users.py's admin list/create/update, which serialize OTHER
+    users and have no reason to resolve another user's grants) is
+    unaffected. Only meaningful for Manager: Owner/Admin bypass resource
+    scoping entirely (role-based, not grant-based — the frontend should
+    treat those roles as always-authorized regardless of list contents),
+    and Member/Viewer hold no team.write/project.write permission to begin
+    with, so an empty list for them isn't a restriction, just accurate."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,9 +71,20 @@ class UserRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     permissions: list[str] = []
+    accessible_team_ids: list[uuid.UUID] = []
+    accessible_project_ids: list[uuid.UUID] = []
 
 
-def user_to_read(user: User) -> UserRead:
+def user_to_read(
+    user: User,
+    *,
+    accessible_team_ids: list[uuid.UUID] | None = None,
+    accessible_project_ids: list[uuid.UUID] | None = None,
+) -> UserRead:
     return UserRead.model_validate(user).model_copy(
-        update={"permissions": sorted(p.value for p in ROLE_PERMISSIONS[user.role])}
+        update={
+            "permissions": sorted(p.value for p in ROLE_PERMISSIONS[user.role]),
+            "accessible_team_ids": accessible_team_ids or [],
+            "accessible_project_ids": accessible_project_ids or [],
+        }
     )

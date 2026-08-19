@@ -23,4 +23,14 @@ export interface CurrentUser {
    * table is decided (CLAUDE.md §21: backend authorization is the security
    * boundary, frontend authorization is for UX only). */
   permissions: string[]
+  /** Phase 11: this user's own explicit instance-level grants. Only
+   * meaningful for Manager — Owner/Admin bypass resource scoping entirely
+   * on the backend (role-based, not grant-based), so the frontend should
+   * treat those two roles as always-authorized regardless of what these
+   * lists contain. Member/Viewer hold no team.write/project.write
+   * permission to begin with, so an empty list for them isn't a
+   * restriction, just accurate. See
+   * docs/adr/0011-instance-level-resource-authorization.md. */
+  accessible_team_ids: string[]
+  accessible_project_ids: string[]
 }
