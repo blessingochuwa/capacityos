@@ -29,6 +29,8 @@ export const SIGNAL_TYPE_LABEL: Record<SignalType, string> = {
   skill_gap: 'Skill gap',
   single_skill_holder: 'Single point of failure',
   skill_concentration: 'Skill concentration',
+  risk_high_exposure: 'High-exposure risk',
+  risk_review_overdue: 'Risk review overdue',
 }
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -40,10 +42,12 @@ const TYPE_RANK: Record<SignalType, number> = {
   over_allocation: 0,
   scenario_new_risk: 1,
   scenario_existing_risk: 1,
+  risk_high_exposure: 1,
   low_capacity: 2,
   project_capacity_pressure: 2,
   skill_gap: 2,
   single_skill_holder: 2,
+  risk_review_overdue: 2,
   zero_remaining_capacity: 3,
   capacity_imbalance: 4,
   concentration_risk: 5,

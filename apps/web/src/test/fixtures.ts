@@ -33,6 +33,7 @@ import type {
   SkillCoverage,
   TeamSkillCapacityEntry,
 } from '@/features/skills/types/skills'
+import type { Risk as RiskEntity } from '@/features/risks/types/risks'
 import type {
   AIInsightResponse,
   AIResponseEnvelope,
@@ -383,6 +384,15 @@ export function makeSignal(overrides: Partial<Signal> = {}): Signal {
     skill_holder_ids: null,
     skill_holder_labels: null,
     skill_holder_ratio: null,
+    risk_id: null,
+    risk_description: null,
+    risk_probability: null,
+    risk_impact: null,
+    risk_exposure: null,
+    risk_status: null,
+    risk_owner_person_id: null,
+    risk_owner_label: null,
+    risk_review_date: null,
     ...overrides,
   }
 }
@@ -467,6 +477,30 @@ export function makeSkill(overrides: Partial<Skill> = {}): Skill {
     created_at: '2026-08-17T00:00:00Z',
     updated_at: '2026-08-17T00:00:00Z',
     person_count: 0,
+    ...overrides,
+  }
+}
+
+/** Named makeProjectRisk, not makeRisk, to avoid colliding with the
+ * pre-existing scenario-domain makeRisk above (Risk from
+ * features/scenarios/types/scenario — a capacity risk delta, a completely
+ * different concept from this Phase 13 risk-register entity). */
+export function makeProjectRisk(overrides: Partial<RiskEntity> = {}): RiskEntity {
+  return {
+    id: 'risk-1',
+    project_id: 'project-1',
+    description: 'Key vendor may miss the delivery deadline',
+    cause: null,
+    potential_effect: null,
+    probability: 'medium',
+    impact: 'medium',
+    exposure: 'medium',
+    response: null,
+    owner_person_id: null,
+    status: 'open',
+    review_date: null,
+    created_at: '2026-08-17T00:00:00Z',
+    updated_at: '2026-08-17T00:00:00Z',
     ...overrides,
   }
 }

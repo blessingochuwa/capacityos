@@ -33,6 +33,12 @@ from app.domain.insights import (
     scenario_risk_severity,
     scenario_risk_trend,
 )
+from app.domain.risk import (
+    RiskExposure,
+    RiskSignalType,
+    calculate_risk_exposure,
+    classify_risk_signal,
+)
 from app.domain.skills import (
     QualifiedPerson,
     SkillConcentrationResult,
@@ -41,13 +47,16 @@ from app.domain.skills import (
     calculate_skill_coverage,
     is_qualified,
 )
+from app.models.enums import RiskStatus
 from app.models.person_skill import PersonSkill
+from app.models.risk import Risk
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -79,10 +88,12 @@ _TYPE_RANK: dict[SignalType, int] = {
     "over_allocation": 0,
     "scenario_new_risk": 1,
     "scenario_existing_risk": 1,
+    "risk_high_exposure": 1,
     "low_capacity": 2,
     "project_capacity_pressure": 2,
     "skill_gap": 2,
     "single_skill_holder": 2,
+    "risk_review_overdue": 2,
     "zero_remaining_capacity": 3,
     "capacity_imbalance": 4,
     "concentration_risk": 5,
@@ -116,6 +127,7 @@ class InsightService:
         person_skill_repository: PersonSkillRepository,
         skill_repository: SkillRepository,
         project_skill_requirement_repository: ProjectSkillRequirementRepository,
+        risk_repository: RiskRepository,
     ) -> None:
         self.schedule_repository = schedule_repository
         self.availability_repository = availability_repository
@@ -129,6 +141,7 @@ class InsightService:
         self.person_skill_repository = person_skill_repository
         self.skill_repository = skill_repository
         self.project_skill_requirement_repository = project_skill_requirement_repository
+        self.risk_repository = risk_repository
 
     # -- Public entry points ------------------------------------------------
 
@@ -349,6 +362,7 @@ class InsightService:
         signals.extend(
             self._project_skill_signals(organization_id, project_id, label, start_date, end_date)
         )
+        signals.extend(self._project_risk_signals(organization_id, project_id, label))
         return label, demand, signals
 
     # -- Skill signal assembly (Phase 7) ---------------------------------------
@@ -511,6 +525,98 @@ class InsightService:
             )
             results[person_id] = result.remaining_capacity
         return results
+
+    # -- Risk signal assembly (Phase 13) ---------------------------------------
+
+    def _project_risk_signals(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, label: str
+    ) -> list[SignalRead]:
+        """risk_high_exposure / risk_review_overdue for every one of the
+        project's still-live (not closed) Risk rows — see
+        app/domain/risk.py::classify_risk_signal. Unlike the capacity/
+        skill signals above, these are never period-anchored (a risk's
+        exposure and review date are facts about right now, not about
+        [start_date, end_date]), so this takes no date range."""
+        risks = self.risk_repository.list_open_for_project(project_id, organization_id)
+        if not risks:
+            return []
+        owner_ids = [risk.owner_person_id for risk in risks if risk.owner_person_id is not None]
+        owner_labels = self._person_labels(organization_id, owner_ids)
+
+        signals: list[SignalRead] = []
+        for risk in risks:
+            signal = self._risk_signal(risk, label, owner_labels)
+            if signal is not None:
+                signals.append(signal)
+        return signals
+
+    def _risk_signal(
+        self, risk: Risk, label: str, owner_labels: dict[uuid.UUID, str]
+    ) -> SignalRead | None:
+        exposure: RiskExposure = calculate_risk_exposure(risk.probability, risk.impact)
+        today = date.today()
+        signal_type = classify_risk_signal(
+            exposure=exposure, status=risk.status, review_date=risk.review_date, today=today
+        )
+        if signal_type is None:
+            return None
+
+        owner_label = (
+            owner_labels.get(risk.owner_person_id, "Unknown")
+            if risk.owner_person_id is not None
+            else "Unassigned"
+        )
+        severity = self._risk_signal_severity(signal_type, risk.status)
+        explanation = self._risk_explanation(signal_type, risk, owner_label, today)
+
+        return SignalRead(
+            type=signal_type,
+            severity=severity,
+            entity_type="project",
+            entity_id=risk.project_id,
+            entity_label=label,
+            start_date=today,
+            end_date=today,
+            explanation=explanation,
+            risk_id=risk.id,
+            risk_description=risk.description,
+            risk_probability=risk.probability,
+            risk_impact=risk.impact,
+            risk_exposure=exposure,
+            risk_status=risk.status,
+            risk_owner_person_id=risk.owner_person_id,
+            risk_owner_label=owner_label,
+            risk_review_date=risk.review_date,
+        )
+
+    def _risk_signal_severity(self, signal_type: RiskSignalType, status: RiskStatus) -> Severity:
+        """risk_high_exposure -> critical while still OPEN (nothing being
+        done about a high-exposure risk yet), warning once mitigating/
+        monitoring (already being managed, still worth watching) —
+        matching capacity_signal_severity's confirmed-fact-vs-in-hand
+        distinction. risk_review_overdue is always a process signal, not
+        an outcome signal — warning regardless of status (any live status
+        can have a lapsed review)."""
+        if signal_type == "risk_high_exposure":
+            return "critical" if status == RiskStatus.OPEN else "warning"
+        return "warning"
+
+    def _risk_explanation(
+        self, signal_type: RiskSignalType, risk: Risk, owner_label: str, today: date
+    ) -> str:
+        if signal_type == "risk_high_exposure":
+            return (
+                f'"{risk.description}" is a high-exposure risk '
+                f"({risk.probability.value} probability, {risk.impact.value} impact) "
+                f"currently {risk.status.value}, owned by {owner_label}."
+            )
+        days_overdue = (today - risk.review_date).days if risk.review_date else 0
+        return (
+            f'"{risk.description}" was due for review on '
+            f"{risk.review_date.isoformat() if risk.review_date else 'an unknown date'} "
+            f"({days_overdue} day{'s' if days_overdue != 1 else ''} overdue), owned by "
+            f"{owner_label}."
+        )
 
     # -- Signal builders ------------------------------------------------------
 

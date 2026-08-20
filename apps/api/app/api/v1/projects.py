@@ -23,6 +23,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
@@ -34,10 +35,12 @@ from app.schemas.project_skill_requirement import (
     ProjectSkillRequirementRead,
     ProjectSkillRequirementUpdate,
 )
+from app.schemas.risk import RiskCreate, RiskRead, RiskUpdate, risk_to_read
 from app.schemas.skill_capacity import ProjectSkillCoverageRead
 from app.services.audit import AuditService
 from app.services.project import ProjectService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
+from app.services.risk import RiskService
 from app.services.skill_capacity import SkillCapacityService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -53,6 +56,10 @@ def get_project_skill_requirement_service(
     return ProjectSkillRequirementService(
         ProjectSkillRequirementRepository(db), ProjectRepository(db), SkillRepository(db)
     )
+
+
+def get_risk_service(db: Session = Depends(get_db)) -> RiskService:
+    return RiskService(RiskRepository(db), ProjectRepository(db), PersonRepository(db))
 
 
 def get_skill_capacity_service(db: Session = Depends(get_db)) -> SkillCapacityService:
@@ -275,4 +282,104 @@ def get_project_skill_coverage(
 ) -> ProjectSkillCoverageRead:
     return service.get_project_skill_coverage(
         membership.organization_id, project_id, start_date, end_date
+    )
+
+
+# ---------------------------------------------------------------------------
+# Risks (Phase 13, CLAUDE.md §17)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{project_id}/risks", response_model=list[RiskRead])
+def list_project_risks(
+    project_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.RISK_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: RiskService = Depends(get_risk_service),
+) -> list[RiskRead]:
+    return [
+        risk_to_read(risk)
+        for risk in service.list_for_project(membership.organization_id, project_id)
+    ]
+
+
+@router.post(
+    "/{project_id}/risks",
+    response_model=RiskRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
+def create_project_risk(
+    project_id: uuid.UUID,
+    data: RiskCreate,
+    current_user: User = Depends(require_project_access(Permission.RISK_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: RiskService = Depends(get_risk_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> RiskRead:
+    risk = service.create(membership.organization_id, project_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.RISK_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="risk",
+        resource_id=str(risk.id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"project_id": str(project_id)},
+    )
+    return risk_to_read(risk)
+
+
+@router.patch(
+    "/{project_id}/risks/{risk_id}", response_model=RiskRead, dependencies=[Depends(require_csrf)]
+)
+def update_project_risk(
+    project_id: uuid.UUID,
+    risk_id: uuid.UUID,
+    data: RiskUpdate,
+    current_user: User = Depends(require_project_access(Permission.RISK_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: RiskService = Depends(get_risk_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> RiskRead:
+    risk = service.update(membership.organization_id, project_id, risk_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.RISK_UPDATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="risk",
+        resource_id=str(risk_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
+    )
+    return risk_to_read(risk)
+
+
+@router.delete(
+    "/{project_id}/risks/{risk_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
+)
+def delete_project_risk(
+    project_id: uuid.UUID,
+    risk_id: uuid.UUID,
+    current_user: User = Depends(require_project_access(Permission.RISK_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: RiskService = Depends(get_risk_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> None:
+    service.delete(membership.organization_id, project_id, risk_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.RISK_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="risk",
+        resource_id=str(risk_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )

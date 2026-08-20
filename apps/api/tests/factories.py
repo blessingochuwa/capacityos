@@ -19,6 +19,9 @@ from app.models.enums import (
     EmploymentStatus,
     MembershipStatus,
     ProjectStatus,
+    RiskImpact,
+    RiskProbability,
+    RiskStatus,
     SkillProficiency,
     UserRole,
     UserStatus,
@@ -30,6 +33,7 @@ from app.models.person_skill import PersonSkill
 from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
 from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.risk import Risk
 from app.models.skill import Skill
 from app.models.team import Team
 from app.models.team_access_grant import TeamAccessGrant
@@ -350,3 +354,36 @@ def make_project_skill_requirement(
     session.add(requirement)
     session.flush()
     return requirement
+
+
+def make_risk(
+    session: Session,
+    *,
+    organization: Organization,
+    project: Project,
+    description: str = "Key vendor may miss the delivery deadline",
+    cause: str | None = None,
+    potential_effect: str | None = None,
+    probability: RiskProbability = RiskProbability.MEDIUM,
+    impact: RiskImpact = RiskImpact.MEDIUM,
+    response: str | None = None,
+    owner: Person | None = None,
+    status: RiskStatus = RiskStatus.OPEN,
+    review_date: date | None = None,
+) -> Risk:
+    risk = Risk(
+        organization_id=organization.id,
+        project_id=project.id,
+        description=description,
+        cause=cause,
+        potential_effect=potential_effect,
+        probability=probability,
+        impact=impact,
+        response=response,
+        owner_person_id=owner.id if owner is not None else None,
+        status=status,
+        review_date=review_date,
+    )
+    session.add(risk)
+    session.flush()
+    return risk

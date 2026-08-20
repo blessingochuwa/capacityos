@@ -23,6 +23,8 @@ export type SignalType =
   | 'skill_gap'
   | 'single_skill_holder'
   | 'skill_concentration'
+  | 'risk_high_exposure'
+  | 'risk_review_overdue'
 
 export type Severity = 'critical' | 'warning' | 'info'
 export type EntityType = 'person' | 'team' | 'project'
@@ -78,6 +80,16 @@ export interface Signal {
   skill_holder_ids: string[] | null
   skill_holder_labels: string[] | null
   skill_holder_ratio: string | null
+
+  risk_id: string | null
+  risk_description: string | null
+  risk_probability: 'low' | 'medium' | 'high' | null
+  risk_impact: 'low' | 'medium' | 'high' | null
+  risk_exposure: 'low' | 'medium' | 'high' | null
+  risk_status: 'open' | 'mitigating' | 'monitoring' | 'closed' | null
+  risk_owner_person_id: string | null
+  risk_owner_label: string | null
+  risk_review_date: string | null
 }
 
 export interface SeverityCounts {

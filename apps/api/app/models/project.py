@@ -14,6 +14,7 @@ from app.models.enums import ProjectStatus
 if TYPE_CHECKING:
     from app.models.allocation import Allocation
     from app.models.project_skill_requirement import ProjectSkillRequirement
+    from app.models.risk import Risk
 
 
 class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -73,5 +74,8 @@ class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         back_populates="project", cascade="all, delete-orphan"
     )
     skill_requirements: Mapped[list[ProjectSkillRequirement]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    risks: Mapped[list[Risk]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )

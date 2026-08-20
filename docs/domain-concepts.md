@@ -391,3 +391,34 @@ Referencing another organization's Person/Team/Project/etc. by id returns 404, t
 ### What Phase 12 does NOT do
 
 No billing or subscription concept. No SSO/OAuth or external identity provider integration. No organization hierarchies or sub-organizations. No cross-organization data sharing of any kind. No hard delete of an organization (deactivation only, matching `Skill.is_active`'s soft-delete precedent). No per-organization feature flags.
+
+## Risk Management (Phase 13)
+
+Phase 13 answers "what could go wrong on this project, how exposed are we, and who owns following up?" (CLAUDE.md §17). See [ADR 0013](adr/0013-phase-13-risk-management.md) for the full reasoning; this section is the vocabulary and rules.
+
+### `Risk`
+
+A project-scoped record: `description` (required), `cause`, `potential_effect`, `probability`, `impact`, `response`, `owner_person_id`, `status`, `review_date`. Organization-scoped like every entity since Phase 12, `CASCADE`-deleted with its `Project` (a risk is meaningless without the project it's about — same convention as `ProjectSkillRequirement`). `owner_person_id` points at `Person`, not `User` (CLAUDE.md §9: an owner is an accountable individual, not necessarily a login), and is `SET NULL` on delete — the risk record outlives whichever person currently owns it.
+
+### Exposure is derived, never stored
+
+`probability` and `impact` are each a coarse 3-tier scale (`low`/`medium`/`high`) — CLAUDE.md §17: "Do not create risk scores that imply false precision." `exposure` is computed at read time from an explicit 3×3 lookup table (`app/domain/risk.py::calculate_risk_exposure`), never a multiplication and never a persisted column — the same "compute, don't store" discipline Phase 5 already applies to `Severity`.
+
+### Status is a lifecycle, not a toggle
+
+`open` → `mitigating` (a response is underway) → `monitoring` (mitigated but still watched, or a low-priority risk tracked passively) → `closed` (terminal — CLAUDE.md §12: "risk management should be continuous," not a one-time assessment). A `closed` risk never produces a signal regardless of exposure or a lapsed review date — closing a risk is the explicit "no longer live" action.
+
+### Bottleneck signals
+
+Two new signal types plug into the **existing** Phase 5 framework (`SignalRead`, `get_project_signals`, the Insights page) — no new route, same mechanism Phase 7 established for skill signals:
+
+| Signal | Scope | Severity | Fires when |
+|---|---|---|---|
+| `risk_high_exposure` | project | `critical` while `open`, `warning` once `mitigating`/`monitoring` | exposure is `high` and status is not `closed` |
+| `risk_review_overdue` | project | `warning` | `review_date` is in the past, status is not `closed`, and exposure is not already `high` |
+
+A risk reports at most one signal — `risk_high_exposure` takes priority when both conditions hold, matching Phase 5's "existence gate, not a magnitude judgment" discipline (no invented risk score, no double-counting the same underlying risk).
+
+### What Phase 13 does NOT do
+
+No Import/Export registration (deferred — CLAUDE.md §17 doesn't require it, and it's a large enough addition to warrant its own phase). No org-wide/cross-project risk register (every route is nested under one project). No Stakeholder or Prioritization entities (CLAUDE.md §16/§18 — separate, unbuilt concepts). No per-organization "last active Owner" account-disable invariant (a pre-existing gap from Phase 12, out of this phase's scope — see ADR 0012's Consequences). No risk score, no probability/impact numeric weighting, no AI-generated risk assessments.

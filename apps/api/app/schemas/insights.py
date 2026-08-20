@@ -19,6 +19,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.models.enums import RiskImpact, RiskProbability, RiskStatus
 from app.schemas.scenario import AggregateCapacityRead, AggregateComparisonRead
 
 SignalType = Literal[
@@ -33,6 +34,8 @@ SignalType = Literal[
     "skill_gap",
     "single_skill_holder",
     "skill_concentration",
+    "risk_high_exposure",
+    "risk_review_overdue",
 ]
 Severity = Literal["critical", "warning", "info"]
 EntityType = Literal["person", "team", "project"]
@@ -116,6 +119,21 @@ class SignalRead(BaseModel):
     """The top holder's share of the skill's total qualified available
     capacity among holders who have any. Always 1.0 for
     single_skill_holder (exactly one holder by definition)."""
+
+    # Populated only for type == "risk_high_exposure" / "risk_review_overdue"
+    # (project-scoped: app/domain/risk.py::classify_risk_signal):
+    risk_id: uuid.UUID | None = None
+    risk_description: str | None = None
+    risk_probability: RiskProbability | None = None
+    risk_impact: RiskImpact | None = None
+    risk_exposure: Literal["low", "medium", "high"] | None = None
+    risk_status: RiskStatus | None = None
+    risk_owner_person_id: uuid.UUID | None = None
+    risk_owner_label: str | None = None
+    """"Unassigned" when the risk has no owner_person_id — never omitted,
+    so the frontend never has to special-case a null owner separately
+    from an unqualified one."""
+    risk_review_date: date | None = None
 
 
 class SeverityCounts(BaseModel):

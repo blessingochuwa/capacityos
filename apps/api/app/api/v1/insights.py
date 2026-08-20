@@ -17,6 +17,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
@@ -54,6 +55,7 @@ def get_insight_service(
         person_skill_repository=PersonSkillRepository(db),
         skill_repository=SkillRepository(db),
         project_skill_requirement_repository=ProjectSkillRequirementRepository(db),
+        risk_repository=RiskRepository(db),
     )
 
 

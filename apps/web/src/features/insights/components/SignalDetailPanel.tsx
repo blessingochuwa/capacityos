@@ -106,6 +106,13 @@ export function SignalDetailPanel({ signal }: { signal: Signal }) {
               : `Existing risk — ${signal.trend ?? 'unchanged'} compared to baseline.`}
           </p>
         ) : null}
+        {signal.risk_id !== null ? (
+          <p className="text-xs text-slate-400">
+            Owner: {signal.risk_owner_label} · Status: {signal.risk_status} · Exposure:{' '}
+            {signal.risk_exposure}
+            {signal.risk_review_date ? ` · Review date: ${signal.risk_review_date}` : ''}
+          </p>
+        ) : null}
         <div className="border-t border-slate-800 pt-4">
           <ExplainSignalButton signal={signal} />
         </div>

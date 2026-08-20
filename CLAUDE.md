@@ -1090,6 +1090,44 @@ subsystem dependencies, while import/export and skills/bottleneck each
 introduce their own new domain concepts. See
 docs/adr/0005-phase-5-operational-insights.md.
 
+**Amendment (2026-08-20):** The "Phase 9+" line above was never broken out
+into individually numbered phases as it was actually built, and this list
+was never updated to record what happened. For the record: Phase 9 became
+production readiness/observability (docs/adr/0009), Phase 10 became
+authentication/RBAC/audit (docs/adr/0010), Phase 11 became instance-level
+resource authorization (docs/adr/0011), and Phase 12 became organizations
+and multi-tenancy (docs/adr/0012) — four phases where this section implied
+one. This gap caused a genuine ambiguity at the start of Phase 13 (no
+document anywhere named what "Phase 13" was supposed to be); it was
+resolved by asking the user, who chose Risk Management (§17) from three
+audited candidates. That choice, and the audit behind it, is recorded in
+docs/adr/0013-phase-13-risk-management.md.
+
+### Phase 13
+Risk management (§17) — a project-scoped risk register (description,
+cause, potential effect, probability, impact, response, owner, status,
+review date) on top of the existing organization-scoped, RBAC-protected,
+audited foundation. No new capacity formula, no second signal system
+(exposure and two new signal types plug into the existing Phase 5/7
+Insights pipeline), no risk score implying false precision. See
+docs/adr/0013-phase-13-risk-management.md.
+
+Remaining unclaimed from the original "Phase 9+" line: external
+integrations and the Chrome extension — still explicitly deferred (§22,
+§23, §32) pending an explicit request, not implied to be "Phase 14."
+Deferred items accumulated across Phases 11/12/13 that a future phase
+should pick up deliberately, not assume: Team→Project access-grant
+inheritance and instance-level scoping for Person-keyed resources
+(WorkingSchedule, AvailabilityException, PersonSkill, Scenario — see ADR
+0011's "Future multi-tenancy seam"/this document's Phase 12 section);
+SSO/OAuth, billing, organization hierarchies, cross-organization data
+sharing, per-organization feature flags, and a per-organization "last
+active Owner account" disable invariant (see ADR 0012's Consequences);
+Risk Import/Export registration, an org-wide cross-project risk register,
+and the Stakeholder (§16) / Prioritization (§18) domain concepts (see ADR
+0013's Consequences). None of these are scheduled — do not build any of
+them without an explicit request, per §32.
+
 Do not jump ahead while the underlying domain is unstable.
 
 ---

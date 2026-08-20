@@ -110,6 +110,50 @@ class SkillProficiency(StrEnum):
     EXPERT = "expert"
 
 
+class RiskProbability(StrEnum):
+    """Controlled vocabulary for Risk.probability (Phase 13).
+
+    A deliberately coarse 3-tier scale, DB-CHECK-constrained like
+    ProjectStatus/SkillProficiency — real business meaning, not an open
+    vocabulary. CLAUDE.md §17: "Do not create risk scores that imply false
+    precision" — a fine-grained numeric scale here would invite exactly
+    that. Combined with RiskImpact via the explicit lookup table in
+    app/domain/risk.py to derive exposure; never multiplied into a score.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class RiskImpact(StrEnum):
+    """Controlled vocabulary for Risk.impact (Phase 13). See
+    RiskProbability's docstring — same rationale, same 3-tier scale."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class RiskStatus(StrEnum):
+    """Controlled vocabulary for Risk.status (Phase 13).
+
+    CLAUDE.md §12/§17: "Risk management should be continuous" — a risk
+    moves through a real lifecycle, not just open/closed. MITIGATING: a
+    response is actively underway. MONITORING: no longer being actively
+    worked, but still watched (mitigated but not yet safe to close, or a
+    low-priority risk being tracked passively). CLOSED: no longer
+    relevant — the terminal state. DB-CHECK-constrained like ProjectStatus,
+    since status gates real behavior (a CLOSED risk never produces an
+    Insights signal — see app/domain/risk.py::classify_risk_signal).
+    """
+
+    OPEN = "open"
+    MITIGATING = "mitigating"
+    MONITORING = "monitoring"
+    CLOSED = "closed"
+
+
 class UserRole(StrEnum):
     """Controlled vocabulary for User.role (Phase 10).
 
@@ -226,6 +270,10 @@ class AuditAction(StrEnum):
     SKILL_CREATE = "skill.create"
     SKILL_UPDATE = "skill.update"
     SKILL_DELETE = "skill.delete"
+
+    RISK_CREATE = "risk.create"
+    RISK_UPDATE = "risk.update"
+    RISK_DELETE = "risk.delete"
 
     SCENARIO_CREATE = "scenario.create"
     SCENARIO_UPDATE = "scenario.update"

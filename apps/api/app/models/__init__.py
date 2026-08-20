@@ -15,6 +15,7 @@ from app.models.person_skill import PersonSkill
 from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
 from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.risk import Risk
 from app.models.scenario import Scenario, ScenarioOperation
 from app.models.session import UserSession
 from app.models.skill import Skill
@@ -35,6 +36,7 @@ __all__ = [
     "Project",
     "ProjectAccessGrant",
     "ProjectSkillRequirement",
+    "Risk",
     "Scenario",
     "ScenarioOperation",
     "Skill",

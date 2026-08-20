@@ -41,6 +41,9 @@ export function AppShell() {
               <NavLink to="/skills" className={NAV_LINK_CLASS}>
                 Skills
               </NavLink>
+              <NavLink to="/risks" className={NAV_LINK_CLASS}>
+                Risks
+              </NavLink>
               {/* Hidden entirely, not disabled, for a role that can never
                * export (CLAUDE.md §13's "view-only access" principle) —
                * the backend independently enforces this regardless. */}

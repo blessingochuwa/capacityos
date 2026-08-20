@@ -10,6 +10,7 @@ import { LoginPage } from '@/features/auth/views/LoginPage'
 import { SelectOrganizationPage } from '@/features/auth/views/SelectOrganizationPage'
 import { ImportExportPage } from '@/features/import-export/views/ImportExportPage'
 import { InsightsOverviewPage } from '@/features/insights/views/InsightsOverviewPage'
+import { RisksOverviewPage } from '@/features/risks/views/RisksOverviewPage'
 import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
 import { ScenarioWorkspacePage } from '@/features/scenarios/views/ScenarioWorkspacePage'
 import { SkillsOverviewPage } from '@/features/skills/views/SkillsOverviewPage'
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: 'scenarios/:scenarioId', element: <ScenarioWorkspacePage /> },
       { path: 'insights', element: <InsightsOverviewPage /> },
       { path: 'skills', element: <SkillsOverviewPage /> },
+      { path: 'risks', element: <RisksOverviewPage /> },
       { path: 'import-export', element: <ImportExportPage /> },
       { path: 'admin/access', element: <AccessManagementPage /> },
     ],
