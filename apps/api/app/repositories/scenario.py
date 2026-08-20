@@ -8,22 +8,40 @@ from app.repositories.base import BaseRepository
 
 
 class ScenarioRepository(BaseRepository[Scenario]):
+    """Organization-scoped (Phase 12) — see app/repositories/person.py's
+    docstring for the general pattern this follows."""
+
     model = Scenario
+
+    def get(self, id_: uuid.UUID, organization_id: uuid.UUID) -> Scenario | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self.session.scalar(
+            select(Scenario).where(
+                Scenario.id == id_, Scenario.organization_id == organization_id
+            )
+        )
+
+    def list(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, organization_id: uuid.UUID, *, limit: int = 100, offset: int = 0
+    ) -> tuple[list[Scenario], int]:
+        return self.list_filtered(organization_id, limit=limit, offset=offset)
 
     def list_filtered(
         self,
+        organization_id: uuid.UUID,
         *,
         status: ScenarioStatus | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[Scenario], int]:
-        stmt = select(Scenario)
+        stmt = select(Scenario).where(Scenario.organization_id == organization_id)
         if status is not None:
             stmt = stmt.where(Scenario.status == status)
 
         total = self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         items = list(
-            self.session.scalars(stmt.order_by(Scenario.created_at.desc()).limit(limit).offset(offset))
+            self.session.scalars(
+                stmt.order_by(Scenario.created_at.desc()).limit(limit).offset(offset)
+            )
         )
         return items, total
 

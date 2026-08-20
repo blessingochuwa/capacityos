@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_audit_service,
+    get_current_membership,
     require_csrf,
     require_permission,
     require_project_access,
@@ -14,6 +15,7 @@ from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -75,10 +77,11 @@ def get_skill_capacity_service(db: Session = Depends(get_db)) -> SkillCapacitySe
 def create_project(
     data: ProjectCreate,
     current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectService = Depends(get_project_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectRead:
-    project = service.create(data)
+    project = service.create(membership.organization_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -87,6 +90,7 @@ def create_project(
         resource_type="project",
         resource_id=str(project.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return ProjectRead.model_validate(project)
 
@@ -96,9 +100,10 @@ def list_projects(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: User = Depends(require_permission(Permission.PROJECT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectService = Depends(get_project_service),
 ) -> Page[ProjectRead]:
-    items, total = service.list(limit=limit, offset=offset)
+    items, total = service.list(membership.organization_id, limit=limit, offset=offset)
     return Page[ProjectRead](
         items=[ProjectRead.model_validate(item) for item in items], total=total
     )
@@ -108,9 +113,10 @@ def list_projects(
 def get_project(
     project_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.PROJECT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectService = Depends(get_project_service),
 ) -> ProjectRead:
-    return ProjectRead.model_validate(service.get(project_id))
+    return ProjectRead.model_validate(service.get(membership.organization_id, project_id))
 
 
 @router.patch("/{project_id}", response_model=ProjectRead, dependencies=[Depends(require_csrf)])
@@ -118,10 +124,11 @@ def update_project(
     project_id: uuid.UUID,
     data: ProjectUpdate,
     current_user: User = Depends(require_project_access(Permission.PROJECT_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectService = Depends(get_project_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectRead:
-    project = service.update(project_id, data)
+    project = service.update(membership.organization_id, project_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -130,6 +137,7 @@ def update_project(
         resource_type="project",
         resource_id=str(project.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
     )
     return ProjectRead.model_validate(project)
@@ -141,10 +149,11 @@ def update_project(
 def delete_project(
     project_id: uuid.UUID,
     current_user: User = Depends(require_project_access(Permission.PROJECT_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectService = Depends(get_project_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.delete(project_id)
+    service.delete(membership.organization_id, project_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -153,6 +162,7 @@ def delete_project(
         resource_type="project",
         resource_id=str(project_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
 
 
@@ -162,11 +172,12 @@ def delete_project(
 def list_project_skill_requirements(
     project_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.SKILL_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
 ) -> list[ProjectSkillRequirementRead]:
     return [
         ProjectSkillRequirementRead.model_validate(row)
-        for row in service.list_for_project(project_id)
+        for row in service.list_for_project(membership.organization_id, project_id)
     ]
 
 
@@ -180,10 +191,11 @@ def add_project_skill_requirement(
     project_id: uuid.UUID,
     data: ProjectSkillRequirementCreate,
     current_user: User = Depends(require_project_access(Permission.SKILL_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectSkillRequirementRead:
-    requirement = service.add(project_id, data)
+    requirement = service.add(membership.organization_id, project_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -192,6 +204,7 @@ def add_project_skill_requirement(
         resource_type="project_skill_requirement",
         resource_id=str(requirement.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"project_id": str(project_id), "skill_id": str(data.skill_id)},
     )
     return ProjectSkillRequirementRead.model_validate(requirement)
@@ -207,10 +220,11 @@ def update_project_skill_requirement(
     requirement_id: uuid.UUID,
     data: ProjectSkillRequirementUpdate,
     current_user: User = Depends(require_project_access(Permission.SKILL_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectSkillRequirementRead:
-    requirement = service.update(project_id, requirement_id, data)
+    requirement = service.update(membership.organization_id, project_id, requirement_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -219,6 +233,7 @@ def update_project_skill_requirement(
         resource_type="project_skill_requirement",
         resource_id=str(requirement_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return ProjectSkillRequirementRead.model_validate(requirement)
 
@@ -232,10 +247,11 @@ def remove_project_skill_requirement(
     project_id: uuid.UUID,
     requirement_id: uuid.UUID,
     current_user: User = Depends(require_project_access(Permission.SKILL_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ProjectSkillRequirementService = Depends(get_project_skill_requirement_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.remove(project_id, requirement_id)
+    service.remove(membership.organization_id, project_id, requirement_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -244,6 +260,7 @@ def remove_project_skill_requirement(
         resource_type="project_skill_requirement",
         resource_id=str(requirement_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
 
 
@@ -253,6 +270,9 @@ def get_project_skill_coverage(
     start_date: date,
     end_date: date,
     _: User = Depends(require_permission(Permission.SKILL_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: SkillCapacityService = Depends(get_skill_capacity_service),
 ) -> ProjectSkillCoverageRead:
-    return service.get_project_skill_coverage(project_id, start_date, end_date)
+    return service.get_project_skill_coverage(
+        membership.organization_id, project_id, start_date, end_date
+    )

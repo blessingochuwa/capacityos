@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, String
+from sqlalchemy import Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class Person(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    """An individual resource in the organization.
+    """An individual resource in one organization (Phase 12).
 
     Person deliberately holds no project-allocation, working-schedule, or
     availability data directly — those are separate entities (see
@@ -32,14 +33,29 @@ class Person(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     preferred name), so it is not a strict function of first/last name.
 
     A person may belong to zero, one, or many teams — see TeamMembership.
+
+    organization_id: RESTRICT, not CASCADE — Organizations are soft-deleted
+    (is_active=False), never hard-deleted, so this ondelete behavior is not
+    expected to be exercised in practice; RESTRICT is the safer default in
+    case hard-delete is ever added later, forcing an explicit bulk-delete
+    of a tenant's data rather than silently cascading it away. email was
+    globally unique through Phase 11; Phase 12 rescopes it to
+    (organization_id, email) — the same person's email address may
+    legitimately recur across two unrelated organizations.
     """
 
     __tablename__ = "people"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "email", name="uq_person_organization_email"),
+    )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     job_title: Mapped[str | None] = mapped_column(String(200))
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     employment_status: Mapped[EmploymentStatus] = mapped_column(

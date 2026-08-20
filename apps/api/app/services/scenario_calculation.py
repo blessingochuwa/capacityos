@@ -72,7 +72,7 @@ from app.schemas.scenario import (
     ShiftProjectPayload,
     operation_payload_from_dict,
 )
-from app.services.planning_facts import exception_to_fact, group_by, schedule_to_fact
+from app.services.planning_facts import load_people_facts
 
 ZERO = Decimal("0.00")
 
@@ -126,8 +126,8 @@ class ScenarioCalculationService:
 
     # -- Public entry points --------------------------------------------
 
-    def results(self, scenario_id: uuid.UUID) -> ScenarioResultsRead:
-        prepared = self._prepare(scenario_id)
+    def results(self, organization_id: uuid.UUID, scenario_id: uuid.UUID) -> ScenarioResultsRead:
+        prepared = self._prepare(organization_id, scenario_id)
         start, end = prepared.scenario.baseline_start_date, prepared.scenario.baseline_end_date
 
         baseline_people = [
@@ -165,8 +165,10 @@ class ScenarioCalculationService:
             ),
         )
 
-    def comparison(self, scenario_id: uuid.UUID) -> ScenarioComparisonRead:
-        prepared = self._prepare(scenario_id)
+    def comparison(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> ScenarioComparisonRead:
+        prepared = self._prepare(organization_id, scenario_id)
         start, end = prepared.scenario.baseline_start_date, prepared.scenario.baseline_end_date
 
         people_comparisons = [
@@ -187,7 +189,7 @@ class ScenarioCalculationService:
         )
 
         risks = self._risks(people_comparisons)
-        impact = self._impact(prepared)
+        impact = self._impact(organization_id, prepared)
 
         return ScenarioComparisonRead(
             scenario=ScenarioRead.model_validate(prepared.scenario),
@@ -215,8 +217,8 @@ class ScenarioCalculationService:
 
     # -- Preparation: baseline + scenario PlanningState ------------------
 
-    def _prepare(self, scenario_id: uuid.UUID) -> _PreparedScenario:
-        scenario = self.scenario_repository.get(scenario_id)
+    def _prepare(self, organization_id: uuid.UUID, scenario_id: uuid.UUID) -> _PreparedScenario:
+        scenario = self.scenario_repository.get(scenario_id, organization_id)
         if scenario is None:
             raise NotFoundError("Scenario", scenario_id)
         operations = self.operation_repository.list_for_scenario(scenario_id)
@@ -227,16 +229,23 @@ class ScenarioCalculationService:
             if op.operation_type == ScenarioOperationType.ADD_HYPOTHETICAL_RESOURCE
         }
         real_person_ids, project_ids = self._collect_scope(
-            operations, hypothetical_ids, scenario.baseline_start_date, scenario.baseline_end_date
+            organization_id,
+            operations,
+            hypothetical_ids,
+            scenario.baseline_start_date,
+            scenario.baseline_end_date,
         )
 
         baseline_state = self._load_baseline_state(
-            real_person_ids, scenario.baseline_start_date, scenario.baseline_end_date
+            organization_id,
+            real_person_ids,
+            scenario.baseline_start_date,
+            scenario.baseline_end_date,
         )
         domain_operations = [self._to_domain_operation(op) for op in operations]
         scenario_state = apply_scenario_operations(baseline_state, domain_operations)
 
-        labels = self._labels(real_person_ids, operations)
+        labels = self._labels(organization_id, real_person_ids, operations)
         person_ids = self._all_relevant_person_ids(baseline_state, scenario_state, real_person_ids)
 
         return _PreparedScenario(
@@ -252,6 +261,7 @@ class ScenarioCalculationService:
 
     def _collect_scope(
         self,
+        organization_id: uuid.UUID,
         operations: Sequence[ScenarioOperation],
         hypothetical_ids: set[uuid.UUID],
         start_date: date,
@@ -280,11 +290,11 @@ class ScenarioCalculationService:
                 add_person(payload.person_id)
                 project_ids.add(payload.project_id)
             elif isinstance(payload, AdjustAllocationPayload | RemoveAllocationPayload):
-                allocation = self._require_allocation(payload.allocation_id)
+                allocation = self._require_allocation(organization_id, payload.allocation_id)
                 real_person_ids.add(allocation.person_id)
                 project_ids.add(allocation.project_id)
             elif isinstance(payload, MoveAllocationPayload):
-                allocation = self._require_allocation(payload.allocation_id)
+                allocation = self._require_allocation(organization_id, payload.allocation_id)
                 real_person_ids.add(allocation.person_id)
                 project_ids.add(allocation.project_id)
                 add_person(payload.to_person_id)
@@ -296,14 +306,16 @@ class ScenarioCalculationService:
 
         for project_id in project_ids:
             for allocation in self.allocation_repository.list_for_project(
-                project_id, start_date, end_date
+                project_id, start_date, end_date, organization_id
             ):
                 real_person_ids.add(allocation.person_id)
 
         return real_person_ids, project_ids
 
-    def _require_allocation(self, allocation_id: uuid.UUID) -> Allocation:
-        allocation = self.allocation_repository.get(allocation_id)
+    def _require_allocation(
+        self, organization_id: uuid.UUID, allocation_id: uuid.UUID
+    ) -> Allocation:
+        allocation = self.allocation_repository.get(allocation_id, organization_id)
         if allocation is None:
             raise DomainValidationError(
                 f"Cannot recalculate this scenario: allocation {allocation_id} referenced by "
@@ -312,24 +324,32 @@ class ScenarioCalculationService:
         return allocation
 
     def _load_baseline_state(
-        self, person_ids: set[uuid.UUID], start_date: date, end_date: date
+        self,
+        organization_id: uuid.UUID,
+        person_ids: set[uuid.UUID],
+        start_date: date,
+        end_date: date,
     ) -> PlanningState:
+        """Delegates to the same load_people_facts every capacity/insight
+        calculation uses (app/services/planning_facts.py) rather than
+        duplicating its batched-query shape — one org-scoped interception
+        point for schedule/availability/allocation facts, not two."""
         ids = list(person_ids)
-        schedule_rows = self.schedule_repository.list_for_people(ids, start_date, end_date)
-        exception_rows = self.availability_repository.list_for_people(ids, start_date, end_date)
-        allocation_rows = self.allocation_repository.list_for_people(ids, start_date, end_date)
+        facts_by_person = load_people_facts(
+            self.schedule_repository,
+            self.availability_repository,
+            self.allocation_repository,
+            ids,
+            start_date,
+            end_date,
+            organization_id,
+        )
 
-        schedules_by_person = group_by(schedule_rows, lambda s: s.person_id)
-        exceptions_by_person = group_by(exception_rows, lambda e: e.person_id)
-
-        schedules = {
-            pid: tuple(schedule_to_fact(s) for s in schedules_by_person.get(pid, []))
-            for pid in ids
-        }
-        exceptions = {
-            pid: tuple(exception_to_fact(e) for e in exceptions_by_person.get(pid, []))
-            for pid in ids
-        }
+        schedules = {pid: facts_by_person[pid].schedules for pid in ids}
+        exceptions = {pid: facts_by_person[pid].exceptions for pid in ids}
+        allocation_rows = self.allocation_repository.list_for_people(
+            ids, start_date, end_date, organization_id
+        )
         allocations = tuple(
             IdentifiedAllocationFact(
                 id=row.id,
@@ -413,11 +433,16 @@ class ScenarioCalculationService:
         )
 
     def _labels(
-        self, real_person_ids: set[uuid.UUID], operations: Sequence[ScenarioOperation]
+        self,
+        organization_id: uuid.UUID,
+        real_person_ids: set[uuid.UUID],
+        operations: Sequence[ScenarioOperation],
     ) -> dict[uuid.UUID, str]:
         labels = {
             person.id: person.display_name
-            for person in self.person_repository.list_by_ids(list(real_person_ids))
+            for person in self.person_repository.list_by_ids(
+                list(real_person_ids), organization_id
+            )
         }
         for op in operations:
             if op.operation_type == ScenarioOperationType.ADD_HYPOTHETICAL_RESOURCE:
@@ -575,10 +600,12 @@ class ScenarioCalculationService:
                 )
         return sorted(risks, key=lambda r: (not r.is_new, r.person_id.hex))
 
-    def _impact(self, prepared: _PreparedScenario) -> ImpactRead:
+    def _impact(self, organization_id: uuid.UUID, prepared: _PreparedScenario) -> ImpactRead:
         team_ids = {
             membership.team_id
-            for membership in self.team_membership_repository.list_for_people(prepared.person_ids)
+            for membership in self.team_membership_repository.list_for_people(
+                prepared.person_ids, organization_id
+            )
         }
 
         dates: list[date] = []

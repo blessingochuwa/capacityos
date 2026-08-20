@@ -36,6 +36,9 @@ class ProjectSkillRequirement(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("required_hours > 0", name="ck_project_skill_requirement_hours_positive"),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     project_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )

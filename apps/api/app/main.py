@@ -17,6 +17,7 @@ from app.api.v1.exports import router as exports_router
 from app.api.v1.health import router as health_router
 from app.api.v1.imports import router as imports_router
 from app.api.v1.insights import router as insights_router
+from app.api.v1.organizations import router as organizations_router
 from app.api.v1.people import router as people_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.scenarios import router as scenarios_router
@@ -82,6 +83,7 @@ register_exception_handlers(app)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(organizations_router)
 app.include_router(audit_router)
 app.include_router(people_router)
 app.include_router(teams_router)

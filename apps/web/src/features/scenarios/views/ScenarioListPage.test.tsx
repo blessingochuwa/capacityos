@@ -42,6 +42,7 @@ describe('ScenarioListPage', () => {
       canManageResource: () => true,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
   })
 
@@ -118,6 +119,7 @@ describe('ScenarioListPage', () => {
       canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     mockedUseScenarios.mockReturnValue(
       mockQuerySuccess({ items: [], total: 0 }),

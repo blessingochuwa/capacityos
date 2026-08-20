@@ -72,6 +72,7 @@ def load_people_facts(
     person_ids: Sequence[uuid.UUID],
     start_date: date,
     end_date: date,
+    organization_id: uuid.UUID,
 ) -> dict[uuid.UUID, PersonPlanningFacts]:
     """Batched fact-loading for person_ids over [start_date, end_date] — one
     query per fact type for the whole set (CLAUDE.md §27: no per-person
@@ -80,18 +81,27 @@ def load_people_facts(
 
     person_ids with no rows for some/all fact types still get an entry
     (empty tuples), so callers can rely on every requested id being a key.
+
+    organization_id (Phase 12) is threaded into every underlying query as
+    defense-in-depth — every caller already resolves person_ids from an
+    organization-scoped source (team membership, a single already-org-
+    checked person, etc.), but this is the single shared interception
+    point every capacity/scenario/insight/skill calculation that touches
+    schedules, availability exceptions, or allocations routes through, so
+    it carries the check explicitly rather than trusting every caller
+    forever. See docs/adr/0012-organizations-multi-tenancy.md.
     """
     ids = list(person_ids)
     schedules_by_person = group_by(
-        schedule_repository.list_for_people(ids, start_date, end_date),
+        schedule_repository.list_for_people(ids, start_date, end_date, organization_id),
         lambda s: s.person_id,
     )
     exceptions_by_person = group_by(
-        availability_repository.list_for_people(ids, start_date, end_date),
+        availability_repository.list_for_people(ids, start_date, end_date, organization_id),
         lambda e: e.person_id,
     )
     allocations_by_person = group_by(
-        allocation_repository.list_for_people(ids, start_date, end_date),
+        allocation_repository.list_for_people(ids, start_date, end_date, organization_id),
         lambda a: a.person_id,
     )
 

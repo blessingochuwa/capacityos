@@ -6,7 +6,18 @@ import type { CurrentUser } from '../types/auth'
 
 export const SESSION_QUERY_KEY = ['session'] as const
 
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+/** Phase 12: 'no-organization' is distinct from 'authenticated' — the
+ * session is valid but no organization is currently selected (0 or many
+ * memberships at login, before an explicit switch-organization call, or
+ * after the active organization/membership was revoked and the next
+ * request re-verified that — see get_current_membership's docstring in
+ * apps/api/app/api/deps.py). RequireAuth reacts to this by redirecting to
+ * /select-organization rather than rendering the protected app shell. */
+export type AuthStatus =
+  | 'loading'
+  | 'authenticated'
+  | 'unauthenticated'
+  | 'no-organization'
 
 interface AuthContextValue {
   user: CurrentUser | null
@@ -30,6 +41,11 @@ interface AuthContextValue {
   canManageResource: (resourceType: 'team' | 'project', resourceId: string) => boolean
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
+  /** Phase 12 — re-verified server-side (see authApi.switchOrganization);
+   * the cache-purge here mirrors logout's exactly (see switchOrganization
+   * mutation below for why threading organizationId into every query key
+   * instead was deliberately rejected). */
+  switchOrganization: (organizationId: string) => Promise<void>
 }
 
 const DEFAULT_CONTEXT: AuthContextValue = {
@@ -41,6 +57,9 @@ const DEFAULT_CONTEXT: AuthContextValue = {
     throw new Error('AuthProvider is not mounted.')
   },
   logout: async () => {
+    throw new Error('AuthProvider is not mounted.')
+  },
+  switchOrganization: async () => {
     throw new Error('AuthProvider is not mounted.')
   },
 }
@@ -93,12 +112,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   })
 
+  const switchOrganizationMutation = useMutation({
+    mutationFn: authApi.switchOrganization,
+    onSuccess: (user) => {
+      queryClient.setQueryData(SESSION_QUERY_KEY, user)
+      // Every cached query may hold data scoped to the PREVIOUS active
+      // organization — reusing logout's exact purge here (rather than
+      // threading organizationId into every one of this app's ~27 query
+      // keys) is a deliberate choice: it costs a few lines instead of a
+      // call-site change everywhere a query key is defined, and a stale
+      // cache entry for one extra render is a UX glitch, never a leak,
+      // since the backend re-scopes every request to the NEW active
+      // organization regardless of what's cached client-side (CLAUDE.md
+      // §21). See docs/adr/0012-organizations-multi-tenancy.md.
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== 'session',
+      })
+    },
+  })
+
   const user = sessionQuery.data ?? null
   const status: AuthStatus = sessionQuery.isLoading
     ? 'loading'
-    : user
-      ? 'authenticated'
-      : 'unauthenticated'
+    : !user
+      ? 'unauthenticated'
+      : user.active_organization
+        ? 'authenticated'
+        : 'no-organization'
 
   const can = (permission: string): boolean => user?.permissions.includes(permission) ?? false
 
@@ -122,6 +162,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     logout: async () => {
       await logoutMutation.mutateAsync()
+    },
+    switchOrganization: async (organizationId) => {
+      await switchOrganizationMutation.mutateAsync(organizationId)
     },
   }
 

@@ -7,16 +7,20 @@ from app.schemas.project import ProjectCreate, ProjectUpdate
 
 
 class ProjectService:
+    """Organization-scoped (Phase 12) — see app/services/person.py's
+    docstring for the general pattern this follows."""
+
     def __init__(self, repository: ProjectRepository) -> None:
         self.repository = repository
 
-    def create(self, data: ProjectCreate) -> Project:
+    def create(self, organization_id: uuid.UUID, data: ProjectCreate) -> Project:
         if data.external_id is not None and self.repository.get_by_external_id(
-            data.external_id
+            data.external_id, organization_id
         ):
             raise ConflictError(f"A project with external_id {data.external_id} already exists.")
 
         project = Project(
+            organization_id=organization_id,
             name=data.name,
             description=data.description,
             status=data.status,
@@ -26,17 +30,21 @@ class ProjectService:
         )
         return self.repository.add(project)
 
-    def get(self, project_id: uuid.UUID) -> Project:
-        project = self.repository.get(project_id)
+    def get(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> Project:
+        project = self.repository.get(project_id, organization_id)
         if project is None:
             raise NotFoundError("Project", project_id)
         return project
 
-    def list(self, *, limit: int = 100, offset: int = 0) -> tuple[list[Project], int]:
-        return self.repository.list(limit=limit, offset=offset)
+    def list(
+        self, organization_id: uuid.UUID, *, limit: int = 100, offset: int = 0
+    ) -> tuple[list[Project], int]:
+        return self.repository.list(organization_id, limit=limit, offset=offset)
 
-    def update(self, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
-        project = self.get(project_id)
+    def update(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, data: ProjectUpdate
+    ) -> Project:
+        project = self.get(organization_id, project_id)
         updates = data.model_dump(exclude_unset=True)
 
         merged_start = updates.get("start_date", project.start_date)
@@ -46,7 +54,7 @@ class ProjectService:
 
         new_external_id = updates.get("external_id")
         if new_external_id is not None and new_external_id != project.external_id:
-            existing = self.repository.get_by_external_id(new_external_id)
+            existing = self.repository.get_by_external_id(new_external_id, organization_id)
             if existing is not None and existing.id != project.id:
                 raise ConflictError(
                     f"A project with external_id {new_external_id} already exists."
@@ -57,5 +65,5 @@ class ProjectService:
         self.repository.session.flush()
         return project
 
-    def delete(self, project_id: uuid.UUID) -> None:
-        self.repository.delete(self.get(project_id))
+    def delete(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> None:
+        self.repository.delete(self.get(organization_id, project_id))

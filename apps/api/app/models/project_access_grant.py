@@ -17,7 +17,8 @@ class ProjectAccessGrant(Base, UUIDPrimaryKeyMixin):
     team_id. Covers Project itself, ProjectSkillRequirement, and Allocation
     (via project_id) — see
     docs/adr/0011-instance-level-resource-authorization.md for exactly
-    which routes consult it.
+    which routes consult it. organization_id (Phase 12) is defense-in-
+    depth — see TeamAccessGrant's docstring for the full rationale.
     """
 
     __tablename__ = "project_access_grants"
@@ -25,6 +26,9 @@ class ProjectAccessGrant(Base, UUIDPrimaryKeyMixin):
         UniqueConstraint("user_id", "project_id", name="uq_project_access_grant_user_project"),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )

@@ -35,6 +35,19 @@ class UserSession(Base, UUIDPrimaryKeyMixin):
     session token itself; reusing that value would let anything able to
     read the CSRF cookie (e.g. an XSS payload) impersonate the session,
     defeating the whole point of the session cookie being httpOnly.
+
+    active_organization_id (Phase 12) is the server-side record of which
+    Organization this session is currently acting within — deliberately
+    NOT a cookie, query parameter, or request-body value, none of which
+    can be trusted as proof of membership. It is nullable: a freshly
+    logged-in user with zero or more than one active membership has no
+    organization selected yet until an explicit switch-organization call
+    succeeds. Nullable FK with ondelete=SET NULL rather than CASCADE — the
+    session itself must survive an organization being deactivated, just
+    with no active org until the user switches to a different one; only
+    app/api/deps.py::get_current_membership re-verifies this value against
+    live membership/organization state on every request, so a stale or
+    now-invalid value here never grants access on its own.
     """
 
     __tablename__ = "sessions"
@@ -44,6 +57,9 @@ class UserSession(Base, UUIDPrimaryKeyMixin):
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    active_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

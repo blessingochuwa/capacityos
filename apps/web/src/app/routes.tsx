@@ -7,6 +7,7 @@ import { CapacityOverviewPage } from '@/features/capacity/views/CapacityOverview
 import { PersonCapacityPage } from '@/features/capacity/views/PersonCapacityPage'
 import { ProjectCapacityPage } from '@/features/capacity/views/ProjectCapacityPage'
 import { LoginPage } from '@/features/auth/views/LoginPage'
+import { SelectOrganizationPage } from '@/features/auth/views/SelectOrganizationPage'
 import { ImportExportPage } from '@/features/import-export/views/ImportExportPage'
 import { InsightsOverviewPage } from '@/features/insights/views/InsightsOverviewPage'
 import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
@@ -15,6 +16,7 @@ import { SkillsOverviewPage } from '@/features/skills/views/SkillsOverviewPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/select-organization', element: <SelectOrganizationPage /> },
   {
     path: '/',
     element: (

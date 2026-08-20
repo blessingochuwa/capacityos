@@ -22,8 +22,15 @@ This is arithmetic over the other three (something like: working-schedule hours,
 
 ## Entities
 
+Every entity below belongs to exactly one `Organization` (Phase 12 — see
+"Organizations & Multi-Tenancy" at the end of this document) via a direct
+`organization_id` foreign key. That boundary is orthogonal to the four
+concepts this document is otherwise about: it answers "whose data is this,"
+never "how much capacity does this represent."
+
 | Entity | Answers | Lives in |
 |---|---|---|
+| `Organization` | Whose data is this? | `app/models/organization.py` |
 | `Person` | Who is this? | `app/models/person.py` |
 | `Team` / `TeamMembership` | Which team(s) is this person part of? | `app/models/team.py`, `team_membership.py` |
 | `Project` | What workstream exists to consume capacity? | `app/models/project.py` |
@@ -360,3 +367,27 @@ Every `/api/v1/ai/*` endpoint returns `{status, response, message}` with **HTTP 
 ### What Phase 8 does NOT do
 
 No second capacity/signal/bottleneck engine. No AI-initiated writes of any kind — recommendations are always phrased as suggestions ("Consider...") and the schema gives them no path to mutate data. No skill or capability inference from job titles, project names, or allocation history. No hiring, performance, or health/legal judgments about any person. No persistent AI conversation history or analytics table (every request is stateless). No response caching (every explanation is generated fresh against current facts). No automatic AI generation on page load — every capability is triggered by an explicit user action.
+
+## Organizations & Multi-Tenancy (Phase 12)
+
+See `docs/adr/0012-organizations-multi-tenancy.md` for the full design and audit; this section is the concept summary.
+
+### The tenant boundary
+
+Every entity table in this document (Person, Team, Project, Allocation, WorkingSchedule, AvailabilityException, Skill, PersonSkill, ProjectSkillRequirement, Scenario) carries a direct `organization_id` foreign key — not an indirect join through some other table. A row belongs to exactly one `Organization`, always. There is no cross-organization sharing, no organization hierarchy, and no "global" data visible across organizations except the `User` account/login layer itself (see below).
+
+### `User` vs `OrganizationMembership`
+
+`User` is the login identity — one email, one password, usable across every organization the account belongs to. `OrganizationMembership` is where a `User` gets a `role` (Owner/Admin/Manager/Member/Viewer — the same five roles Phase 10 introduced, unchanged) *within one specific organization*. The same person can be Owner of one organization and Viewer of another; role is never a global property of the account.
+
+### Active organization
+
+A session has at most one *active* organization at a time (`UserSession.active_organization_id`), selected automatically at login when unambiguous (exactly one membership) or explicitly via `POST /api/v1/auth/switch-organization`. Every organization-scoped request re-verifies that membership is still active and the organization itself hasn't been deactivated — on every single request, not just at login. A session with no active organization can still authenticate (`GET /auth/me` works) but cannot reach any organization-scoped route until one is selected.
+
+### Cross-organization access looks like "not found," never "forbidden"
+
+Referencing another organization's Person/Team/Project/etc. by id returns 404, the same response a genuinely nonexistent id would produce — never 403. A 403 would confirm the resource exists somewhere just not to you, which is itself a leak this system is designed not to have.
+
+### What Phase 12 does NOT do
+
+No billing or subscription concept. No SSO/OAuth or external identity provider integration. No organization hierarchies or sub-organizations. No cross-organization data sharing of any kind. No hard delete of an organization (deactivation only, matching `Skill.is_active`'s soft-delete precedent). No per-organization feature flags.

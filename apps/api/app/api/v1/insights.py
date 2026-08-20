@@ -4,11 +4,12 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_membership, require_permission
 from app.api.v1.scenarios import get_scenario_calculation_service
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.domain.authorization import Permission
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -62,9 +63,12 @@ def get_person_signals(
     start_date: date,
     end_date: date,
     _: User = Depends(require_permission(Permission.INSIGHT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
-    items = service.get_person_signals(person_id, start_date, end_date)
+    items = service.get_person_signals(
+        membership.organization_id, person_id, start_date, end_date
+    )
     return Page[SignalRead](items=items, total=len(items))
 
 
@@ -74,9 +78,10 @@ def get_team_signals(
     start_date: date,
     end_date: date,
     _: User = Depends(require_permission(Permission.INSIGHT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
-    items = service.get_team_signals(team_id, start_date, end_date)
+    items = service.get_team_signals(membership.organization_id, team_id, start_date, end_date)
     return Page[SignalRead](items=items, total=len(items))
 
 
@@ -86,9 +91,12 @@ def get_project_signals(
     start_date: date,
     end_date: date,
     _: User = Depends(require_permission(Permission.INSIGHT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
-    items = service.get_project_signals(project_id, start_date, end_date)
+    items = service.get_project_signals(
+        membership.organization_id, project_id, start_date, end_date
+    )
     return Page[SignalRead](items=items, total=len(items))
 
 
@@ -96,9 +104,10 @@ def get_project_signals(
 def get_scenario_signals(
     scenario_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.INSIGHT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: InsightService = Depends(get_insight_service),
 ) -> Page[SignalRead]:
-    items = service.get_scenario_signals(scenario_id)
+    items = service.get_scenario_signals(membership.organization_id, scenario_id)
     return Page[SignalRead](items=items, total=len(items))
 
 
@@ -110,6 +119,9 @@ def get_team_summary(
     project_id: uuid.UUID | None = Query(default=None),
     scenario_id: uuid.UUID | None = Query(default=None),
     _: User = Depends(require_permission(Permission.INSIGHT_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: InsightService = Depends(get_insight_service),
 ) -> InsightsSummaryRead:
-    return service.get_team_summary(team_id, start_date, end_date, project_id, scenario_id)
+    return service.get_team_summary(
+        membership.organization_id, team_id, start_date, end_date, project_id, scenario_id
+    )

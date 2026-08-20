@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import UserRole, UserStatus
+from app.models.enums import UserStatus
 
 if TYPE_CHECKING:
     from app.models.person import Person
@@ -28,9 +28,18 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     email is the LOGIN identity — independent of Person.email even though
     they will usually match for a staffed user linking to their own Person
-    row. failed_login_count/locked_until implement the account-lockout
-    brute-force mitigation (see the ADR's threat model); both are reset to
-    0/None on a successful login.
+    row. It remains GLOBALLY unique even after Phase 12 (unlike Person.email,
+    which becomes organization-scoped): a user should not need a second
+    account to belong to a second organization. failed_login_count/
+    locked_until implement the account-lockout brute-force mitigation (see
+    the ADR's threat model); both are reset to 0/None on a successful login.
+
+    role does NOT live here (moved to OrganizationMembership in Phase 12 —
+    see docs/adr/0012-organizations-multi-tenancy.md): one User can be
+    Owner in one Organization and Viewer in another, which a single scalar
+    column on this table cannot express. User carries only account-level
+    state — identity, credentials, lockout, account status — never
+    anything role/permission-shaped.
     """
 
     __tablename__ = "users"
@@ -49,18 +58,6 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ),
         nullable=False,
         default=UserStatus.ACTIVE,
-    )
-    role: Mapped[UserRole] = mapped_column(
-        Enum(
-            UserRole,
-            name="ck_users_role",
-            native_enum=False,
-            validate_strings=True,
-            length=32,
-            create_constraint=True,
-        ),
-        nullable=False,
-        default=UserRole.VIEWER,
     )
     person_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("people.id", ondelete="SET NULL"), unique=True, index=True

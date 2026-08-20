@@ -3,11 +3,12 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission
+from app.api.deps import get_audit_service, get_current_membership, require_csrf, require_permission
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
@@ -36,10 +37,11 @@ def get_availability_exception_service(
 def create_availability_exception(
     data: AvailabilityExceptionCreate,
     current_user: User = Depends(require_permission(Permission.SCHEDULE_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AvailabilityExceptionService = Depends(get_availability_exception_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> AvailabilityExceptionRead:
-    exception = service.create(data)
+    exception = service.create(membership.organization_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -48,6 +50,7 @@ def create_availability_exception(
         resource_type="availability_exception",
         resource_id=str(exception.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return AvailabilityExceptionRead.model_validate(exception)
 
@@ -58,9 +61,12 @@ def list_availability_exceptions(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: User = Depends(require_permission(Permission.SCHEDULE_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AvailabilityExceptionService = Depends(get_availability_exception_service),
 ) -> Page[AvailabilityExceptionRead]:
-    items, total = service.list(person_id=person_id, limit=limit, offset=offset)
+    items, total = service.list(
+        membership.organization_id, person_id=person_id, limit=limit, offset=offset
+    )
     return Page[AvailabilityExceptionRead](
         items=[AvailabilityExceptionRead.model_validate(item) for item in items], total=total
     )
@@ -70,9 +76,12 @@ def list_availability_exceptions(
 def get_availability_exception(
     exception_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.SCHEDULE_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AvailabilityExceptionService = Depends(get_availability_exception_service),
 ) -> AvailabilityExceptionRead:
-    return AvailabilityExceptionRead.model_validate(service.get(exception_id))
+    return AvailabilityExceptionRead.model_validate(
+        service.get(membership.organization_id, exception_id)
+    )
 
 
 @router.patch(
@@ -84,10 +93,11 @@ def update_availability_exception(
     exception_id: uuid.UUID,
     data: AvailabilityExceptionUpdate,
     current_user: User = Depends(require_permission(Permission.SCHEDULE_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AvailabilityExceptionService = Depends(get_availability_exception_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> AvailabilityExceptionRead:
-    exception = service.update(exception_id, data)
+    exception = service.update(membership.organization_id, exception_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -96,6 +106,7 @@ def update_availability_exception(
         resource_type="availability_exception",
         resource_id=str(exception.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return AvailabilityExceptionRead.model_validate(exception)
 
@@ -106,10 +117,11 @@ def update_availability_exception(
 def delete_availability_exception(
     exception_id: uuid.UUID,
     current_user: User = Depends(require_permission(Permission.SCHEDULE_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AvailabilityExceptionService = Depends(get_availability_exception_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.delete(exception_id)
+    service.delete(membership.organization_id, exception_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -118,4 +130,5 @@ def delete_availability_exception(
         resource_type="availability_exception",
         resource_id=str(exception_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )

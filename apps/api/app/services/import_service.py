@@ -280,35 +280,42 @@ class ImportService:
 
     def validate(
         self,
+        organization_id: uuid.UUID,
         entity_type: ImportEntityType,
         raw_bytes: bytes,
         filename: str | None,
         content_type: str | None,
         mode: ImportMode,
     ) -> ImportValidationReport:
-        prepared = self._prepare(entity_type, raw_bytes, filename, content_type, mode)
+        prepared = self._prepare(
+            organization_id, entity_type, raw_bytes, filename, content_type, mode
+        )
         return self._to_validation_report(entity_type, mode, prepared)
 
     def apply(
         self,
+        organization_id: uuid.UUID,
         entity_type: ImportEntityType,
         raw_bytes: bytes,
         filename: str | None,
         content_type: str | None,
         mode: ImportMode,
     ) -> ImportApplyResult:
-        prepared = self._prepare(entity_type, raw_bytes, filename, content_type, mode)
+        prepared = self._prepare(
+            organization_id, entity_type, raw_bytes, filename, content_type, mode
+        )
         if prepared.file_error is not None or any(p.outcome.errors for p in prepared.rows):
             return self._to_apply_result(entity_type, mode, prepared, applied=False)
 
         for prow in prepared.rows:
-            self._write_row(entity_type, prow.outcome)
+            self._write_row(organization_id, entity_type, prow.outcome)
         return self._to_apply_result(entity_type, mode, prepared, applied=True)
 
     # -- Level 1 (file) + dispatch --------------------------------------------
 
     def _prepare(
         self,
+        organization_id: uuid.UUID,
         entity_type: ImportEntityType,
         raw_bytes: bytes,
         filename: str | None,
@@ -367,7 +374,7 @@ class ImportService:
             ImportEntityType.PERSON_SKILL: self._prepare_person_skill,
             ImportEntityType.PROJECT_SKILL_REQUIREMENT: self._prepare_project_skill_requirement,
         }
-        rows = preparers[entity_type](parsed, mode)
+        rows = preparers[entity_type](organization_id, parsed, mode)
         return _Prepared(None, self._flag_duplicate_identities(rows))
 
     def _flag_duplicate_identities(self, rows: list[_PreparedRow]) -> list[_PreparedRow]:
@@ -404,40 +411,42 @@ class ImportService:
     # never per row, per CLAUDE.md §27) --------------------------------------
 
     def _person_lookup_maps(
-        self, rows: Sequence[Mapping[str, object]]
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, PersonFact], dict[str, PersonFact]]:
         ids = _collect_uuids(rows, "person_id")
         emails = _collect(rows, "person_email")
         by_id: dict[uuid.UUID, PersonFact] = {}
-        for person in self.person_repository.list_by_ids(list(ids)):
+        for person in self.person_repository.list_by_ids(list(ids), organization_id):
             by_id[person.id] = _person_fact(person)
-        for person in self.person_repository.list_by_emails(list(emails)):
+        for person in self.person_repository.list_by_emails(list(emails), organization_id):
             by_id[person.id] = _person_fact(person)
         by_email = {fact.email: fact for fact in by_id.values()}
         return by_id, by_email
 
     def _team_lookup_maps(
-        self, rows: Sequence[Mapping[str, object]]
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, TeamFact], dict[str, TeamFact]]:
         ids = _collect_uuids(rows, "team_id")
         names = _collect(rows, "team_name")
         by_id: dict[uuid.UUID, TeamFact] = {}
-        for team in self.team_repository.list_by_ids(list(ids)):
+        for team in self.team_repository.list_by_ids(list(ids), organization_id):
             by_id[team.id] = _team_fact(team)
-        for team in self.team_repository.list_by_names(list(names)):
+        for team in self.team_repository.list_by_names(list(names), organization_id):
             by_id[team.id] = _team_fact(team)
         by_name = {fact.name: fact for fact in by_id.values()}
         return by_id, by_name
 
     def _project_lookup_maps(
-        self, rows: Sequence[Mapping[str, object]]
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, ProjectFact], dict[str, ProjectFact]]:
         ids = _collect_uuids(rows, "project_id")
         external_ids = _collect(rows, "project_external_id")
         by_id: dict[uuid.UUID, ProjectFact] = {}
-        for project in self.project_repository.list_by_ids(list(ids)):
+        for project in self.project_repository.list_by_ids(list(ids), organization_id):
             by_id[project.id] = _project_fact(project)
-        for project in self.project_repository.list_by_external_ids(list(external_ids)):
+        for project in self.project_repository.list_by_external_ids(
+            list(external_ids), organization_id
+        ):
             by_id[project.id] = _project_fact(project)
         by_external_id = {
             fact.external_id: fact for fact in by_id.values() if fact.external_id is not None
@@ -445,20 +454,21 @@ class ImportService:
         return by_id, by_external_id
 
     def _skill_lookup_maps(
-        self, rows: Sequence[Mapping[str, object]]
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, SkillFact], dict[str, SkillFact]]:
         ids = _collect_uuids(rows, "skill_id")
         names = _collect(rows, "skill_name")
         by_id: dict[uuid.UUID, SkillFact] = {}
-        for skill in self.skill_repository.list_by_ids(list(ids)):
+        for skill in self.skill_repository.list_by_ids(list(ids), organization_id):
             by_id[skill.id] = _skill_fact(skill)
-        for skill in self.skill_repository.list_by_names(list(names)):
+        for skill in self.skill_repository.list_by_names(list(names), organization_id):
             by_id[skill.id] = _skill_fact(skill)
         by_name = {fact.name: fact for fact in by_id.values()}
         return by_id, by_name
 
     def _build_lookup(
         self,
+        organization_id: uuid.UUID,
         rows: Sequence[Mapping[str, object]],
         *,
         need_people: bool = False,
@@ -466,12 +476,18 @@ class ImportService:
         need_projects: bool = False,
         need_skills: bool = False,
     ) -> ReferenceLookup:
-        people_by_id, people_by_email = self._person_lookup_maps(rows) if need_people else ({}, {})
-        teams_by_id, teams_by_name = self._team_lookup_maps(rows) if need_teams else ({}, {})
-        projects_by_id, projects_by_external_id = (
-            self._project_lookup_maps(rows) if need_projects else ({}, {})
+        people_by_id, people_by_email = (
+            self._person_lookup_maps(organization_id, rows) if need_people else ({}, {})
         )
-        skills_by_id, skills_by_name = self._skill_lookup_maps(rows) if need_skills else ({}, {})
+        teams_by_id, teams_by_name = (
+            self._team_lookup_maps(organization_id, rows) if need_teams else ({}, {})
+        )
+        projects_by_id, projects_by_external_id = (
+            self._project_lookup_maps(organization_id, rows) if need_projects else ({}, {})
+        )
+        skills_by_id, skills_by_name = (
+            self._skill_lookup_maps(organization_id, rows) if need_skills else ({}, {})
+        )
         return ReferenceLookup(
             people_by_id=people_by_id, people_by_email=people_by_email,
             teams_by_id=teams_by_id, teams_by_name=teams_by_name,
@@ -482,7 +498,7 @@ class ImportService:
     # -- Per-entity preparation -----------------------------------------------
 
     def _prepare_person(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
         # Self-identity match: Person's own "email" column — NOT the
         # "person_email" column other entities use to *reference* a person
@@ -490,7 +506,7 @@ class ImportService:
         emails = _collect(rows, "email")
         people_by_email = {
             person.email: _person_fact(person)
-            for person in self.person_repository.list_by_emails(list(emails))
+            for person in self.person_repository.list_by_emails(list(emails), organization_id)
         }
         lookup = ReferenceLookup(
             people_by_id={f.id: f for f in people_by_email.values()},
@@ -504,13 +520,14 @@ class ImportService:
         ]
 
     def _prepare_team(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
         # Self-identity match: Team's own "name" column — NOT "team_name"
         # (see _team_lookup_maps, which is for reference resolution only).
         names = _collect(rows, "name")
         teams_by_name = {
-            team.name: _team_fact(team) for team in self.team_repository.list_by_names(list(names))
+            team.name: _team_fact(team)
+            for team in self.team_repository.list_by_names(list(names), organization_id)
         }
         lookup = ReferenceLookup(
             people_by_id={}, people_by_email={},
@@ -524,15 +541,17 @@ class ImportService:
         ]
 
     def _prepare_team_membership(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_people=True, need_teams=True)
+        lookup = self._build_lookup(organization_id, rows, need_people=True, need_teams=True)
         resolved_person_ids: set[uuid.UUID] = set()
         for row in rows:
             ref = resolve_person_reference(row, lookup)
             if not isinstance(ref, ImportFieldError):
                 resolved_person_ids.add(ref)
-        memberships = self.team_membership_repository.list_for_people(list(resolved_person_ids))
+        memberships = self.team_membership_repository.list_for_people(
+            list(resolved_person_ids), organization_id
+        )
         existing = {
             (m.person_id, m.team_id): TeamMembershipFact(person_id=m.person_id, team_id=m.team_id)
             for m in memberships
@@ -545,7 +564,7 @@ class ImportService:
         ]
 
     def _prepare_project(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
         # Self-identity match: Project's own "external_id" column — NOT
         # "project_external_id" (see _project_lookup_maps, which is for
@@ -554,7 +573,9 @@ class ImportService:
         external_ids = _collect(rows, "external_id")
         existing = {
             project.external_id: _project_fact(project)
-            for project in self.project_repository.list_by_external_ids(list(external_ids))
+            for project in self.project_repository.list_by_external_ids(
+                list(external_ids), organization_id
+            )
             if project.external_id is not None
         }
         return [
@@ -563,13 +584,15 @@ class ImportService:
         ]
 
     def _prepare_allocation(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_people=True, need_projects=True)
+        lookup = self._build_lookup(organization_id, rows, need_people=True, need_projects=True)
         external_ids = _collect(rows, "external_id")
         existing = {
             a.external_id: _allocation_fact(a)
-            for a in self.allocation_repository.list_by_external_ids(list(external_ids))
+            for a in self.allocation_repository.list_by_external_ids(
+                list(external_ids), organization_id
+            )
             if a.external_id is not None
         }
         return [
@@ -580,13 +603,15 @@ class ImportService:
         ]
 
     def _prepare_working_schedule(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_people=True)
+        lookup = self._build_lookup(organization_id, rows, need_people=True)
         external_ids = _collect(rows, "external_id")
         existing = {
             s.external_id: _working_schedule_fact(s)
-            for s in self.working_schedule_repository.list_by_external_ids(list(external_ids))
+            for s in self.working_schedule_repository.list_by_external_ids(
+                list(external_ids), organization_id
+            )
             if s.external_id is not None
         }
 
@@ -604,7 +629,7 @@ class ImportService:
         resolved_person_ids.update(fact.person_id for fact in existing.values())
         ranges_by_person: dict[uuid.UUID, list[tuple[uuid.UUID, date | None, date | None]]] = {}
         for schedule in self.working_schedule_repository.list_all_for_people(
-            list(resolved_person_ids)
+            list(resolved_person_ids), organization_id
         ):
             ranges_by_person.setdefault(schedule.person_id, []).append(
                 (schedule.id, schedule.effective_start_date, schedule.effective_end_date)
@@ -677,14 +702,14 @@ class ImportService:
         return outcome
 
     def _prepare_availability_exception(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_people=True)
+        lookup = self._build_lookup(organization_id, rows, need_people=True)
         external_ids = _collect(rows, "external_id")
         existing = {
             e.external_id: _availability_exception_fact(e)
             for e in self.availability_exception_repository.list_by_external_ids(
-                list(external_ids)
+                list(external_ids), organization_id
             )
             if e.external_id is not None
         }
@@ -699,7 +724,7 @@ class ImportService:
         ]
 
     def _prepare_skill(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
         # Self-identity match: Skill's own "name" column — NOT "skill_name"
         # (see _skill_lookup_maps, which is for reference resolution only,
@@ -707,7 +732,7 @@ class ImportService:
         names = _collect(rows, "name")
         skills_by_name = {
             skill.name: _skill_fact(skill)
-            for skill in self.skill_repository.list_by_names(list(names))
+            for skill in self.skill_repository.list_by_names(list(names), organization_id)
         }
         return [
             _PreparedRow(i, apply_mode_policy(normalize_skill_row(row, skills_by_name), mode))
@@ -715,9 +740,9 @@ class ImportService:
         ]
 
     def _prepare_person_skill(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_people=True, need_skills=True)
+        lookup = self._build_lookup(organization_id, rows, need_people=True, need_skills=True)
         resolved_person_ids: set[uuid.UUID] = set()
         for row in rows:
             ref = resolve_person_reference(row, lookup)
@@ -725,7 +750,9 @@ class ImportService:
                 resolved_person_ids.add(ref)
         existing = {
             (row.person_id, row.skill_id): _person_skill_fact(row)
-            for row in self.person_skill_repository.list_for_people(list(resolved_person_ids))
+            for row in self.person_skill_repository.list_for_people(
+                list(resolved_person_ids), organization_id
+            )
         }
         return [
             _PreparedRow(
@@ -735,9 +762,9 @@ class ImportService:
         ]
 
     def _prepare_project_skill_requirement(
-        self, rows: Sequence[Mapping[str, object]], mode: ImportMode
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
     ) -> list[_PreparedRow]:
-        lookup = self._build_lookup(rows, need_projects=True, need_skills=True)
+        lookup = self._build_lookup(organization_id, rows, need_projects=True, need_skills=True)
         resolved_project_ids: set[uuid.UUID] = set()
         for row in rows:
             ref = resolve_project_reference(row, lookup)
@@ -746,7 +773,7 @@ class ImportService:
         existing = {
             (row.project_id, row.skill_id): _project_skill_requirement_fact(row)
             for row in self.project_skill_requirement_repository.list_for_projects(
-                list(resolved_project_ids)
+                list(resolved_project_ids), organization_id
             )
         }
         return [
@@ -761,74 +788,96 @@ class ImportService:
 
     # -- Writing (apply only; every row already confirmed clean) -------------
 
-    def _write_row(self, entity_type: ImportEntityType, outcome: NormalizeOutcome[Any]) -> None:
+    def _write_row(
+        self,
+        organization_id: uuid.UUID,
+        entity_type: ImportEntityType,
+        outcome: NormalizeOutcome[Any],
+    ) -> None:
         if outcome.action in (None, "unchanged"):
             return
 
         if entity_type == ImportEntityType.PERSON:
             if outcome.action == "create":
-                self.person_service.create(cast(PersonCreate, outcome.payload))
+                self.person_service.create(organization_id, cast(PersonCreate, outcome.payload))
             else:
                 self.person_service.update(
-                    cast(uuid.UUID, outcome.matched_id), cast(PersonUpdate, outcome.payload)
+                    organization_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(PersonUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.TEAM:
             if outcome.action == "create":
-                self.team_service.create(cast(TeamCreate, outcome.payload))
+                self.team_service.create(organization_id, cast(TeamCreate, outcome.payload))
             else:
                 self.team_service.update(
-                    cast(uuid.UUID, outcome.matched_id), cast(TeamUpdate, outcome.payload)
+                    organization_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(TeamUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.TEAM_MEMBERSHIP:
             payload = cast(TeamMembershipPayload, outcome.payload)
-            self.team_membership_service.add_member(payload.team_id, payload.data)
+            self.team_membership_service.add_member(organization_id, payload.team_id, payload.data)
         elif entity_type == ImportEntityType.PROJECT:
             if outcome.action == "create":
-                self.project_service.create(cast(ProjectCreate, outcome.payload))
+                self.project_service.create(organization_id, cast(ProjectCreate, outcome.payload))
             else:
                 self.project_service.update(
-                    cast(uuid.UUID, outcome.matched_id), cast(ProjectUpdate, outcome.payload)
+                    organization_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(ProjectUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.ALLOCATION:
             if outcome.action == "create":
-                self.allocation_service.create(cast(AllocationCreate, outcome.payload))
+                self.allocation_service.create(
+                    organization_id, cast(AllocationCreate, outcome.payload)
+                )
             else:
                 self.allocation_service.update(
-                    cast(uuid.UUID, outcome.matched_id), cast(AllocationUpdate, outcome.payload)
+                    organization_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(AllocationUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.WORKING_SCHEDULE:
             if outcome.action == "create":
-                self.working_schedule_service.create(cast(WorkingScheduleCreate, outcome.payload))
+                self.working_schedule_service.create(
+                    organization_id, cast(WorkingScheduleCreate, outcome.payload)
+                )
             else:
                 self.working_schedule_service.update(
+                    organization_id,
                     cast(uuid.UUID, outcome.matched_id),
                     cast(WorkingScheduleUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.AVAILABILITY_EXCEPTION:
             if outcome.action == "create":
                 self.availability_exception_service.create(
-                    cast(AvailabilityExceptionCreate, outcome.payload)
+                    organization_id, cast(AvailabilityExceptionCreate, outcome.payload)
                 )
             else:
                 self.availability_exception_service.update(
+                    organization_id,
                     cast(uuid.UUID, outcome.matched_id),
                     cast(AvailabilityExceptionUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.SKILL:
             if outcome.action == "create":
-                self.skill_service.create(cast(SkillCreate, outcome.payload))
+                self.skill_service.create(organization_id, cast(SkillCreate, outcome.payload))
             else:
                 self.skill_service.update(
-                    cast(uuid.UUID, outcome.matched_id), cast(SkillUpdate, outcome.payload)
+                    organization_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(SkillUpdate, outcome.payload),
                 )
         elif entity_type == ImportEntityType.PERSON_SKILL:
             payload = cast(PersonSkillPayload, outcome.payload)
             if outcome.action == "create":
                 self.person_skill_service.add(
-                    payload.person_id, cast(PersonSkillCreate, payload.data)
+                    organization_id, payload.person_id, cast(PersonSkillCreate, payload.data)
                 )
             else:
                 self.person_skill_service.update(
+                    organization_id,
                     payload.person_id,
                     cast(uuid.UUID, outcome.matched_id),
                     cast(PersonSkillUpdate, payload.data),
@@ -837,11 +886,13 @@ class ImportService:
             requirement_payload = cast(ProjectSkillRequirementPayload, outcome.payload)
             if outcome.action == "create":
                 self.project_skill_requirement_service.add(
+                    organization_id,
                     requirement_payload.project_id,
                     cast(ProjectSkillRequirementCreate, requirement_payload.data),
                 )
             else:
                 self.project_skill_requirement_service.update(
+                    organization_id,
                     requirement_payload.project_id,
                     cast(uuid.UUID, outcome.matched_id),
                     cast(ProjectSkillRequirementUpdate, requirement_payload.data),

@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import (
     get_access_grant_service,
     get_audit_service,
+    get_current_membership,
     require_csrf,
     require_permission,
 )
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.schemas.access_grant import (
     ProjectAccessGrantCreate,
@@ -22,12 +24,17 @@ from app.services.access_grant import AccessGrantService
 from app.services.audit import AuditService
 
 router = APIRouter(tags=["access-grants"])
-"""Instance-level resource authorization management (Phase 11). Every route
-here is gated on Permission.ACCESS_MANAGE, which only Owner/Admin hold in
-ROLE_PERMISSIONS — a Manager's request to this router 403s at the
-type-level permission check before any resource logic runs, which is what
-makes self-escalation structurally impossible (see
-docs/adr/0011-instance-level-resource-authorization.md)."""
+"""Instance-level resource authorization management (Phase 11), organization-
+scoped (Phase 12). Every route here is gated on Permission.ACCESS_MANAGE,
+which only Owner/Admin hold in ROLE_PERMISSIONS — a Manager's request to
+this router 403s at the type-level permission check before any resource
+logic runs, which is what makes self-escalation structurally impossible
+(see docs/adr/0011-instance-level-resource-authorization.md). Every grant
+is additionally scoped to the caller's active organization (see
+docs/adr/0012-organizations-multi-tenancy.md) — a team_id/project_id from
+a different organization 404s (via the org-scoped repository lookups
+inside AccessGrantService), and a user_id with no active membership in
+this organization 404s too, never confirming they exist elsewhere."""
 
 
 @router.get(
@@ -36,9 +43,13 @@ docs/adr/0011-instance-level-resource-authorization.md)."""
 def list_team_access_grants(
     team_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
 ) -> list[TeamAccessGrantRead]:
-    return [TeamAccessGrantRead.model_validate(g) for g in service.list_team_grants(team_id)]
+    return [
+        TeamAccessGrantRead.model_validate(g)
+        for g in service.list_team_grants(membership.organization_id, team_id)
+    ]
 
 
 @router.post(
@@ -51,10 +62,13 @@ def grant_team_access(
     team_id: uuid.UUID,
     data: TeamAccessGrantCreate,
     current_user: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamAccessGrantRead:
-    grant = service.grant_team_access(team_id, data.user_id, granted_by=current_user)
+    grant = service.grant_team_access(
+        membership.organization_id, team_id, data.user_id, granted_by=current_user
+    )
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -63,6 +77,7 @@ def grant_team_access(
         resource_type="team",
         resource_id=str(team_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"target_user_id": str(data.user_id)},
     )
     return TeamAccessGrantRead.model_validate(grant)
@@ -77,10 +92,11 @@ def revoke_team_access(
     team_id: uuid.UUID,
     user_id: uuid.UUID,
     current_user: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.revoke_team_access(team_id, user_id)
+    service.revoke_team_access(membership.organization_id, team_id, user_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -89,6 +105,7 @@ def revoke_team_access(
         resource_type="team",
         resource_id=str(team_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"target_user_id": str(user_id)},
     )
 
@@ -99,10 +116,12 @@ def revoke_team_access(
 def list_project_access_grants(
     project_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
 ) -> list[ProjectAccessGrantRead]:
     return [
-        ProjectAccessGrantRead.model_validate(g) for g in service.list_project_grants(project_id)
+        ProjectAccessGrantRead.model_validate(g)
+        for g in service.list_project_grants(membership.organization_id, project_id)
     ]
 
 
@@ -116,10 +135,13 @@ def grant_project_access(
     project_id: uuid.UUID,
     data: ProjectAccessGrantCreate,
     current_user: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ProjectAccessGrantRead:
-    grant = service.grant_project_access(project_id, data.user_id, granted_by=current_user)
+    grant = service.grant_project_access(
+        membership.organization_id, project_id, data.user_id, granted_by=current_user
+    )
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -128,6 +150,7 @@ def grant_project_access(
         resource_type="project",
         resource_id=str(project_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"target_user_id": str(data.user_id)},
     )
     return ProjectAccessGrantRead.model_validate(grant)
@@ -142,10 +165,11 @@ def revoke_project_access(
     project_id: uuid.UUID,
     user_id: uuid.UUID,
     current_user: User = Depends(require_permission(Permission.ACCESS_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AccessGrantService = Depends(get_access_grant_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.revoke_project_access(project_id, user_id)
+    service.revoke_project_access(membership.organization_id, project_id, user_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -154,5 +178,6 @@ def revoke_project_access(
         resource_type="project",
         resource_id=str(project_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"target_user_id": str(user_id)},
     )

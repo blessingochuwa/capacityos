@@ -75,7 +75,11 @@ class SkillCapacityService:
             raise DomainValidationError(f"date range cannot exceed {MAX_RANGE_DAYS} days")
 
     def _remaining_capacity_by_person(
-        self, person_ids: list[uuid.UUID], start_date: date, end_date: date
+        self,
+        organization_id: uuid.UUID,
+        person_ids: list[uuid.UUID],
+        start_date: date,
+        end_date: date,
     ) -> dict[uuid.UUID, Decimal]:
         facts_by_person = load_people_facts(
             self.schedule_repository,
@@ -84,6 +88,7 @@ class SkillCapacityService:
             person_ids,
             start_date,
             end_date,
+            organization_id,
         )
         results: dict[uuid.UUID, Decimal] = {}
         for person_id, facts in facts_by_person.items():
@@ -98,26 +103,35 @@ class SkillCapacityService:
         return results
 
     def get_project_skill_coverage(
-        self, project_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, start_date: date, end_date: date
     ) -> ProjectSkillCoverageRead:
         self._validate_range(start_date, end_date)
-        project = self.project_repository.get(project_id)
+        project = self.project_repository.get(project_id, organization_id)
         if project is None:
             raise NotFoundError("Project", project_id)
 
-        requirements = self.project_skill_requirement_repository.list_for_project(project_id)
+        requirements = self.project_skill_requirement_repository.list_for_project(
+            project_id, organization_id
+        )
         skill_ids = [requirement.skill_id for requirement in requirements]
-        skills_by_id = {skill.id: skill for skill in self.skill_repository.list_by_ids(skill_ids)}
-        person_skills = self.person_skill_repository.list_for_skills(skill_ids)
+        skills_by_id = {
+            skill.id: skill
+            for skill in self.skill_repository.list_by_ids(skill_ids, organization_id)
+        }
+        # organization_id here is what keeps this "candidate pool" scoped to
+        # this organization's people only — Phase 7 originally called this
+        # pool "org-wide" meaning "every holder of the skill," which before
+        # Phase 12 meant globally unscoped across the whole table.
+        person_skills = self.person_skill_repository.list_for_skills(skill_ids, organization_id)
         person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = defaultdict(list)
         for row in person_skills:
             person_skills_by_skill[row.skill_id].append(row)
 
         all_person_ids = sorted({row.person_id for row in person_skills}, key=str)
         remaining_by_person = self._remaining_capacity_by_person(
-            all_person_ids, start_date, end_date
+            organization_id, all_person_ids, start_date, end_date
         )
-        person_labels = self._person_labels(all_person_ids)
+        person_labels = self._person_labels(all_person_ids, organization_id)
 
         coverage_entries: list[SkillCoverageRead] = []
         for requirement in requirements:
@@ -165,22 +179,24 @@ class SkillCapacityService:
         )
 
     def get_team_skill_capacity(
-        self, team_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, team_id: uuid.UUID, start_date: date, end_date: date
     ) -> TeamSkillCapacityRead:
         self._validate_range(start_date, end_date)
-        team = self.team_repository.get(team_id)
+        team = self.team_repository.get(team_id, organization_id)
         if team is None:
             raise NotFoundError("Team", team_id)
 
         member_ids = [
             membership.person_id
-            for membership in self.team_membership_repository.list_for_team(team_id)
+            for membership in self.team_membership_repository.list_for_team(
+                team_id, organization_id
+            )
         ]
-        person_skills = self.person_skill_repository.list_for_people(member_ids)
+        person_skills = self.person_skill_repository.list_for_people(member_ids, organization_id)
         skills_by_id = {
             skill.id: skill
             for skill in self.skill_repository.list_by_ids(
-                sorted({row.skill_id for row in person_skills}, key=str)
+                sorted({row.skill_id for row in person_skills}, key=str), organization_id
             )
         }
         person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = defaultdict(list)
@@ -188,8 +204,10 @@ class SkillCapacityService:
             if skills_by_id.get(row.skill_id) is not None and skills_by_id[row.skill_id].is_active:
                 person_skills_by_skill[row.skill_id].append(row)
 
-        remaining_by_person = self._remaining_capacity_by_person(member_ids, start_date, end_date)
-        person_labels = self._person_labels(member_ids)
+        remaining_by_person = self._remaining_capacity_by_person(
+            organization_id, member_ids, start_date, end_date
+        )
+        person_labels = self._person_labels(member_ids, organization_id)
 
         entries: list[TeamSkillCapacityEntryRead] = []
         for skill_id, rows in sorted(
@@ -230,8 +248,10 @@ class SkillCapacityService:
             skills=entries,
         )
 
-    def _person_labels(self, person_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    def _person_labels(
+        self, person_ids: list[uuid.UUID], organization_id: uuid.UUID
+    ) -> dict[uuid.UUID, str]:
         return {
             person.id: person.display_name
-            for person in self.person_repository.list_by_ids(person_ids)
+            for person in self.person_repository.list_by_ids(person_ids, organization_id)
         }

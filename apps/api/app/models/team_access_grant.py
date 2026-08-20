@@ -27,6 +27,14 @@ class TeamAccessGrant(Base, UUIDPrimaryKeyMixin):
     a business entity with retained history value — the append-only
     AuditEvent trail (access_grant.create/access_grant.revoke) is what
     preserves who granted/revoked what and when, not this table.
+
+    organization_id (Phase 12) is defense-in-depth, not the primary check:
+    by the time AccessGrantService consults this table, the caller's
+    membership.organization_id and the team's own organization_id (via the
+    org-scoped TeamRepository.get) have already been resolved to the same
+    organization — this column exists so a grant can never itself
+    reference a user/team pair spanning two organizations, even if a
+    future call site skipped that earlier resolution.
     """
 
     __tablename__ = "team_access_grants"
@@ -34,6 +42,9 @@ class TeamAccessGrant(Base, UUIDPrimaryKeyMixin):
         UniqueConstraint("user_id", "team_id", name="uq_team_access_grant_user_team"),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )

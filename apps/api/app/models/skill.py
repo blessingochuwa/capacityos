@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,7 +15,8 @@ if TYPE_CHECKING:
 
 
 class Skill(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    """A named capability people can hold and projects can require (Phase 7).
+    """A named capability people can hold and projects can require, scoped
+    to one organization (Phase 7, Phase 12).
 
     is_active is a soft-delete flag, not a hard DELETE — PersonSkill and
     ProjectSkillRequirement rows reference a skill by id, and deactivating
@@ -25,11 +27,21 @@ class Skill(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     ProjectSkillRequirement row still references one (CLAUDE.md invariant:
     "inactive skills should not accidentally appear as active requirements")
     — see docs/adr/0007-phase-7-skills-bottleneck-analysis.md.
+
+    name was globally unique through Phase 11; Phase 12 rescopes it to
+    (organization_id, name) — two unrelated organizations may both
+    plausibly have a skill named "Python" or "Figma".
     """
 
     __tablename__ = "skills"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_skill_organization_name"),
+    )
 
-    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

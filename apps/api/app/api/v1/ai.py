@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_membership, require_permission
 from app.api.v1.capacity import get_capacity_service
 from app.api.v1.insights import get_insight_service
 from app.api.v1.scenarios import get_scenario_calculation_service
@@ -11,6 +11,7 @@ from app.domain.authorization import Permission
 from app.integrations.ai.anthropic_provider import AnthropicAIProvider
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.mock import MockAIProvider
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -105,10 +106,15 @@ def get_ai_status(
 def post_ai_summary(
     data: AISummaryRequest,
     _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.summarize(
-        data.scope.entity_type, data.scope.entity_id, data.start_date, data.end_date
+        membership.organization_id,
+        data.scope.entity_type,
+        data.scope.entity_id,
+        data.start_date,
+        data.end_date,
     )
 
 
@@ -116,9 +122,11 @@ def post_ai_summary(
 def post_ai_explain_signal(
     data: AIExplainSignalRequest,
     _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.explain_signal(
+        membership.organization_id,
         data.scope.entity_type,
         data.scope.entity_id,
         data.signal_type,
@@ -131,18 +139,21 @@ def post_ai_explain_signal(
 def post_ai_explain_scenario(
     data: AIExplainScenarioRequest,
     _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
-    return service.explain_scenario(data.scenario_id)
+    return service.explain_scenario(membership.organization_id, data.scenario_id)
 
 
 @router.post("/ask", response_model=AIResponseEnvelope)
 def post_ai_ask(
     data: AIAskRequest,
     _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.ask(
+        membership.organization_id,
         data.scope.entity_type,
         data.scope.entity_id,
         data.start_date,

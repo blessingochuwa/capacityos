@@ -4,11 +4,18 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission, require_team_access
+from app.api.deps import (
+    get_audit_service,
+    get_current_membership,
+    require_csrf,
+    require_permission,
+    require_team_access,
+)
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -64,10 +71,11 @@ def get_skill_capacity_service(db: Session = Depends(get_db)) -> SkillCapacitySe
 def create_team(
     data: TeamCreate,
     current_user: User = Depends(require_permission(Permission.TEAM_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamService = Depends(get_team_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamRead:
-    team = service.create(data)
+    team = service.create(membership.organization_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -76,6 +84,7 @@ def create_team(
         resource_type="team",
         resource_id=str(team.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return TeamRead.model_validate(team)
 
@@ -85,9 +94,10 @@ def list_teams(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: User = Depends(require_permission(Permission.TEAM_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamService = Depends(get_team_service),
 ) -> Page[TeamRead]:
-    items, total = service.list(limit=limit, offset=offset)
+    items, total = service.list(membership.organization_id, limit=limit, offset=offset)
     return Page[TeamRead](items=[TeamRead.model_validate(item) for item in items], total=total)
 
 
@@ -95,9 +105,10 @@ def list_teams(
 def get_team(
     team_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.TEAM_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamService = Depends(get_team_service),
 ) -> TeamRead:
-    return TeamRead.model_validate(service.get(team_id))
+    return TeamRead.model_validate(service.get(membership.organization_id, team_id))
 
 
 @router.patch("/{team_id}", response_model=TeamRead, dependencies=[Depends(require_csrf)])
@@ -105,10 +116,11 @@ def update_team(
     team_id: uuid.UUID,
     data: TeamUpdate,
     current_user: User = Depends(require_team_access(Permission.TEAM_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamService = Depends(get_team_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamRead:
-    team = service.update(team_id, data)
+    team = service.update(membership.organization_id, team_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -117,6 +129,7 @@ def update_team(
         resource_type="team",
         resource_id=str(team.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
     )
     return TeamRead.model_validate(team)
@@ -128,10 +141,11 @@ def update_team(
 def delete_team(
     team_id: uuid.UUID,
     current_user: User = Depends(require_team_access(Permission.TEAM_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamService = Depends(get_team_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.delete(team_id)
+    service.delete(membership.organization_id, team_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -140,6 +154,7 @@ def delete_team(
         resource_type="team",
         resource_id=str(team_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
 
 
@@ -147,9 +162,13 @@ def delete_team(
 def list_team_members(
     team_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.TEAM_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamMembershipService = Depends(get_team_membership_service),
 ) -> list[TeamMembershipRead]:
-    return [TeamMembershipRead.model_validate(m) for m in service.list_members(team_id)]
+    return [
+        TeamMembershipRead.model_validate(m)
+        for m in service.list_members(membership.organization_id, team_id)
+    ]
 
 
 @router.post(
@@ -160,10 +179,11 @@ def add_team_member(
     team_id: uuid.UUID,
     data: TeamMembershipCreate,
     current_user: User = Depends(require_team_access(Permission.TEAM_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamMembershipService = Depends(get_team_membership_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> TeamMembershipRead:
-    membership = service.add_member(team_id, data)
+    team_membership = service.add_member(membership.organization_id, team_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -172,9 +192,10 @@ def add_team_member(
         resource_type="team",
         resource_id=str(team_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"person_id": str(data.person_id)},
     )
-    return TeamMembershipRead.model_validate(membership)
+    return TeamMembershipRead.model_validate(team_membership)
 
 
 @router.delete(
@@ -185,10 +206,11 @@ def remove_team_member(
     team_id: uuid.UUID,
     person_id: uuid.UUID,
     current_user: User = Depends(require_team_access(Permission.TEAM_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: TeamMembershipService = Depends(get_team_membership_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> None:
-    service.remove_member(team_id, person_id)
+    service.remove_member(membership.organization_id, team_id, person_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -197,6 +219,7 @@ def remove_team_member(
         resource_type="team",
         resource_id=str(team_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"person_id": str(person_id)},
     )
 
@@ -207,6 +230,9 @@ def get_team_skill_capacity(
     start_date: date,
     end_date: date,
     _: User = Depends(require_permission(Permission.SKILL_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: SkillCapacityService = Depends(get_skill_capacity_service),
 ) -> TeamSkillCapacityRead:
-    return service.get_team_skill_capacity(team_id, start_date, end_date)
+    return service.get_team_skill_capacity(
+        membership.organization_id, team_id, start_date, end_date
+    )

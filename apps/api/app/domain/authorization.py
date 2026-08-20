@@ -75,6 +75,19 @@ class Permission(StrEnum):
     what would let a Manager grant themselves (or anyone) instance-level
     access. Only Admin/Owner receive it, directly in ROLE_PERMISSIONS."""
 
+    ORGANIZATION_MANAGE = "organization.manage"
+    """Rename or deactivate an Organization itself (Phase 12) — Owner only,
+    directly in ROLE_PERMISSIONS. Organization creation needs no
+    permission check at all (any authenticated user may create one,
+    becoming its Owner — see OrganizationService.create); this permission
+    governs an EXISTING organization's own lifecycle."""
+
+    MEMBERSHIP_MANAGE = "membership.manage"
+    """Add/revoke/reactivate a member or change a membership's role within
+    one Organization (Phase 12). Mirrors ACCESS_MANAGE's precedent exactly
+    — Admin/Owner only, never folded into _WRITE_PERMISSIONS, since it is
+    what would let a Manager grant themselves (or anyone) a higher role."""
+
 
 _READ_PERMISSIONS: frozenset[Permission] = frozenset(
     {
@@ -123,6 +136,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
         | _WRITE_PERMISSIONS
         | {Permission.USER_READ, Permission.USER_WRITE, Permission.AUDIT_READ}
         | {Permission.ACCESS_MANAGE}
+        | {Permission.MEMBERSHIP_MANAGE}
     ),
     UserRole.OWNER: (
         _READ_PERMISSIONS
@@ -130,11 +144,16 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
         | _WRITE_PERMISSIONS
         | {Permission.USER_READ, Permission.USER_WRITE, Permission.AUDIT_READ}
         | {Permission.ACCESS_MANAGE}
+        | {Permission.MEMBERSHIP_MANAGE}
+        | {Permission.ORGANIZATION_MANAGE}
     ),
-    # Owner and Admin share an identical permission SET — what distinguishes
-    # Owner is procedural, enforced in UserService, not an extra Permission:
-    # only an Owner may promote/demote another Owner or Admin, and the
-    # system must always retain >=1 active Owner.
+    # Owner and Admin share almost the identical permission set — what
+    # distinguishes Owner is ORGANIZATION_MANAGE (rename/deactivate the
+    # organization itself — a step above day-to-day membership admin) plus
+    # procedural rules enforced in the service layer, not extra
+    # Permissions: only an Owner may promote/demote another Owner or
+    # Admin, and every organization must always retain >=1 active Owner
+    # (Phase 12: this invariant is now per-organization).
 }
 
 

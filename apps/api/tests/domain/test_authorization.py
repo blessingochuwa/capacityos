@@ -44,12 +44,18 @@ def test_admin_can_manage_users_and_read_audit() -> None:
     assert has_permission(UserRole.ADMIN, Permission.AUDIT_READ)
 
 
-def test_owner_has_exactly_the_same_permission_set_as_admin() -> None:
-    """The Owner/Admin distinction is procedural (see UserService), not an
-    extra Permission — the two roles' grants are identical by design."""
+def test_owner_has_every_admin_permission_plus_organization_manage() -> None:
+    """Phase 12: Owner and Admin are no longer identical — Owner alone
+    holds ORGANIZATION_MANAGE (rename/deactivate the organization itself).
+    Everything else (including MEMBERSHIP_MANAGE) is still shared; the
+    remaining Owner/Admin distinction is procedural (see
+    OrganizationMembershipService), not a second extra Permission."""
     from app.domain.authorization import ROLE_PERMISSIONS
 
-    assert ROLE_PERMISSIONS[UserRole.OWNER] == ROLE_PERMISSIONS[UserRole.ADMIN]
+    assert ROLE_PERMISSIONS[UserRole.OWNER] - ROLE_PERMISSIONS[UserRole.ADMIN] == {
+        Permission.ORGANIZATION_MANAGE
+    }
+    assert ROLE_PERMISSIONS[UserRole.ADMIN] <= ROLE_PERMISSIONS[UserRole.OWNER]
 
 
 def test_every_role_can_read_all_operational_entities() -> None:

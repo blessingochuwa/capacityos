@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission
+from app.api.deps import get_audit_service, get_current_membership, require_csrf, require_permission
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.logging import request_id_var
@@ -15,6 +15,7 @@ from app.domain.import_export_parsing import (
     build_template,
 )
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -103,13 +104,16 @@ def validate_import(
     file: UploadFile = File(...),
     mode: ImportMode = Query(default=ImportMode.UPSERT),
     _: User = Depends(require_permission(Permission.IMPORT_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ImportService = Depends(get_import_service),
 ) -> ImportValidationReport:
     """Parses and validates the uploaded file without writing anything —
     stage A of the two-stage validate-then-apply flow (CLAUDE.md §39
     Phase 6). Never mutates live data."""
     raw_bytes = file.file.read()
-    report = service.validate(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    report = service.validate(
+        membership.organization_id, entity_type, raw_bytes, file.filename, file.content_type, mode
+    )
     # File name and row counts only — never the file's content.
     if report.file_error is not None or report.invalid_count > 0:
         logger.info(
@@ -134,6 +138,7 @@ def apply_import(
     file: UploadFile = File(...),
     mode: ImportMode = Query(default=ImportMode.UPSERT),
     current_user: User = Depends(require_permission(Permission.IMPORT_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ImportService = Depends(get_import_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> ImportApplyResult:
@@ -142,7 +147,9 @@ def apply_import(
     identical file it already validated (see
     docs/adr/0006-phase-6-import-export.md)."""
     raw_bytes = file.file.read()
-    result = service.apply(entity_type, raw_bytes, file.filename, file.content_type, mode)
+    result = service.apply(
+        membership.organization_id, entity_type, raw_bytes, file.filename, file.content_type, mode
+    )
     log_level = logging.INFO if result.applied else logging.WARNING
     logger.log(
         log_level,
@@ -166,6 +173,7 @@ def apply_import(
         outcome=AuditOutcome.SUCCESS if result.applied else AuditOutcome.FAILURE,
         resource_type=entity_type.value,
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={
             "mode": mode.value,
             "applied": result.applied,

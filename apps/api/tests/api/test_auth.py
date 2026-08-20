@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
-from app.models.enums import AuditAction, AuditOutcome, UserRole, UserStatus
+from app.models.enums import AuditAction, AuditOutcome, MembershipStatus, UserRole, UserStatus
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
+from tests.factories import make_organization
 
 PASSWORD = "correct horse battery staple"
 
@@ -18,18 +20,39 @@ def _make_user(
     db_session: Session,
     *,
     email: str = "owner@example.com",
-    role: UserRole = UserRole.OWNER,
     status: UserStatus = UserStatus.ACTIVE,
 ) -> User:
+    """A bare account, no organization/role — role is no longer a User
+    property (Phase 12). Tests that need permissions/org context use
+    _make_user_with_membership below."""
     user = User(
         email=email,
         password_hash=hash_password(PASSWORD),
         display_name="Test User",
-        role=role,
         status=status,
     )
     db_session.add(user)
     db_session.flush()
+    db_session.commit()
+    return user
+
+
+def _make_user_with_membership(
+    db_session: Session, *, email: str = "owner@example.com", role: UserRole = UserRole.OWNER
+) -> User:
+    """A single active membership means login auto-selects the
+    organization (see AuthService.login) — so /auth/me's role/permissions
+    are populated with no explicit switch-organization call needed."""
+    user = _make_user(db_session, email=email)
+    organization = make_organization(db_session)
+    db_session.add(
+        OrganizationMembership(
+            user_id=user.id,
+            organization_id=organization.id,
+            role=role,
+            status=MembershipStatus.ACTIVE,
+        )
+    )
     db_session.commit()
     return user
 
@@ -165,10 +188,14 @@ def test_me_with_a_valid_session_returns_the_current_user(
 def test_me_response_includes_the_users_current_permissions(
     unauthenticated_client: TestClient, db_session: Session
 ) -> None:
-    """See app/schemas/user.py::user_to_read — the frontend gates UI
+    """See app/schemas/auth.py::me_to_read — the frontend gates UI
     affordances from this field instead of a second, hand-maintained
-    TypeScript copy of the role/permission table."""
-    _make_user(db_session, email="viewer@example.com", role=UserRole.VIEWER)
+    TypeScript copy of the role/permission table. Permissions are relative
+    to the caller's active organization (Phase 12) — this user has exactly
+    one membership, so login auto-selects it (see AuthService.login)."""
+    _make_user_with_membership(
+        db_session, email="viewer@example.com", role=UserRole.VIEWER
+    )
     unauthenticated_client.post(
         "/api/v1/auth/login", json={"email": "viewer@example.com", "password": PASSWORD}
     )

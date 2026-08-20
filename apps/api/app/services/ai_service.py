@@ -201,10 +201,15 @@ class AIService:
         )
 
     def summarize(
-        self, entity_type: str, entity_id: uuid.UUID, start_date: date, end_date: date
+        self,
+        organization_id: uuid.UUID,
+        entity_type: str,
+        entity_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
     ) -> AIResponseEnvelope:
         context = self.context_builder.build_for_scope(
-            entity_type, entity_id, start_date, end_date
+            organization_id, entity_type, entity_id, start_date, end_date
         )
         question = (
             "Summarize what is happening for this scope and period: a concise summary, "
@@ -215,6 +220,7 @@ class AIService:
 
     def explain_signal(
         self,
+        organization_id: uuid.UUID,
         entity_type: str,
         entity_id: uuid.UUID,
         signal_type: str,
@@ -222,7 +228,12 @@ class AIService:
         end_date: date,
     ) -> AIResponseEnvelope:
         context = self.context_builder.build_for_scope(
-            entity_type, entity_id, start_date, end_date, signal_type_filter=signal_type
+            organization_id,
+            entity_type,
+            entity_id,
+            start_date,
+            end_date,
+            signal_type_filter=signal_type,
         )
         if not context.signals:
             return AIResponseEnvelope(
@@ -238,8 +249,10 @@ class AIService:
         )
         return self._generate(context, question)
 
-    def explain_scenario(self, scenario_id: uuid.UUID) -> AIResponseEnvelope:
-        context = self.context_builder.build_for_scenario(scenario_id)
+    def explain_scenario(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> AIResponseEnvelope:
+        context = self.context_builder.build_for_scenario(organization_id, scenario_id)
         question = (
             "Explain what changed between the baseline and this scenario: utilization and "
             "remaining-capacity changes, new risks, resolved risks, and affected people/projects. "
@@ -250,6 +263,7 @@ class AIService:
 
     def ask(
         self,
+        organization_id: uuid.UUID,
         entity_type: str,
         entity_id: uuid.UUID,
         start_date: date,
@@ -257,7 +271,7 @@ class AIService:
         question: str,
     ) -> AIResponseEnvelope:
         context = self.context_builder.build_for_scope(
-            entity_type, entity_id, start_date, end_date
+            organization_id, entity_type, entity_id, start_date, end_date
         )
         return self._generate(context, frame_user_question(question))
 

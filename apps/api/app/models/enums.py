@@ -127,6 +127,21 @@ class UserRole(StrEnum):
     VIEWER = "viewer"
 
 
+class MembershipStatus(StrEnum):
+    """Controlled vocabulary for OrganizationMembership.status (Phase 12).
+
+    Distinct from User.status: User.status governs whether the ACCOUNT can
+    log in at all; MembershipStatus governs whether this particular
+    organization membership is currently in effect. A user can be
+    ACTIVE (able to log in) while REVOKED from one organization but still
+    ACTIVE in another. DB-CHECK-constrained, like UserStatus — a small,
+    fixed, closed set with real authorization meaning.
+    """
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 class UserStatus(StrEnum):
     """Controlled vocabulary for User.status (Phase 10).
 
@@ -174,7 +189,6 @@ class AuditAction(StrEnum):
 
     USER_CREATE = "user.create"
     USER_UPDATE = "user.update"
-    USER_ROLE_CHANGE = "user.role_change"
     USER_STATUS_CHANGE = "user.status_change"
 
     PERSON_CREATE = "person.create"
@@ -232,3 +246,19 @@ class AuditAction(StrEnum):
 
     ACCESS_GRANT_CREATE = "access_grant.create"
     ACCESS_GRANT_REVOKE = "access_grant.revoke"
+
+    ORGANIZATION_CREATE = "organization.create"
+    ORGANIZATION_UPDATE = "organization.update"
+    ORGANIZATION_DEACTIVATE = "organization.deactivate"
+
+    MEMBERSHIP_CREATE = "membership.create"
+    MEMBERSHIP_ROLE_CHANGE = "membership.role_change"
+    MEMBERSHIP_REVOKE = "membership.revoke"
+    MEMBERSHIP_REACTIVATE = "membership.reactivate"
+
+    AUTH_ORGANIZATION_SWITCH = "auth.organization_switch"
+    NO_ACTIVE_ORGANIZATION = "organization.no_active_context"
+    """Recorded when an authenticated request reaches an organization-scoped
+    route with no valid active-organization context (none selected, or the
+    membership/organization was revoked/deactivated since login) — the
+    Phase 12 counterpart to PERMISSION_DENIED/RESOURCE_ACCESS_DENIED."""

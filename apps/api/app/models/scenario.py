@@ -34,10 +34,15 @@ class Scenario(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     production data, only ever a function of (baseline data now, these
     operations).
 
-    created_by is free text, not a foreign key to a user table — CapacityOS
-    has no authentication yet (CLAUDE.md §32). It is nullable rather than
-    fabricated, per the prompt's explicit instruction not to invent user
-    identities.
+    created_by is free text, not a foreign key to a user table — it predates
+    Phase 10 authentication and is nullable rather than fabricated, per the
+    original prompt's instruction not to invent user identities.
+
+    organization_id (Phase 12) is the tenant boundary — a scenario's
+    operations may only ever reference people/projects/allocations resolved
+    through this same organization (enforced in app/services/scenario.py's
+    _check_* methods), so the scenario itself can never straddle two
+    organizations even though ScenarioOperation carries no FK of its own.
     """
 
     __tablename__ = "scenarios"
@@ -47,6 +52,9 @@ class Scenario(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[ScenarioStatus] = mapped_column(

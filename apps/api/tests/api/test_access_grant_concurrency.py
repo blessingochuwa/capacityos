@@ -22,13 +22,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.core.exceptions import ConflictError
+from app.models.enums import UserRole
+from app.repositories.organization_membership import OrganizationMembershipRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_access_grant import ProjectAccessGrantRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_access_grant import TeamAccessGrantRepository
 from app.repositories.user import UserRepository
 from app.services.access_grant import AccessGrantService
-from tests.factories import make_team, make_user
+from tests.factories import make_organization, make_organization_membership, make_team, make_user
 
 
 @pytest.fixture
@@ -58,9 +60,9 @@ def _service_for(session: Session) -> AccessGrantService:
     return AccessGrantService(
         TeamAccessGrantRepository(session),
         ProjectAccessGrantRepository(session),
-        UserRepository(session),
         TeamRepository(session),
         ProjectRepository(session),
+        OrganizationMembershipRepository(session),
     )
 
 
@@ -68,11 +70,20 @@ def test_concurrent_duplicate_grant_attempts_yield_exactly_one_winner(
     file_backed_session_factory: sessionmaker[Session],
 ) -> None:
     setup_session = file_backed_session_factory()
+    organization = make_organization(setup_session)
     admin = make_user(setup_session)
+    make_organization_membership(
+        setup_session, user=admin, organization=organization, role=UserRole.ADMIN
+    )
     manager = make_user(setup_session, email="manager@example.com")
-    team = make_team(setup_session)
+    make_organization_membership(
+        setup_session, user=manager, organization=organization, role=UserRole.MANAGER
+    )
+    team = make_team(setup_session, organization=organization)
     setup_session.commit()
-    team_id, manager_id, admin_id = team.id, manager.id, admin.id
+    organization_id, team_id, manager_id, admin_id = (
+        organization.id, team.id, manager.id, admin.id
+    )
     setup_session.close()
 
     results: list[str] = []
@@ -84,7 +95,7 @@ def test_concurrent_duplicate_grant_attempts_yield_exactly_one_winner(
             service = _service_for(session)
             admin_ref = UserRepository(session).get(admin_id)
             assert admin_ref is not None
-            service.grant_team_access(team_id, manager_id, granted_by=admin_ref)
+            service.grant_team_access(organization_id, team_id, manager_id, granted_by=admin_ref)
             session.commit()
             outcome = "success"
         except (ConflictError, IntegrityError):
@@ -107,7 +118,7 @@ def test_concurrent_duplicate_grant_attempts_yield_exactly_one_winner(
 
     verify_session = file_backed_session_factory()
     try:
-        grants = TeamAccessGrantRepository(verify_session).list_for_team(team_id)
+        grants = TeamAccessGrantRepository(verify_session).list_for_team(team_id, organization_id)
         assert len(grants) == 1, "no duplicate row should exist after concurrent contention"
     finally:
         verify_session.close()
@@ -121,11 +132,20 @@ def test_grant_revoke_grant_sequence_across_independent_connections(
     file, which the Phase 10 bug (a second connection blocking against the
     first's open transaction) shows is not guaranteed for free."""
     setup_session = file_backed_session_factory()
+    organization = make_organization(setup_session)
     admin = make_user(setup_session)
+    make_organization_membership(
+        setup_session, user=admin, organization=organization, role=UserRole.ADMIN
+    )
     manager = make_user(setup_session, email="manager@example.com")
-    team = make_team(setup_session)
+    make_organization_membership(
+        setup_session, user=manager, organization=organization, role=UserRole.MANAGER
+    )
+    team = make_team(setup_session, organization=organization)
     setup_session.commit()
-    admin_id, manager_id, team_id = admin.id, manager.id, team.id
+    organization_id, admin_id, manager_id, team_id = (
+        organization.id, admin.id, manager.id, team.id
+    )
     setup_session.close()
 
     def _grant() -> None:
@@ -133,7 +153,9 @@ def test_grant_revoke_grant_sequence_across_independent_connections(
         try:
             admin_ref = UserRepository(session).get(admin_id)
             assert admin_ref is not None
-            _service_for(session).grant_team_access(team_id, manager_id, granted_by=admin_ref)
+            _service_for(session).grant_team_access(
+                organization_id, team_id, manager_id, granted_by=admin_ref
+            )
             session.commit()
         finally:
             session.close()
@@ -141,7 +163,7 @@ def test_grant_revoke_grant_sequence_across_independent_connections(
     def _revoke() -> None:
         session = file_backed_session_factory()
         try:
-            _service_for(session).revoke_team_access(team_id, manager_id)
+            _service_for(session).revoke_team_access(organization_id, team_id, manager_id)
             session.commit()
         finally:
             session.close()
@@ -149,7 +171,7 @@ def test_grant_revoke_grant_sequence_across_independent_connections(
     def _exists() -> bool:
         session = file_backed_session_factory()
         try:
-            return TeamAccessGrantRepository(session).exists(manager_id, team_id)
+            return TeamAccessGrantRepository(session).exists(manager_id, team_id, organization_id)
         finally:
             session.close()
 
@@ -170,11 +192,19 @@ def test_concurrent_grants_for_different_teams_both_succeed(
     (user, team) pairs granted at the same time must both succeed, not
     just the duplicate-contention case above."""
     setup_session = file_backed_session_factory()
+    organization = make_organization(setup_session)
     admin = make_user(setup_session)
+    make_organization_membership(
+        setup_session, user=admin, organization=organization, role=UserRole.ADMIN
+    )
     manager = make_user(setup_session, email="manager@example.com")
-    team_a = make_team(setup_session, name="Team A")
-    team_b = make_team(setup_session, name="Team B")
+    make_organization_membership(
+        setup_session, user=manager, organization=organization, role=UserRole.MANAGER
+    )
+    team_a = make_team(setup_session, organization=organization, name="Team A")
+    team_b = make_team(setup_session, organization=organization, name="Team B")
     setup_session.commit()
+    organization_id = organization.id
     admin_id, manager_id = admin.id, manager.id
     team_a_id, team_b_id = team_a.id, team_b.id
     setup_session.close()
@@ -186,7 +216,9 @@ def test_concurrent_grants_for_different_teams_both_succeed(
         try:
             admin_ref = UserRepository(session).get(admin_id)
             assert admin_ref is not None
-            _service_for(session).grant_team_access(team_id, manager_id, granted_by=admin_ref)
+            _service_for(session).grant_team_access(
+                organization_id, team_id, manager_id, granted_by=admin_ref
+            )
             session.commit()
         except BaseException as exc:  # noqa: BLE001 — captured for the assertion below
             errors.append(exc)
@@ -205,7 +237,13 @@ def test_concurrent_grants_for_different_teams_both_succeed(
     assert errors == [], f"both grants should succeed without contention: {errors}"
     verify_session = file_backed_session_factory()
     try:
-        assert TeamAccessGrantRepository(verify_session).exists(manager_id, team_a_id) is True
-        assert TeamAccessGrantRepository(verify_session).exists(manager_id, team_b_id) is True
+        assert (
+            TeamAccessGrantRepository(verify_session).exists(manager_id, team_a_id, organization_id)
+            is True
+        )
+        assert (
+            TeamAccessGrantRepository(verify_session).exists(manager_id, team_b_id, organization_id)
+            is True
+        )
     finally:
         verify_session.close()

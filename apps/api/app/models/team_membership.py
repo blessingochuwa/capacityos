@@ -32,6 +32,9 @@ class TeamMembership(Base, UUIDPrimaryKeyMixin):
         UniqueConstraint("person_id", "team_id", name="uq_team_membership_person_team"),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     person_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True
     )

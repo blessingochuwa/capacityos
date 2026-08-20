@@ -64,6 +64,7 @@ class AuditService:
         resource_type: str | None = None,
         resource_id: str | None = None,
         request_id: str | None = None,
+        organization_id: uuid.UUID | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> AuditEvent:
         event = AuditEvent(
@@ -74,6 +75,7 @@ class AuditService:
             resource_type=resource_type,
             resource_id=resource_id,
             request_id=request_id,
+            organization_id=organization_id,
             event_metadata=metadata,
         )
         self.repository.add(event)
@@ -89,6 +91,7 @@ class AuditService:
     def list(
         self,
         *,
+        organization_id: uuid.UUID,
         actor_user_id: uuid.UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
@@ -97,7 +100,15 @@ class AuditService:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[AuditEvent], int]:
+        """organization_id is required (Phase 12), not optional — an Admin
+        in one organization must never be able to query another
+        organization's audit trail (docs/adr/0012-organizations-multi-
+        tenancy.md). Events with no organization_id at all (e.g. a login
+        failure against an unknown email) are deliberately excluded from
+        every organization-scoped query — they surface only through a
+        platform-level view, which this phase does not add an API for."""
         return self.repository.list_filtered(
+            organization_id=organization_id,
             actor_user_id=actor_user_id,
             action=action,
             resource_type=resource_type,

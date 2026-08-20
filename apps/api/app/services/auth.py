@@ -1,13 +1,17 @@
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal
 
-from app.core.exceptions import ForbiddenError
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.security import generate_session_token, hash_password, hash_token, verify_password
 from app.models.base import as_utc, utcnow
-from app.models.enums import UserStatus
+from app.models.enums import MembershipStatus, UserStatus
+from app.models.organization_membership import OrganizationMembership
 from app.models.session import UserSession
 from app.models.user import User
+from app.repositories.organization import OrganizationRepository
+from app.repositories.organization_membership import OrganizationMembershipRepository
 from app.repositories.session import UserSessionRepository
 from app.repositories.user import UserRepository
 
@@ -25,6 +29,7 @@ class LoginResult:
     token: str | None
     csrf_token: str | None
     reason: Literal["invalid_credentials", "locked"] | None
+    active_organization_id: uuid.UUID | None = None
 
 
 class AuthService:
@@ -41,11 +46,15 @@ class AuthService:
         self,
         user_repository: UserRepository,
         session_repository: UserSessionRepository,
+        membership_repository: OrganizationMembershipRepository,
+        organization_repository: OrganizationRepository,
         *,
         session_ttl_hours: int,
     ) -> None:
         self.user_repository = user_repository
         self.session_repository = session_repository
+        self.membership_repository = membership_repository
+        self.organization_repository = organization_repository
         self.session_ttl_hours = session_ttl_hours
 
     def login(self, email: str, password: str) -> LoginResult:
@@ -96,21 +105,63 @@ class AuthService:
         user.last_login_at = now
         token = generate_session_token()
         csrf_token = generate_session_token()
+
+        # Phase 12: auto-select the active organization only when it's
+        # unambiguous. Zero memberships (a brand-new account not yet added
+        # to any organization) or more than one both leave this NULL —
+        # get_current_membership (app/api/deps.py) then requires an
+        # explicit POST /auth/switch-organization before any
+        # organization-scoped route will succeed; the frontend's
+        # RequireAuth gate reacts to that state directly rather than this
+        # service guessing which organization the caller meant.
+        active_memberships = self.membership_repository.list_active_for_user(user.id)
+        active_organization_id = (
+            active_memberships[0].organization_id if len(active_memberships) == 1 else None
+        )
+
         session = UserSession(
             user_id=user.id,
             token_hash=hash_token(token),
             csrf_token_hash=hash_token(csrf_token),
+            active_organization_id=active_organization_id,
             expires_at=now + timedelta(hours=self.session_ttl_hours),
             last_seen_at=now,
         )
         self.session_repository.add(session)
         self.user_repository.session.flush()
         return LoginResult(
-            success=True, user=user, token=token, csrf_token=csrf_token, reason=None
+            success=True,
+            user=user,
+            token=token,
+            csrf_token=csrf_token,
+            reason=None,
+            active_organization_id=active_organization_id,
         )
 
     def logout(self, token: str) -> None:
         self.session_repository.delete_by_token_hash(hash_token(token))
+
+    def switch_organization(
+        self, user: User, session: UserSession, organization_id: uuid.UUID
+    ) -> OrganizationMembership:
+        """Re-verifies an active membership for (user, organization_id) AND
+        that the organization itself is active BEFORE updating the
+        session's active_organization_id — the request body's
+        organization_id is only ever a selector, never trusted as proof of
+        membership on its own (Phase 12). Raises NotFoundError, not
+        ForbiddenError, when no active membership exists for this pair —
+        deliberately indistinguishable from "that organization doesn't
+        exist," so a caller can't use this endpoint to enumerate
+        organizations they don't belong to."""
+        membership = self.membership_repository.get_by_user_and_org(user.id, organization_id)
+        if membership is None or membership.status != MembershipStatus.ACTIVE:
+            raise NotFoundError("Organization", organization_id)
+        organization = self.organization_repository.get(organization_id)
+        if organization is None or not organization.is_active:
+            raise NotFoundError("Organization", organization_id)
+        session.active_organization_id = organization_id
+        self.session_repository.session.flush()
+        return membership
 
     def resolve_session(self, token: str) -> tuple[User, UserSession] | None:
         """Returns the authenticated User plus its live UserSession row for
@@ -119,7 +170,14 @@ class AuthService:
         app/api/deps.py::get_current_user turns None into the 401
         UnauthenticatedError. The session row is returned (not just the
         user) so the caller can read csrf_token_hash for require_csrf
-        without a second database lookup."""
+        without a second database lookup.
+
+        The returned session's active_organization_id is NOT re-validated
+        against live membership/organization state here — that
+        per-request re-verification is app/api/deps.py::get_current_
+        membership's job (Phase 12), kept deliberately separate so this
+        method stays a pure "is this token good" check, unchanged from
+        Phase 10."""
         session = self.session_repository.get_by_token_hash(hash_token(token))
         if session is None:
             return None

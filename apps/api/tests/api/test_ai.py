@@ -395,6 +395,7 @@ def test_summary_reports_error_status_when_provider_raises(client: TestClient) -
 
         def build_for_scope(
             self,
+            organization_id: uuid.UUID,
             entity_type: str,
             entity_id: uuid.UUID,
             start_date: date,

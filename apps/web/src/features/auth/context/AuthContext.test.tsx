@@ -77,6 +77,73 @@ describe('AuthProvider', () => {
     )
     expect(screen.getByTestId('can-write')).toHaveTextContent('no')
   })
+
+  it('reports no-organization when the session is valid but has no active organization (Phase 12)', async () => {
+    mockedAuthApi.me.mockResolvedValue(
+      makeCurrentUser({ role: null, active_organization: null, permissions: [] }),
+    )
+    renderWithAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('no-organization'),
+    )
+  })
+})
+
+describe('switchOrganization (Phase 12)', () => {
+  it('re-fetches the session with the new organization and purges other cached queries', async () => {
+    const initialUser = makeCurrentUser({
+      active_organization: { id: 'org-1', name: 'Org One', slug: 'org-one' },
+      organizations: [
+        { id: 'org-1', name: 'Org One', slug: 'org-one' },
+        { id: 'org-2', name: 'Org Two', slug: 'org-two' },
+      ],
+    })
+    const switchedUser = makeCurrentUser({
+      active_organization: { id: 'org-2', name: 'Org Two', slug: 'org-two' },
+      organizations: initialUser.organizations,
+      role: 'viewer',
+      permissions: ['person.read'],
+    })
+    mockedAuthApi.me.mockResolvedValue(initialUser)
+    mockedAuthApi.switchOrganization.mockResolvedValue(switchedUser)
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    queryClient.setQueryData(['other-scoped-query'], { stale: true })
+
+    function Probe() {
+      const { user, status, switchOrganization } = useAuth()
+      return (
+        <div>
+          <span data-testid="status">{status}</span>
+          <span data-testid="active-org">{user?.active_organization?.id ?? 'none'}</span>
+          <button onClick={() => void switchOrganization('org-2')}>Switch</button>
+        </div>
+      )
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('active-org')).toHaveTextContent('org-1'),
+    )
+
+    screen.getByRole('button', { name: 'Switch' }).click()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('active-org')).toHaveTextContent('org-2'),
+    )
+    expect(mockedAuthApi.switchOrganization.mock.calls[0]?.[0]).toBe('org-2')
+    expect(queryClient.getQueryData(['other-scoped-query'])).toBeUndefined()
+  })
 })
 
 describe('canManageResource (Phase 11)', () => {

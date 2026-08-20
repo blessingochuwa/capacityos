@@ -46,6 +46,7 @@ describe('AccessManagementPage', () => {
       canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
 
     render(<AccessManagementPage />)
@@ -64,6 +65,7 @@ describe('AccessManagementPage', () => {
       canManageResource: () => true,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     mockedUseTeams.mockReturnValue(mockQuerySuccess({ items: [], total: 0 }))
     mockedUseProjects.mockReturnValue(mockQuerySuccess({ items: [], total: 0 }))

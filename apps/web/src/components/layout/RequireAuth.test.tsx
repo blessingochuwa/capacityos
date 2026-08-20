@@ -17,6 +17,10 @@ function renderProtected() {
       <Routes>
         <Route path="/login" element={<div>Login page</div>} />
         <Route
+          path="/select-organization"
+          element={<div>Select organization page</div>}
+        />
+        <Route
           path="/capacity"
           element={
             <RequireAuth>
@@ -38,6 +42,7 @@ describe('RequireAuth', () => {
       canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     renderProtected()
     expect(screen.getByRole('status')).toBeInTheDocument()
@@ -52,9 +57,25 @@ describe('RequireAuth', () => {
       canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     renderProtected()
     expect(screen.getByText('Login page')).toBeInTheDocument()
+    expect(screen.queryByText('Protected content')).not.toBeInTheDocument()
+  })
+
+  it('redirects to /select-organization when authenticated with no active organization', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeCurrentUser({ active_organization: null }),
+      status: 'no-organization',
+      can: () => false,
+      canManageResource: () => false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      switchOrganization: vi.fn(),
+    })
+    renderProtected()
+    expect(screen.getByText('Select organization page')).toBeInTheDocument()
     expect(screen.queryByText('Protected content')).not.toBeInTheDocument()
   })
 
@@ -66,6 +87,7 @@ describe('RequireAuth', () => {
       canManageResource: () => true,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     renderProtected()
     expect(screen.getByText('Protected content')).toBeInTheDocument()

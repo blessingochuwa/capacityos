@@ -116,7 +116,6 @@ def test_admin_can_manage_users(client_as: Callable[[UserRole], TestClient]) -> 
             "email": "newmember@example.com",
             "password": "a reasonably long password",
             "display_name": "New Member",
-            "role": "member",
         },
     )
     assert response.status_code == 201
@@ -126,18 +125,26 @@ def test_admin_cannot_promote_a_user_to_admin(
     client_as: Callable[[UserRole], TestClient],
 ) -> None:
     """Only an Owner may grant an Owner/Admin role — see
-    docs/adr/0010-authentication-rbac-audit.md."""
+    docs/adr/0010-authentication-rbac-audit.md and, for Phase 12, Permission.
+    MEMBERSHIP_MANAGE's docstring in app/domain/authorization.py."""
     admin = client_as(UserRole.ADMIN)
+    organization_id = str(admin.organization.id)  # type: ignore[attr-defined]
     created = admin.post(
         "/api/v1/users",
         json={
             "email": "target@example.com",
             "password": "a reasonably long password",
             "display_name": "Target",
-            "role": "member",
         },
     ).json()
-    response = admin.patch(f"/api/v1/users/{created['id']}/role", json={"role": "admin"})
+    admin.post(
+        f"/api/v1/organizations/{organization_id}/memberships",
+        json={"email": "target@example.com", "role": "member"},
+    )
+    response = admin.patch(
+        f"/api/v1/organizations/{organization_id}/memberships/{created['id']}/role",
+        json={"role": "admin"},
+    )
     assert response.status_code == 403
 
 
@@ -145,16 +152,23 @@ def test_owner_can_promote_a_user_to_admin(
     client_as: Callable[[UserRole], TestClient],
 ) -> None:
     owner = client_as(UserRole.OWNER)
+    organization_id = str(owner.organization.id)  # type: ignore[attr-defined]
     created = owner.post(
         "/api/v1/users",
         json={
             "email": "target2@example.com",
             "password": "a reasonably long password",
             "display_name": "Target",
-            "role": "member",
         },
     ).json()
-    response = owner.patch(f"/api/v1/users/{created['id']}/role", json={"role": "admin"})
+    owner.post(
+        f"/api/v1/organizations/{organization_id}/memberships",
+        json={"email": "target2@example.com", "role": "member"},
+    )
+    response = owner.patch(
+        f"/api/v1/organizations/{organization_id}/memberships/{created['id']}/role",
+        json={"role": "admin"},
+    )
     assert response.status_code == 200
     assert response.json()["role"] == "admin"
 

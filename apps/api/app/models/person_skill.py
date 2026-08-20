@@ -30,6 +30,9 @@ class PersonSkill(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UniqueConstraint("person_id", "skill_id", name="uq_person_skill_person_skill"),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     person_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True
     )

@@ -17,13 +17,21 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.exceptions import ForbiddenError, NotFoundError, UnauthenticatedError
+from app.core.exceptions import (
+    ForbiddenError,
+    NoActiveOrganizationError,
+    NotFoundError,
+    UnauthenticatedError,
+)
 from app.core.logging import request_id_var
 from app.core.security import hash_token
 from app.domain.authorization import Permission, has_permission
-from app.models.enums import AuditAction, AuditOutcome
+from app.models.enums import AuditAction, AuditOutcome, MembershipStatus
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.audit_event import AuditEventRepository
+from app.repositories.organization import OrganizationRepository
+from app.repositories.organization_membership import OrganizationMembershipRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_access_grant import ProjectAccessGrantRepository
 from app.repositories.session import UserSessionRepository
@@ -35,12 +43,24 @@ from app.services.audit import AuditService
 from app.services.auth import AuthService
 
 
+def get_organization_repository(db: Session = Depends(get_db)) -> OrganizationRepository:
+    return OrganizationRepository(db)
+
+
+def get_organization_membership_repository(
+    db: Session = Depends(get_db),
+) -> OrganizationMembershipRepository:
+    return OrganizationMembershipRepository(db)
+
+
 def get_auth_service(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> AuthService:
     return AuthService(
         UserRepository(db),
         UserSessionRepository(db),
+        OrganizationMembershipRepository(db),
+        OrganizationRepository(db),
         session_ttl_hours=settings.session_ttl_hours,
     )
 
@@ -49,9 +69,9 @@ def get_access_grant_service(db: Session = Depends(get_db)) -> AccessGrantServic
     return AccessGrantService(
         TeamAccessGrantRepository(db),
         ProjectAccessGrantRepository(db),
-        UserRepository(db),
         TeamRepository(db),
         ProjectRepository(db),
+        OrganizationMembershipRepository(db),
     )
 
 
@@ -78,10 +98,11 @@ def get_current_user(
 ) -> User:
     """401 if there's no session cookie, or it doesn't resolve to a live
     session for an active user. Also stashes the resolved session's
-    csrf_token_hash on request.state so require_csrf (below) doesn't need a
-    second database lookup — FastAPI caches this dependency's result per
-    request, so declaring it again elsewhere in the same request's
-    dependency graph doesn't re-run it."""
+    csrf_token_hash and active_organization_id on request.state so
+    require_csrf/get_current_membership (below) don't need a second
+    database lookup — FastAPI caches this dependency's result per request,
+    so declaring it again elsewhere in the same request's dependency graph
+    doesn't re-run it."""
     token = request.cookies.get(settings.session_cookie_name)
     if token is None:
         raise UnauthenticatedError("Authentication required.")
@@ -92,24 +113,61 @@ def get_current_user(
 
     user, session = resolved
     request.state.csrf_token_hash = session.csrf_token_hash
+    request.state.active_organization_id = session.active_organization_id
     return user
+
+
+def get_current_membership(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrganizationMembership:
+    """Re-resolves and re-verifies the caller's active-organization
+    membership on EVERY request (Phase 12) — never cached from login/
+    switch time — so a membership or organization deactivated after login
+    is denied on the very next request, not just the next login. Raises
+    NoActiveOrganizationError (409) if no organization was ever selected
+    (0 or >1 memberships at login, before an explicit switch), the
+    membership was revoked, or the organization itself was deactivated —
+    distinct from UnauthenticatedError (401, get_current_user already
+    ruled that out) and ForbiddenError (403, the caller has an
+    organization but the wrong role — see require_permission)."""
+    organization_id = getattr(request.state, "active_organization_id", None)
+    if organization_id is None:
+        raise NoActiveOrganizationError("Select an organization before continuing.")
+
+    membership = OrganizationMembershipRepository(db).get_by_user_and_org(
+        current_user.id, organization_id
+    )
+    if membership is None or membership.status != MembershipStatus.ACTIVE:
+        raise NoActiveOrganizationError("Your access to this organization has been revoked.")
+
+    organization = OrganizationRepository(db).get(organization_id)
+    if organization is None or not organization.is_active:
+        raise NoActiveOrganizationError("This organization is no longer active.")
+
+    return membership
 
 
 def require_permission(permission: Permission) -> Callable[..., User]:
     """Dependency factory — `Depends(require_permission(Permission.X))`.
     403 (never 401 — get_current_user already ran) if the caller's role
-    lacks the permission, recording a `permission.denied` AuditEvent first.
-    Returns the current user so a route can declare only this dependency
-    and still capture the actor, without a second Depends(get_current_user)
-    (FastAPI would cache it identically either way, but this is the more
-    readable single call site)."""
+    within their ACTIVE ORGANIZATION (Phase 12: resolved via
+    get_current_membership, not a role on User itself — see
+    docs/adr/0012-organizations-multi-tenancy.md) lacks the permission,
+    recording a `permission.denied` AuditEvent first. Returns the current
+    user so a route can declare only this dependency and still capture
+    the actor. Every route using this dependency transitively also
+    requires an active organization — get_current_membership raises
+    NoActiveOrganizationError first if none is selected."""
 
     def dependency(
         request: Request,
         current_user: User = Depends(get_current_user),
+        membership: OrganizationMembership = Depends(get_current_membership),
         audit_service: AuditService = Depends(get_audit_service),
     ) -> User:
-        if not has_permission(current_user.role, permission):
+        if not has_permission(membership.role, permission):
             audit_service.record(
                 actor_user_id=current_user.id,
                 actor_email=current_user.email,
@@ -117,7 +175,8 @@ def require_permission(permission: Permission) -> Callable[..., User]:
                 outcome=AuditOutcome.DENIED,
                 resource_type=permission.value.split(".")[0],
                 request_id=request_id_var.get(),
-                metadata={"permission": permission.value, "role": current_user.role.value},
+                organization_id=membership.organization_id,
+                metadata={"permission": permission.value, "role": membership.role.value},
             )
             raise ForbiddenError(
                 f"You do not have permission to perform this action ({permission.value})."
@@ -135,20 +194,24 @@ def require_team_access(permission: Permission) -> Callable[..., User]:
     inner dependency, so Member/Viewer are denied by the existing
     type-level check and never reach the resource-scope query at all —
     they hold no team.write/team.delete permission regardless of grants.
-    404s before the scope check if the team itself doesn't exist (Phase 10
-    behavior, unchanged)."""
+    404s before the scope check if the team doesn't exist OR belongs to a
+    different organization (Phase 12: TeamRepository.get is organization-
+    scoped, so a cross-organization id returns None exactly like a
+    nonexistent one — see docs/adr/0012-organizations-multi-tenancy.md)."""
 
     def dependency(
         team_id: uuid.UUID,
         current_user: User = Depends(require_permission(permission)),
+        membership: OrganizationMembership = Depends(get_current_membership),
         db: Session = Depends(get_db),
         audit_service: AuditService = Depends(get_audit_service),
         access_grants: AccessGrantService = Depends(get_access_grant_service),
     ) -> User:
-        if TeamRepository(db).get(team_id) is None:
+        if TeamRepository(db).get(team_id, membership.organization_id) is None:
             raise NotFoundError("Team", team_id)
         access_grants.enforce_team_access(
             current_user,
+            membership,
             team_id,
             permission,
             audit_service=audit_service,
@@ -166,14 +229,16 @@ def require_project_access(permission: Permission) -> Callable[..., User]:
     def dependency(
         project_id: uuid.UUID,
         current_user: User = Depends(require_permission(permission)),
+        membership: OrganizationMembership = Depends(get_current_membership),
         db: Session = Depends(get_db),
         audit_service: AuditService = Depends(get_audit_service),
         access_grants: AccessGrantService = Depends(get_access_grant_service),
     ) -> User:
-        if ProjectRepository(db).get(project_id) is None:
+        if ProjectRepository(db).get(project_id, membership.organization_id) is None:
             raise NotFoundError("Project", project_id)
         access_grants.enforce_project_access(
             current_user,
+            membership,
             project_id,
             permission,
             audit_service=audit_service,

@@ -47,14 +47,20 @@ class WorkingSchedule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "OR effective_end_date >= effective_start_date",
             name="ck_working_schedule_effective_dates",
         ),
+        UniqueConstraint(
+            "organization_id", "external_id", name="uq_working_schedule_organization_external_id"
+        ),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     person_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True
     )
     effective_start_date: Mapped[date | None] = mapped_column(Date)
     effective_end_date: Mapped[date | None] = mapped_column(Date)
-    external_id: Mapped[str | None] = mapped_column(String(200), unique=True, index=True)
+    external_id: Mapped[str | None] = mapped_column(String(200), index=True)
     """Phase 6 import identity key — WorkingSchedule has no other natural
     key. Nullable: most schedules are created directly and never imported.
     See docs/adr/0006-phase-6-import-export.md."""

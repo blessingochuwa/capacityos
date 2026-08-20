@@ -27,7 +27,9 @@ export function UserMenu() {
         <span className="text-sm font-medium text-slate-100">
           {user.display_name}
         </span>
-        <Badge variant="neutral">{ROLE_LABEL[user.role] ?? user.role}</Badge>
+        {user.role ? (
+          <Badge variant="neutral">{ROLE_LABEL[user.role] ?? user.role}</Badge>
+        ) : null}
       </div>
       <Button variant="ghost" onClick={() => void logout()}>
         Sign out

@@ -5,7 +5,17 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, Enum, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -41,8 +51,14 @@ class Allocation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("allocation_hours >= 0", name="ck_allocation_hours_nonnegative"),
         Index("ix_allocation_person_dates", "person_id", "start_date", "end_date"),
         Index("ix_allocation_project_dates", "project_id", "start_date", "end_date"),
+        UniqueConstraint(
+            "organization_id", "external_id", name="uq_allocation_organization_external_id"
+        ),
     )
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     person_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("people.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -65,7 +81,7 @@ class Allocation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         default=AllocationUnit.TOTAL_HOURS,
     )
     notes: Mapped[str | None] = mapped_column(Text)
-    external_id: Mapped[str | None] = mapped_column(String(200), unique=True, index=True)
+    external_id: Mapped[str | None] = mapped_column(String(200), index=True)
     """Phase 6 import identity key — Allocation has no other natural key.
     Nullable: most allocations are created directly and never imported. See
     docs/adr/0006-phase-6-import-export.md."""

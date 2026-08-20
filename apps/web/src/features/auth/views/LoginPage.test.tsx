@@ -21,6 +21,7 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
     canManageResource: () => false,
     login: vi.fn(),
     logout: vi.fn(),
+    switchOrganization: vi.fn(),
     ...overrides,
   })
 }

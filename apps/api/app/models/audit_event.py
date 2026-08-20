@@ -34,6 +34,14 @@ class AuditEvent(Base, UUIDPrimaryKeyMixin):
     any secret. action uses AuditAction (app/models/enums.py), an open,
     non-DB-constrained vocabulary so a new audited action is a pure code
     change, never a migration.
+
+    organization_id (Phase 12) is nullable, unlike every other org-owned
+    table's — some events genuinely have no organization context (e.g. a
+    login failure against an unknown email, or a permission denial before
+    any organization was ever selected). ondelete=SET NULL rather than
+    RESTRICT: unlike every other org-owned table (where a stray orphaned
+    row would be a real bug), an audit event outliving the organization it
+    referenced is the CORRECT behavior for an append-only historical log.
     """
 
     __tablename__ = "audit_events"
@@ -45,6 +53,9 @@ class AuditEvent(Base, UUIDPrimaryKeyMixin):
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     actor_email: Mapped[str | None] = mapped_column(String(320))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), index=True
+    )
     action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     resource_type: Mapped[str | None] = mapped_column(String(50), index=True)
     resource_id: Mapped[str | None] = mapped_column(String(64))

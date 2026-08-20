@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { ProjectSwitcher } from '@/features/capacity/components/ProjectSwitcher'
 import { useAuth } from '@/features/auth/context/AuthContext'
+import { OrganizationSwitcher } from '@/features/auth/components/OrganizationSwitcher'
 import { UserMenu } from '@/features/auth/components/UserMenu'
 
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }) =>
@@ -56,6 +57,9 @@ export function AppShell() {
             </nav>
           </div>
           <div className="flex items-center gap-4">
+            <div className="w-48">
+              <OrganizationSwitcher />
+            </div>
             <div className="w-56">
               <ProjectSwitcher />
             </div>

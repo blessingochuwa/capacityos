@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_access_grant_service,
     get_audit_service,
+    get_current_membership,
     require_csrf,
     require_permission,
 )
@@ -13,6 +14,7 @@ from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.person import PersonRepository
@@ -39,6 +41,7 @@ def get_allocation_service(db: Session = Depends(get_db)) -> AllocationService:
 def create_allocation(
     data: AllocationCreate,
     current_user: User = Depends(require_permission(Permission.ALLOCATION_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AllocationService = Depends(get_allocation_service),
     audit_service: AuditService = Depends(get_audit_service),
     access_grants: AccessGrantService = Depends(get_access_grant_service),
@@ -46,15 +49,18 @@ def create_allocation(
     # project_id comes from the request body, not a path param, so this is
     # the inline invocation of the same enforce_project_access method
     # require_project_access uses for path-resolved routes (Phase 11) — see
-    # docs/adr/0011-instance-level-resource-authorization.md.
+    # docs/adr/0011-instance-level-resource-authorization.md. The
+    # organization-scoped ProjectService.create call below already 404s a
+    # cross-organization project_id (Phase 12) before this even runs.
     access_grants.enforce_project_access(
         current_user,
+        membership,
         data.project_id,
         Permission.ALLOCATION_WRITE,
         audit_service=audit_service,
         request_id=request_id_var.get(),
     )
-    allocation = service.create(data)
+    allocation = service.create(membership.organization_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -63,6 +69,7 @@ def create_allocation(
         resource_type="allocation",
         resource_id=str(allocation.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )
     return AllocationRead.model_validate(allocation)
 
@@ -74,10 +81,15 @@ def list_allocations(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: User = Depends(require_permission(Permission.ALLOCATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AllocationService = Depends(get_allocation_service),
 ) -> Page[AllocationRead]:
     items, total = service.list(
-        person_id=person_id, project_id=project_id, limit=limit, offset=offset
+        membership.organization_id,
+        person_id=person_id,
+        project_id=project_id,
+        limit=limit,
+        offset=offset,
     )
     return Page[AllocationRead](
         items=[AllocationRead.model_validate(item) for item in items], total=total
@@ -88,9 +100,10 @@ def list_allocations(
 def get_allocation(
     allocation_id: uuid.UUID,
     _: User = Depends(require_permission(Permission.ALLOCATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AllocationService = Depends(get_allocation_service),
 ) -> AllocationRead:
-    return AllocationRead.model_validate(service.get(allocation_id))
+    return AllocationRead.model_validate(service.get(membership.organization_id, allocation_id))
 
 
 @router.patch(
@@ -100,22 +113,25 @@ def update_allocation(
     allocation_id: uuid.UUID,
     data: AllocationUpdate,
     current_user: User = Depends(require_permission(Permission.ALLOCATION_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AllocationService = Depends(get_allocation_service),
     audit_service: AuditService = Depends(get_audit_service),
     access_grants: AccessGrantService = Depends(get_access_grant_service),
 ) -> AllocationRead:
     # AllocationUpdate has no project_id field (an allocation can't be
     # re-pointed to a different project), so scope is resolved from the
-    # EXISTING row, fetched before mutating.
-    existing = service.get(allocation_id)
+    # EXISTING row, fetched before mutating — organization-scoped, so a
+    # cross-organization allocation_id already 404s here.
+    existing = service.get(membership.organization_id, allocation_id)
     access_grants.enforce_project_access(
         current_user,
+        membership,
         existing.project_id,
         Permission.ALLOCATION_WRITE,
         audit_service=audit_service,
         request_id=request_id_var.get(),
     )
-    allocation = service.update(allocation_id, data)
+    allocation = service.update(membership.organization_id, allocation_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -124,6 +140,7 @@ def update_allocation(
         resource_type="allocation",
         resource_id=str(allocation.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
     )
     return AllocationRead.model_validate(allocation)
@@ -137,19 +154,21 @@ def update_allocation(
 def delete_allocation(
     allocation_id: uuid.UUID,
     current_user: User = Depends(require_permission(Permission.ALLOCATION_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: AllocationService = Depends(get_allocation_service),
     audit_service: AuditService = Depends(get_audit_service),
     access_grants: AccessGrantService = Depends(get_access_grant_service),
 ) -> None:
-    existing = service.get(allocation_id)
+    existing = service.get(membership.organization_id, allocation_id)
     access_grants.enforce_project_access(
         current_user,
+        membership,
         existing.project_id,
         Permission.ALLOCATION_DELETE,
         audit_service=audit_service,
         request_id=request_id_var.get(),
     )
-    service.delete(allocation_id)
+    service.delete(membership.organization_id, allocation_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -158,4 +177,5 @@ def delete_allocation(
         resource_type="allocation",
         resource_id=str(allocation_id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
     )

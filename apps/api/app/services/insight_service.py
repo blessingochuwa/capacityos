@@ -133,15 +133,17 @@ class InsightService:
     # -- Public entry points ------------------------------------------------
 
     def get_person_signals(
-        self, person_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, person_id: uuid.UUID, start_date: date, end_date: date
     ) -> list[SignalRead]:
-        result = self.capacity_service.get_person_capacity(person_id, start_date, end_date)
-        label = self._person_labels([person_id]).get(person_id, "Unknown")
+        result = self.capacity_service.get_person_capacity(
+            organization_id, person_id, start_date, end_date
+        )
+        label = self._person_labels(organization_id, [person_id]).get(person_id, "Unknown")
         signal = self._capacity_signal("person", person_id, label, result, start_date, end_date)
         return self._prioritize([signal] if signal is not None else [])
 
     def get_team_signals(
-        self, team_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, team_id: uuid.UUID, start_date: date, end_date: date
     ) -> list[SignalRead]:
         """A/B/C at team-aggregate scope AND per-member scope (an
         individual's over-allocation/zero/low-capacity is never hidden
@@ -149,10 +151,10 @@ class InsightService:
         aggregate_team_capacity's own docstring states), plus E
         (capacity_imbalance) once for the team."""
         team_result, members = self.capacity_service.get_team_capacity(
-            team_id, start_date, end_date
+            organization_id, team_id, start_date, end_date
         )
-        team_label = self._team_label(team_id)
-        labels = self._person_labels([person_id for person_id, _ in members])
+        team_label = self._team_label(organization_id, team_id)
+        labels = self._person_labels(organization_id, [person_id for person_id, _ in members])
 
         signals: list[SignalRead] = []
         team_signal = self._capacity_signal(
@@ -181,22 +183,30 @@ class InsightService:
         }
         signals.extend(
             self._team_skill_holder_signals(
-                team_id, team_label, member_ids, remaining_by_person, start_date, end_date
+                organization_id,
+                team_id,
+                team_label,
+                member_ids,
+                remaining_by_person,
+                start_date,
+                end_date,
             )
         )
         return self._prioritize(signals)
 
     def get_project_signals(
-        self, project_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, start_date: date, end_date: date
     ) -> list[SignalRead]:
-        _, _, signals = self._project_signals(project_id, start_date, end_date)
+        _, _, signals = self._project_signals(organization_id, project_id, start_date, end_date)
         return self._prioritize(signals)
 
-    def get_scenario_signals(self, scenario_id: uuid.UUID) -> list[SignalRead]:
+    def get_scenario_signals(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> list[SignalRead]:
         """Wraps ScenarioCalculationService.comparison(...).risks — never
         re-detects risk, only reclassifies each RiskRead into a SignalRead
         (severity + explanation + new-vs-existing + trend)."""
-        comparison = self.scenario_calculation_service.comparison(scenario_id)
+        comparison = self.scenario_calculation_service.comparison(organization_id, scenario_id)
         signals = [
             self._scenario_risk_signal(comparison.scenario, risk) for risk in comparison.risks
         ]
@@ -204,19 +214,20 @@ class InsightService:
 
     def get_team_summary(
         self,
+        organization_id: uuid.UUID,
         team_id: uuid.UUID,
         start_date: date,
         end_date: date,
         project_id: uuid.UUID | None = None,
         scenario_id: uuid.UUID | None = None,
     ) -> InsightsSummaryRead:
-        team_signals = self.get_team_signals(team_id, start_date, end_date)
+        team_signals = self.get_team_signals(organization_id, team_id, start_date, end_date)
         team_result, members = self.capacity_service.get_team_capacity(
-            team_id, start_date, end_date
+            organization_id, team_id, start_date, end_date
         )
-        team_label = self._team_label(team_id)
+        team_label = self._team_label(organization_id, team_id)
         person_ids = [person_id for person_id, _ in members]
-        labels = self._person_labels(person_ids)
+        labels = self._person_labels(organization_id, person_ids)
 
         utilization_distribution = sorted(
             (
@@ -233,7 +244,9 @@ class InsightService:
         if project_id is not None:
             relevant_project_ids = [project_id]
         else:
-            touched = self.allocation_repository.list_for_people(person_ids, start_date, end_date)
+            touched = self.allocation_repository.list_for_people(
+                person_ids, start_date, end_date, organization_id
+            )
             relevant_project_ids = sorted(
                 {allocation.project_id for allocation in touched}, key=str
             )
@@ -242,7 +255,9 @@ class InsightService:
         concentration_areas: list[ConcentrationAreaRead] = []
         projects_under_pressure: list[ProjectPressureRead] = []
         for pid in relevant_project_ids:
-            label, demand, signals = self._project_signals(pid, start_date, end_date)
+            label, demand, signals = self._project_signals(
+                organization_id, pid, start_date, end_date
+            )
             project_signals.extend(signals)
             for signal in signals:
                 if signal.type == "concentration_risk":
@@ -270,8 +285,10 @@ class InsightService:
         scenario_signals: list[SignalRead] = []
         scenario_delta: AggregateComparisonRead | None = None
         if scenario_id is not None:
-            scenario_signals = self.get_scenario_signals(scenario_id)
-            scenario_delta = self.scenario_calculation_service.comparison(scenario_id).aggregate
+            scenario_signals = self.get_scenario_signals(organization_id, scenario_id)
+            scenario_delta = self.scenario_calculation_service.comparison(
+                organization_id, scenario_id
+            ).aggregate
 
         all_signals = team_signals + project_signals + scenario_signals
         signal_counts = SeverityCounts(
@@ -309,52 +326,71 @@ class InsightService:
     # -- Project signal assembly (shared by get_project_signals/get_team_summary)
 
     def _project_signals(
-        self, project_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, start_date: date, end_date: date
     ) -> tuple[str, ProjectDemandResult, list[SignalRead]]:
-        demand = self.capacity_service.get_project_demand(project_id, start_date, end_date)
-        label = self._project_label(project_id)
+        demand = self.capacity_service.get_project_demand(
+            organization_id, project_id, start_date, end_date
+        )
+        label = self._project_label(organization_id, project_id)
 
         signals: list[SignalRead] = []
         concentration = calculate_concentration(list(demand.by_person))
         if concentration is not None:
             signals.append(
-                self._concentration_signal(project_id, label, concentration, start_date, end_date)
+                self._concentration_signal(
+                    organization_id, project_id, label, concentration, start_date, end_date
+                )
             )
-        pressure_signal = self._pressure_signal(project_id, label, demand, start_date, end_date)
+        pressure_signal = self._pressure_signal(
+            organization_id, project_id, label, demand, start_date, end_date
+        )
         if pressure_signal is not None:
             signals.append(pressure_signal)
-        signals.extend(self._project_skill_signals(project_id, label, start_date, end_date))
+        signals.extend(
+            self._project_skill_signals(organization_id, project_id, label, start_date, end_date)
+        )
         return label, demand, signals
 
     # -- Skill signal assembly (Phase 7) ---------------------------------------
 
     def _project_skill_signals(
-        self, project_id: uuid.UUID, label: str, start_date: date, end_date: date
+        self,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        label: str,
+        start_date: date,
+        end_date: date,
     ) -> list[SignalRead]:
         """skill_gap (coverage shortfall) and single_skill_holder/
         skill_concentration (holder concentration) for every one of the
         project's ProjectSkillRequirement rows. The qualified population is
-        ORG-WIDE (everyone who holds the skill, not just people already
-        allocated to this project) — see
+        ORG-SCOPED (everyone in this organization who holds the skill, not
+        just people already allocated to this project — see
         docs/adr/0007-phase-7-skills-bottleneck-analysis.md for why a
-        project has no fixed "eligible pool" to restrict this to."""
-        requirements = self.project_skill_requirement_repository.list_for_project(project_id)
+        project has no fixed "eligible pool" to restrict this to; Phase 12
+        adds the organization boundary on top of that same reasoning)."""
+        requirements = self.project_skill_requirement_repository.list_for_project(
+            project_id, organization_id
+        )
         if not requirements:
             return []
 
         skill_ids = [requirement.skill_id for requirement in requirements]
-        skills_by_id = {skill.id: skill for skill in self.skill_repository.list_by_ids(skill_ids)}
+        skills_by_id = {
+            skill.id: skill
+            for skill in self.skill_repository.list_by_ids(skill_ids, organization_id)
+        }
         person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = {}
-        for row in self.person_skill_repository.list_for_skills(skill_ids):
+        for row in self.person_skill_repository.list_for_skills(skill_ids, organization_id):
             person_skills_by_skill.setdefault(row.skill_id, []).append(row)
 
         all_person_ids = sorted(
             {row.person_id for rows in person_skills_by_skill.values() for row in rows}, key=str
         )
         remaining_by_person = self._remaining_capacity_by_person(
-            all_person_ids, start_date, end_date
+            organization_id, all_person_ids, start_date, end_date
         )
-        person_labels = self._person_labels(all_person_ids)
+        person_labels = self._person_labels(organization_id, all_person_ids)
 
         signals: list[SignalRead] = []
         for requirement in requirements:
@@ -394,6 +430,7 @@ class InsightService:
 
     def _team_skill_holder_signals(
         self,
+        organization_id: uuid.UUID,
         team_id: uuid.UUID,
         team_label: str,
         member_ids: Sequence[uuid.UUID],
@@ -404,15 +441,20 @@ class InsightService:
         """single_skill_holder/skill_concentration for every skill any team
         member holds — team scope has no required_hours (no skill_gap
         here), since only Project carries a stored skill demand."""
-        person_skills = self.person_skill_repository.list_for_people(list(member_ids))
+        person_skills = self.person_skill_repository.list_for_people(
+            list(member_ids), organization_id
+        )
         if not person_skills:
             return []
         skill_ids = sorted({row.skill_id for row in person_skills}, key=str)
-        skills_by_id = {skill.id: skill for skill in self.skill_repository.list_by_ids(skill_ids)}
+        skills_by_id = {
+            skill.id: skill
+            for skill in self.skill_repository.list_by_ids(skill_ids, organization_id)
+        }
         person_skills_by_skill: dict[uuid.UUID, list[PersonSkill]] = {}
         for row in person_skills:
             person_skills_by_skill.setdefault(row.skill_id, []).append(row)
-        person_labels = self._person_labels(list(member_ids))
+        person_labels = self._person_labels(organization_id, list(member_ids))
 
         signals: list[SignalRead] = []
         for skill_id, rows in person_skills_by_skill.items():
@@ -443,7 +485,11 @@ class InsightService:
         return signals
 
     def _remaining_capacity_by_person(
-        self, person_ids: list[uuid.UUID], start_date: date, end_date: date
+        self,
+        organization_id: uuid.UUID,
+        person_ids: list[uuid.UUID],
+        start_date: date,
+        end_date: date,
     ) -> dict[uuid.UUID, Decimal]:
         facts_by_person = load_people_facts(
             self.schedule_repository,
@@ -452,6 +498,7 @@ class InsightService:
             person_ids,
             start_date,
             end_date,
+            organization_id,
         )
         results: dict[uuid.UUID, Decimal] = {}
         for person_id, facts in facts_by_person.items():
@@ -516,6 +563,7 @@ class InsightService:
 
     def _pressure_signal(
         self,
+        organization_id: uuid.UUID,
         project_id: uuid.UUID,
         label: str,
         demand: ProjectDemandResult,
@@ -540,6 +588,7 @@ class InsightService:
             person_ids,
             start_date,
             end_date,
+            organization_id,
         )
         member_results = [
             calculate_period_capacity(
@@ -593,13 +642,16 @@ class InsightService:
 
     def _concentration_signal(
         self,
+        organization_id: uuid.UUID,
         project_id: uuid.UUID,
         label: str,
         concentration: ConcentrationResult,
         start_date: date,
         end_date: date,
     ) -> SignalRead:
-        contributor_labels_map = self._person_labels(concentration.top_contributor_ids)
+        contributor_labels_map = self._person_labels(
+            organization_id, concentration.top_contributor_ids
+        )
         contributor_labels = [
             contributor_labels_map.get(person_id, "Unknown")
             for person_id in concentration.top_contributor_ids
@@ -838,18 +890,20 @@ class InsightService:
 
     # -- Labels ------------------------------------------------------------
 
-    def _person_labels(self, person_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+    def _person_labels(
+        self, organization_id: uuid.UUID, person_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, str]:
         return {
             person.id: person.display_name
-            for person in self.person_repository.list_by_ids(list(person_ids))
+            for person in self.person_repository.list_by_ids(list(person_ids), organization_id)
         }
 
-    def _team_label(self, team_id: uuid.UUID) -> str:
-        team = self.team_repository.get(team_id)
+    def _team_label(self, organization_id: uuid.UUID, team_id: uuid.UUID) -> str:
+        team = self.team_repository.get(team_id, organization_id)
         return team.name if team is not None else "Unknown"
 
-    def _project_label(self, project_id: uuid.UUID) -> str:
-        project = self.project_repository.get(project_id)
+    def _project_label(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> str:
+        project = self.project_repository.get(project_id, organization_id)
         return project.name if project is not None else "Unknown"
 
     # -- Formatting ----------------------------------------------------------

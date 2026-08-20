@@ -13,6 +13,7 @@ class AuditEventRepository(BaseRepository[AuditEvent]):
     def list_filtered(
         self,
         *,
+        organization_id: uuid.UUID,
         actor_user_id: uuid.UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
@@ -21,7 +22,7 @@ class AuditEventRepository(BaseRepository[AuditEvent]):
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[AuditEvent], int]:
-        stmt = select(AuditEvent)
+        stmt = select(AuditEvent).where(AuditEvent.organization_id == organization_id)
         if actor_user_id is not None:
             stmt = stmt.where(AuditEvent.actor_user_id == actor_user_id)
         if action is not None:

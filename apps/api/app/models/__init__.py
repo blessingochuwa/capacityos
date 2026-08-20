@@ -8,6 +8,8 @@ be imported somewhere before the mapper configuration is used.
 from app.models.allocation import Allocation
 from app.models.audit_event import AuditEvent
 from app.models.availability_exception import AvailabilityException
+from app.models.organization import Organization
+from app.models.organization_membership import OrganizationMembership
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
 from app.models.project import Project
@@ -26,6 +28,8 @@ __all__ = [
     "Allocation",
     "AuditEvent",
     "AvailabilityException",
+    "Organization",
+    "OrganizationMembership",
     "Person",
     "PersonSkill",
     "Project",

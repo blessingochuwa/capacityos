@@ -55,6 +55,20 @@ class ForbiddenError(DomainError):
     UserService's Owner-escalation checks (Phase 10)."""
 
 
+class NoActiveOrganizationError(DomainError):
+    """The caller is authenticated but has no valid active-organization
+    context for THIS request (Phase 12) — raised by
+    app/api/deps.py::get_current_membership. Distinct from
+    UnauthenticatedError (401: not logged in at all) and ForbiddenError
+    (403: logged in, active org, wrong role): this is "logged in, but
+    right now there is no tenant to act within" — either nothing was ever
+    selected (0 or >1 memberships at login), or the previously-selected
+    organization's membership/organization was revoked/deactivated since.
+    409, not 403: the caller did nothing wrong on this specific request;
+    their session state needs a fresh organization selection before
+    retrying. See docs/adr/0012-organizations-multi-tenancy.md."""
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     # The @app.exception_handler(SomeException) decorator (rather than
     # add_exception_handler) is what gives each handler's `exc` parameter
@@ -101,6 +115,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={"detail": str(exc) or "You do not have permission to perform this action."},
+        )
+
+    @app.exception_handler(NoActiveOrganizationError)
+    async def handle_no_active_organization(  # pyright: ignore[reportUnusedFunction]
+        request: Request, exc: NoActiveOrganizationError
+    ) -> JSONResponse:
+        logger.info("no active organization", extra={"path": request.url.path})
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": str(exc) or "Select an active organization before continuing."},
         )
 
     @app.exception_handler(ConflictError)

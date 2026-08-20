@@ -152,6 +152,7 @@ class AIContextBuilder:
 
     def build_for_scope(
         self,
+        organization_id: uuid.UUID,
         entity_type: str,
         entity_id: uuid.UUID,
         start_date: date,
@@ -160,26 +161,38 @@ class AIContextBuilder:
         signal_type_filter: str | None = None,
     ) -> AIInsightContext:
         if entity_type == "person":
-            result = self.capacity_service.get_person_capacity(entity_id, start_date, end_date)
+            result = self.capacity_service.get_person_capacity(
+                organization_id, entity_id, start_date, end_date
+            )
             capacity = _capacity_fact(result)
-            label = self._person_label(entity_id)
-            signals = self.insight_service.get_person_signals(entity_id, start_date, end_date)
+            label = self._person_label(organization_id, entity_id)
+            signals = self.insight_service.get_person_signals(
+                organization_id, entity_id, start_date, end_date
+            )
             skill_coverage: tuple[AISkillCoverageFact, ...] = ()
         elif entity_type == "team":
             team_result, _ = self.capacity_service.get_team_capacity(
-                entity_id, start_date, end_date
+                organization_id, entity_id, start_date, end_date
             )
             capacity = _capacity_fact(team_result)
-            label = self._team_label(entity_id)
-            signals = self.insight_service.get_team_signals(entity_id, start_date, end_date)
-            skill_coverage = self._team_skill_coverage(entity_id, start_date, end_date)
+            label = self._team_label(organization_id, entity_id)
+            signals = self.insight_service.get_team_signals(
+                organization_id, entity_id, start_date, end_date
+            )
+            skill_coverage = self._team_skill_coverage(
+                organization_id, entity_id, start_date, end_date
+            )
         elif entity_type == "project":
             # ProjectDemandResult has no capacity concept (demand only) —
             # never fabricate an AICapacityFact for a project scope.
             capacity = None
-            label = self._project_label(entity_id)
-            signals = self.insight_service.get_project_signals(entity_id, start_date, end_date)
-            skill_coverage = self._project_skill_coverage(entity_id, start_date, end_date)
+            label = self._project_label(organization_id, entity_id)
+            signals = self.insight_service.get_project_signals(
+                organization_id, entity_id, start_date, end_date
+            )
+            skill_coverage = self._project_skill_coverage(
+                organization_id, entity_id, start_date, end_date
+            )
         else:
             raise NotFoundError("scope", entity_type)
 
@@ -196,11 +209,13 @@ class AIContextBuilder:
             scenario=None,
         )
 
-    def build_for_scenario(self, scenario_id: uuid.UUID) -> AIInsightContext:
-        comparison = self.scenario_calculation_service.comparison(scenario_id)
+    def build_for_scenario(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> AIInsightContext:
+        comparison = self.scenario_calculation_service.comparison(organization_id, scenario_id)
         scenario = comparison.scenario
         aggregate = comparison.aggregate
-        signals = self.insight_service.get_scenario_signals(scenario_id)
+        signals = self.insight_service.get_scenario_signals(organization_id, scenario_id)
         scenario_fact = AIScenarioFact(
             scenario_id=scenario.id,
             scenario_label=scenario.name,
@@ -227,10 +242,10 @@ class AIContextBuilder:
         )
 
     def _team_skill_coverage(
-        self, team_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, team_id: uuid.UUID, start_date: date, end_date: date
     ) -> tuple[AISkillCoverageFact, ...]:
         capacity = self.skill_capacity_service.get_team_skill_capacity(
-            team_id, start_date, end_date
+            organization_id, team_id, start_date, end_date
         )
         return tuple(
             AISkillCoverageFact(
@@ -242,10 +257,10 @@ class AIContextBuilder:
         )
 
     def _project_skill_coverage(
-        self, project_id: uuid.UUID, start_date: date, end_date: date
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, start_date: date, end_date: date
     ) -> tuple[AISkillCoverageFact, ...]:
         coverage = self.skill_capacity_service.get_project_skill_coverage(
-            project_id, start_date, end_date
+            organization_id, project_id, start_date, end_date
         )
         return tuple(
             AISkillCoverageFact(
@@ -259,20 +274,20 @@ class AIContextBuilder:
             for requirement in coverage.requirements
         )
 
-    def _person_label(self, person_id: uuid.UUID) -> str:
-        person = self.person_repository.get(person_id)
+    def _person_label(self, organization_id: uuid.UUID, person_id: uuid.UUID) -> str:
+        person = self.person_repository.get(person_id, organization_id)
         if person is None:
             raise NotFoundError("Person", person_id)
         return person.display_name
 
-    def _team_label(self, team_id: uuid.UUID) -> str:
-        team = self.team_repository.get(team_id)
+    def _team_label(self, organization_id: uuid.UUID, team_id: uuid.UUID) -> str:
+        team = self.team_repository.get(team_id, organization_id)
         if team is None:
             raise NotFoundError("Team", team_id)
         return team.name
 
-    def _project_label(self, project_id: uuid.UUID) -> str:
-        project = self.project_repository.get(project_id)
+    def _project_label(self, organization_id: uuid.UUID, project_id: uuid.UUID) -> str:
+        project = self.project_repository.get(project_id, organization_id)
         if project is None:
             raise NotFoundError("Project", project_id)
         return project.name

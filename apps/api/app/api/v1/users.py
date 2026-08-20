@@ -3,16 +3,17 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_csrf, require_permission
+from app.api.deps import get_audit_service, get_current_membership, require_csrf, require_permission
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.person import PersonRepository
 from app.repositories.user import UserRepository
 from app.schemas.common import Page
-from app.schemas.user import UserCreate, UserRead, UserRoleChange, UserUpdate, user_to_read
+from app.schemas.user import UserCreate, UserRead, UserUpdate, user_to_read
 from app.services.audit import AuditService
 from app.services.user import UserService
 
@@ -32,10 +33,15 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
 def create_user(
     data: UserCreate,
     current_user: User = Depends(require_permission(Permission.USER_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: UserService = Depends(get_user_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> UserRead:
-    user = service.create(data)
+    """Creates an account only — no role anywhere yet (Phase 12: see
+    UserCreate's docstring). Give the new account a role in the acting
+    organization separately via
+    POST /organizations/{organization_id}/memberships."""
+    user = service.create(membership.organization_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -44,7 +50,7 @@ def create_user(
         resource_type="user",
         resource_id=str(user.id),
         request_id=request_id_var.get(),
-        metadata={"role": user.role.value},
+        organization_id=membership.organization_id,
     )
     return user_to_read(user)
 
@@ -56,6 +62,12 @@ def list_users(
     _: User = Depends(require_permission(Permission.USER_READ)),
     service: UserService = Depends(get_user_service),
 ) -> Page[UserRead]:
+    """Deliberately NOT organization-scoped (Decision 8) — an admin's
+    "add an existing user to my organization" flow needs to find any
+    account by email, not just accounts already in the acting
+    organization. require_permission still requires an active
+    organization context to reach this route at all; it just doesn't
+    filter the account directory by it."""
     items, total = service.list(limit=limit, offset=offset)
     return Page[UserRead](items=[user_to_read(item) for item in items], total=total)
 
@@ -74,10 +86,11 @@ def update_user(
     user_id: uuid.UUID,
     data: UserUpdate,
     current_user: User = Depends(require_permission(Permission.USER_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: UserService = Depends(get_user_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> UserRead:
-    user = service.update(user_id, data)
+    user = service.update(membership.organization_id, user_id, data)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
@@ -88,29 +101,7 @@ def update_user(
         resource_type="user",
         resource_id=str(user.id),
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
-    )
-    return user_to_read(user)
-
-
-@router.patch("/{user_id}/role", response_model=UserRead, dependencies=[Depends(require_csrf)])
-def change_user_role(
-    user_id: uuid.UUID,
-    data: UserRoleChange,
-    current_user: User = Depends(require_permission(Permission.USER_WRITE)),
-    service: UserService = Depends(get_user_service),
-    audit_service: AuditService = Depends(get_audit_service),
-) -> UserRead:
-    old_role = service.get(user_id).role
-    user = service.change_role(user_id, data.role, acting_user=current_user)
-    audit_service.record(
-        actor_user_id=current_user.id,
-        actor_email=current_user.email,
-        action=AuditAction.USER_ROLE_CHANGE,
-        outcome=AuditOutcome.SUCCESS,
-        resource_type="user",
-        resource_id=str(user.id),
-        request_id=request_id_var.get(),
-        metadata={"role_from": old_role.value, "role_to": user.role.value},
     )
     return user_to_read(user)

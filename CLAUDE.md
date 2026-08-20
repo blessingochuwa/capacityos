@@ -790,6 +790,7 @@ Never:
 - Log access tokens
 - Execute arbitrary uploaded code
 - Expose production stack traces
+- Let a user read, modify, export, infer, or otherwise interact with data belonging to an organization they are not an active member of (Phase 12 — see [docs/adr/0012-organizations-multi-tenancy.md](./docs/adr/0012-organizations-multi-tenancy.md)). A resource in another organization must respond identically to a nonexistent one (404), never 403 — confirming it exists elsewhere is itself a leak. This applies uniformly across reads, writes, imports, exports, scenarios, skills, insights, AI requests, and audit queries, not only the obviously "sensitive" ones.
 
 Use environment variables.
 

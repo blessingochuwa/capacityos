@@ -3,13 +3,14 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_audit_service, require_permission
+from app.api.deps import get_audit_service, get_current_membership, require_permission
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
 from app.domain.import_export_parsing import ExportFormat, ImportEntityType
 from app.models.enums import AuditAction, AuditOutcome
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
@@ -53,6 +54,7 @@ def export_entities(
     team_id: uuid.UUID | None = Query(default=None),
     project_id: uuid.UUID | None = Query(default=None),
     current_user: User = Depends(require_permission(Permission.EXPORT_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
     service: ExportService = Depends(get_export_service),
     audit_service: AuditService = Depends(get_audit_service),
 ) -> Response:
@@ -60,9 +62,15 @@ def export_entities(
     value (CLAUDE.md §39 Phase 6). Scope filters reuse the same repository
     methods every other read endpoint already uses; an unscoped export is
     capped at Settings.export_max_rows, rejected with 422 rather than
-    silently truncated if exceeded."""
+    silently truncated if exceeded. Organization-scoped (Phase 12) — see
+    ExportService's docstring."""
     content, filename, media_type = service.export(
-        entity_type, format, person_id=person_id, team_id=team_id, project_id=project_id
+        membership.organization_id,
+        entity_type,
+        format,
+        person_id=person_id,
+        team_id=team_id,
+        project_id=project_id,
     )
     audit_service.record(
         actor_user_id=current_user.id,
@@ -71,6 +79,7 @@ def export_entities(
         outcome=AuditOutcome.SUCCESS,
         resource_type=entity_type.value,
         request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
         metadata={"format": format.value},
     )
     return Response(

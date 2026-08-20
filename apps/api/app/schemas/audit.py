@@ -12,6 +12,7 @@ class AuditEventRead(BaseModel):
 
     id: uuid.UUID
     timestamp: datetime
+    organization_id: uuid.UUID | None
     actor_user_id: uuid.UUID | None
     actor_email: str | None
     action: str

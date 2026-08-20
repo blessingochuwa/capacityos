@@ -10,11 +10,14 @@ from sqlalchemy.pool import StaticPool
 
 # Registers all models on Base.metadata before create_all() is called below.
 import app.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
-from app.api.deps import get_current_user, require_csrf
+from app.api.deps import get_current_membership, get_current_user, require_csrf
 from app.core.database import Base, get_db
 from app.main import app
-from app.models.enums import UserRole, UserStatus
+from app.models.enums import MembershipStatus, UserRole, UserStatus
+from app.models.organization import Organization
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
+from tests.factories import make_organization
 
 
 @pytest.fixture
@@ -44,6 +47,18 @@ def db_session() -> Generator[Session]:
         engine.dispose()
 
 
+@pytest.fixture
+def organization(db_session: Session) -> Organization:
+    """One default Organization per test, for tests that build rows
+    directly through tests/factories.py rather than through client_as
+    (which creates its own — see client_as's docstring). Every
+    organization-owned factory (make_person, make_team, ...) now requires
+    an explicit `organization=` argument (Phase 12); this fixture is the
+    one to pass unless a test specifically needs a SECOND, different
+    organization to prove cross-tenant isolation."""
+    return make_organization(db_session)
+
+
 def _get_db_override(db_session: Session) -> Callable[[], Generator[Session]]:
     def _override() -> Generator[Session]:
         try:
@@ -56,23 +71,23 @@ def _get_db_override(db_session: Session) -> Callable[[], Generator[Session]]:
     return _override
 
 
-def make_test_user(
-    session: Session, role: UserRole = UserRole.OWNER, *, email: str | None = None
-) -> User:
+def make_test_user(session: Session, *, email: str | None = None) -> User:
     """A persisted User row for dependency-override-based test
     authentication (see `client`/`client_as` below) — this bypasses
     get_current_user entirely rather than going through AuthService.login,
     so password_hash is a placeholder no login attempt ever verifies
     against. It exists purely to give routes/AuditService a real
-    User.id/.email/.role to work with. Real login-flow behavior (password
+    User.id/.email to work with. Real login-flow behavior (password
     verification, cookies, lockout, CSRF) is exercised separately via
     `unauthenticated_client` and a genuine POST /api/v1/auth/login — see
-    tests/api/test_auth.py."""
+    tests/api/test_auth.py.
+
+    Carries no role (Phase 12 — see app/models/user.py): role now lives on
+    OrganizationMembership, created separately by client_as below."""
     user = User(
-        email=email or f"test-{role.value}-{uuid.uuid4().hex[:8]}@example.com",
+        email=email or f"test-user-{uuid.uuid4().hex[:8]}@example.com",
         password_hash="!unused! — see make_test_user docstring",
-        display_name=f"Test {role.value.title()}",
-        role=role,
+        display_name="Test User",
         status=UserStatus.ACTIVE,
     )
     session.add(user)
@@ -117,20 +132,45 @@ def client_as(db_session: Session) -> Generator[Callable[[UserRole], TestClient]
     this suite's hundreds of pre-existing mutation tests would test
     plumbing, not behavior. Every pre-Phase-10 test keeps using the plain
     `client` fixture below (always Owner) — new Phase 10 RBAC tests use
-    this factory to exercise other roles."""
+    this factory to exercise other roles.
+
+    Phase 12: every call within the SAME test shares one lazily-created
+    default Organization — the transparency this fixture is built around.
+    Each call still creates its own User + OrganizationMembership(role) in
+    that shared organization, so a pre-Phase-12 test written as
+    `client_as(UserRole.MANAGER)` keeps meaning exactly what it always
+    meant ("a Manager acting in the test's organization"), with zero call
+    sites needing to change. get_current_membership is overridden
+    alongside get_current_user so both always agree — see `_activate`."""
     app.dependency_overrides[get_db] = _get_db_override(db_session)
     app.dependency_overrides[require_csrf] = lambda: None
     stack = ExitStack()
+    organization_holder: list[Organization] = []
 
     def _make(role: UserRole) -> TestClient:
-        user = make_test_user(db_session, role)
+        if not organization_holder:
+            organization_holder.append(make_organization(db_session))
+        organization = organization_holder[0]
+
+        user = make_test_user(db_session)
+        membership = OrganizationMembership(
+            user_id=user.id,
+            organization_id=organization.id,
+            role=role,
+            status=MembershipStatus.ACTIVE,
+        )
+        db_session.add(membership)
+        db_session.flush()
 
         def _activate() -> None:
             app.dependency_overrides[get_current_user] = lambda: user
+            app.dependency_overrides[get_current_membership] = lambda: membership
 
         _activate()
         test_client = stack.enter_context(TestClient(app))
         test_client.user = user  # type: ignore[attr-defined]
+        test_client.organization = organization  # type: ignore[attr-defined]
+        test_client.membership = membership  # type: ignore[attr-defined]
         # Phase 11 tests that need to grant/revoke instance-level access for
         # THIS specific test client's user (e.g. "grant this Manager access
         # to Team A") need its real User.id, which client_as's Callable
@@ -138,15 +178,16 @@ def client_as(db_session: Session) -> Generator[Callable[[UserRole], TestClient]
         # keeps every pre-Phase-11 call site (which only uses the returned
         # TestClient) unchanged.
         #
-        # get_current_user is overridden via ONE shared mutable slot on the
-        # `app` object, not per-client state — so creating a second client
-        # via client_as() silently repoints EVERY previously-returned
-        # TestClient at the new identity too (they all read
-        # app.dependency_overrides dynamically per request). Multi-actor
-        # Phase 11 tests (owner grants access, then the manager acts, then
-        # the owner revokes it, then the manager acts again) need to switch
-        # back to an earlier client's identity without minting a brand-new
-        # user each time — test_client.activate() does exactly that.
+        # get_current_user/get_current_membership are overridden via ONE
+        # shared mutable slot on the `app` object, not per-client state —
+        # so creating a second client via client_as() silently repoints
+        # EVERY previously-returned TestClient at the new identity too
+        # (they all read app.dependency_overrides dynamically per
+        # request). Multi-actor Phase 11 tests (owner grants access, then
+        # the manager acts, then the owner revokes it, then the manager
+        # acts again) need to switch back to an earlier client's identity
+        # without minting a brand-new user each time —
+        # test_client.activate() does exactly that.
         test_client.activate = _activate  # type: ignore[attr-defined]
         return test_client
 

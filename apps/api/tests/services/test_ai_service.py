@@ -33,6 +33,7 @@ from app.services.ai_service import AIService, frame_user_question, ground, seri
 
 PERSON_A = uuid.UUID(int=1)
 SIGNAL_ENTITY = uuid.UUID(int=2)
+ORGANIZATION_ID = uuid.UUID(int=3)
 START = date(2026, 9, 1)
 END = date(2026, 9, 7)
 
@@ -59,6 +60,7 @@ class _FakeContextBuilder(AIContextBuilder):
 
     def build_for_scope(
         self,
+        organization_id: uuid.UUID,
         entity_type: str,
         entity_id: uuid.UUID,
         start_date: date,
@@ -68,7 +70,9 @@ class _FakeContextBuilder(AIContextBuilder):
     ) -> AIInsightContext:
         return self._context
 
-    def build_for_scenario(self, scenario_id: uuid.UUID) -> AIInsightContext:
+    def build_for_scenario(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> AIInsightContext:
         return self._context
 
 
@@ -260,7 +264,7 @@ def test_serialize_context_includes_malicious_label_verbatim_as_data() -> None:
 
 def test_summarize_returns_unavailable_when_no_provider() -> None:
     service = _service(None)
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.UNAVAILABLE
     assert envelope.response is None
     assert envelope.message is not None
@@ -276,7 +280,7 @@ class _RaisingProvider:
 
 def test_summarize_returns_error_status_on_timeout() -> None:
     service = _service(_RaisingProvider(AIProviderTimeoutError("boom")))
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.ERROR
     assert envelope.response is None
 
@@ -306,7 +310,7 @@ def test_provider_failure_logging_never_includes_the_prompt_context_or_question(
         max_output_tokens=1024,
     )
     with caplog.at_level(logging.WARNING, logger="capacityos.ai"):
-        service.summarize("person", PERSON_A, START, END)
+        service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
 
     assert len(caplog.records) >= 1
     for record in caplog.records:
@@ -317,25 +321,25 @@ def test_provider_failure_logging_never_includes_the_prompt_context_or_question(
 
 def test_summarize_returns_error_status_on_rate_limit() -> None:
     service = _service(_RaisingProvider(AIProviderRateLimitedError("boom")))
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.ERROR
 
 
 def test_summarize_returns_error_status_on_malformed_output() -> None:
     service = _service(_RaisingProvider(AIProviderMalformedOutputError("boom")))
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.ERROR
 
 
 def test_summarize_returns_error_status_on_provider_unavailable() -> None:
     service = _service(_RaisingProvider(AIProviderUnavailableError("boom")))
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.ERROR
 
 
 def test_summarize_ok_response_carries_provider_and_model_metadata() -> None:
     service = _service(MockAIProvider())
-    envelope = service.summarize("person", PERSON_A, START, END)
+    envelope = service.summarize(ORGANIZATION_ID, "person", PERSON_A, START, END)
     assert envelope.status == AIResponseStatus.OK
     assert envelope.response is not None
     assert envelope.response.provider == "mock"
@@ -348,7 +352,9 @@ def test_explain_signal_errors_when_no_matching_signal_in_context() -> None:
     signal type isn't present — nothing to explain, no point spending a
     request (CLAUDE.md §18 cost control)."""
     service = _service(MockAIProvider())
-    envelope = service.explain_signal("person", PERSON_A, "over_allocation", START, END)
+    envelope = service.explain_signal(
+        ORGANIZATION_ID, "person", PERSON_A, "over_allocation", START, END
+    )
     assert envelope.status == AIResponseStatus.ERROR
     assert envelope.response is None
     assert envelope.message is not None

@@ -9,6 +9,10 @@ from app.schemas.allocation import AllocationCreate, AllocationUpdate
 
 
 class AllocationService:
+    """Organization-scoped (Phase 12) — person_id/project_id are guaranteed
+    same-organization by construction, same reasoning as
+    PersonSkillService (see its docstring)."""
+
     def __init__(
         self,
         repository: AllocationRepository,
@@ -19,19 +23,20 @@ class AllocationService:
         self.person_repository = person_repository
         self.project_repository = project_repository
 
-    def create(self, data: AllocationCreate) -> Allocation:
-        if self.person_repository.get(data.person_id) is None:
+    def create(self, organization_id: uuid.UUID, data: AllocationCreate) -> Allocation:
+        if self.person_repository.get(data.person_id, organization_id) is None:
             raise NotFoundError("Person", data.person_id)
-        if self.project_repository.get(data.project_id) is None:
+        if self.project_repository.get(data.project_id, organization_id) is None:
             raise NotFoundError("Project", data.project_id)
         if data.external_id is not None and self.repository.get_by_external_id(
-            data.external_id
+            data.external_id, organization_id
         ):
             raise ConflictError(
                 f"An allocation with external_id {data.external_id} already exists."
             )
 
         allocation = Allocation(
+            organization_id=organization_id,
             person_id=data.person_id,
             project_id=data.project_id,
             start_date=data.start_date,
@@ -43,14 +48,15 @@ class AllocationService:
         )
         return self.repository.add(allocation)
 
-    def get(self, allocation_id: uuid.UUID) -> Allocation:
-        allocation = self.repository.get(allocation_id)
+    def get(self, organization_id: uuid.UUID, allocation_id: uuid.UUID) -> Allocation:
+        allocation = self.repository.get(allocation_id, organization_id)
         if allocation is None:
             raise NotFoundError("Allocation", allocation_id)
         return allocation
 
     def list(
         self,
+        organization_id: uuid.UUID,
         *,
         person_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
@@ -58,11 +64,17 @@ class AllocationService:
         offset: int = 0,
     ) -> tuple[list[Allocation], int]:
         return self.repository.list_filtered(
-            person_id=person_id, project_id=project_id, limit=limit, offset=offset
+            organization_id,
+            person_id=person_id,
+            project_id=project_id,
+            limit=limit,
+            offset=offset,
         )
 
-    def update(self, allocation_id: uuid.UUID, data: AllocationUpdate) -> Allocation:
-        allocation = self.get(allocation_id)
+    def update(
+        self, organization_id: uuid.UUID, allocation_id: uuid.UUID, data: AllocationUpdate
+    ) -> Allocation:
+        allocation = self.get(organization_id, allocation_id)
         updates = data.model_dump(exclude_unset=True)
 
         merged_start = updates.get("start_date", allocation.start_date)
@@ -72,7 +84,7 @@ class AllocationService:
 
         new_external_id = updates.get("external_id")
         if new_external_id is not None and new_external_id != allocation.external_id:
-            existing = self.repository.get_by_external_id(new_external_id)
+            existing = self.repository.get_by_external_id(new_external_id, organization_id)
             if existing is not None and existing.id != allocation.id:
                 raise ConflictError(
                     f"An allocation with external_id {new_external_id} already exists."
@@ -83,5 +95,5 @@ class AllocationService:
         self.repository.session.flush()
         return allocation
 
-    def delete(self, allocation_id: uuid.UUID) -> None:
-        self.repository.delete(self.get(allocation_id))
+    def delete(self, organization_id: uuid.UUID, allocation_id: uuid.UUID) -> None:
+        self.repository.delete(self.get(organization_id, allocation_id))

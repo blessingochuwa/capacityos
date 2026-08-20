@@ -48,6 +48,7 @@ function mockCommonHooks() {
     canManageResource: () => true,
     login: vi.fn(),
     logout: vi.fn(),
+    switchOrganization: vi.fn(),
   })
   mockedUseDownloadTemplate.mockReturnValue({
     mutate: vi.fn(),
@@ -242,6 +243,7 @@ describe('ImportExportPage', () => {
       canManageResource: () => false,
       login: vi.fn(),
       logout: vi.fn(),
+      switchOrganization: vi.fn(),
     })
     mockedUseValidateImport.mockReturnValue({
       mutate: vi.fn(),

@@ -227,6 +227,16 @@ def _project_skill_requirement_row(
 
 
 class ExportService:
+    """Organization-scoped (Phase 12) — export() and every _collect_rows
+    branch take organization_id, threaded into every repository call
+    including the "no filter given" fallback path. Before Phase 12 that
+    fallback called each repository's unscoped list(), which would dump
+    every organization's rows for that entity type — the single highest
+    cross-tenant leak risk identified in the audit. Every repository's
+    list()/list_filtered() now requires organization_id (see
+    app/repositories/*.py), so there is no longer an unscoped path left to
+    fall back to. See docs/adr/0012-organizations-multi-tenancy.md."""
+
     def __init__(
         self,
         person_repository: PersonRepository,
@@ -256,6 +266,7 @@ class ExportService:
 
     def export(
         self,
+        organization_id: uuid.UUID,
         entity_type: ImportEntityType,
         fmt: ExportFormat,
         *,
@@ -264,7 +275,12 @@ class ExportService:
         project_id: uuid.UUID | None = None,
     ) -> tuple[bytes, str, str]:
         rows = self._collect_rows(
-            entity_type, fmt, person_id=person_id, team_id=team_id, project_id=project_id
+            organization_id,
+            entity_type,
+            fmt,
+            person_id=person_id,
+            team_id=team_id,
+            project_id=project_id,
         )
         content = self._serialize(entity_type, fmt, rows)
         filename = f"{entity_type.value}_export.{fmt.value}"
@@ -278,22 +294,41 @@ class ExportService:
                 "— narrow your filters."
             )
 
-    def _people_by_id(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Person]:
-        return {person.id: person for person in self.person_repository.list_by_ids(list(ids))}
-
-    def _teams_by_id(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Team]:
-        return {team.id: team for team in self.team_repository.list_by_ids(list(ids))}
-
-    def _projects_by_id(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Project]:
+    def _people_by_id(
+        self, organization_id: uuid.UUID, ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, Person]:
         return {
-            project.id: project for project in self.project_repository.list_by_ids(list(ids))
+            person.id: person
+            for person in self.person_repository.list_by_ids(list(ids), organization_id)
         }
 
-    def _skills_by_id(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, Skill]:
-        return {skill.id: skill for skill in self.skill_repository.list_by_ids(list(ids))}
+    def _teams_by_id(
+        self, organization_id: uuid.UUID, ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, Team]:
+        return {
+            team.id: team
+            for team in self.team_repository.list_by_ids(list(ids), organization_id)
+        }
+
+    def _projects_by_id(
+        self, organization_id: uuid.UUID, ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, Project]:
+        return {
+            project.id: project
+            for project in self.project_repository.list_by_ids(list(ids), organization_id)
+        }
+
+    def _skills_by_id(
+        self, organization_id: uuid.UUID, ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, Skill]:
+        return {
+            skill.id: skill
+            for skill in self.skill_repository.list_by_ids(list(ids), organization_id)
+        }
 
     def _collect_rows(
         self,
+        organization_id: uuid.UUID,
         entity_type: ImportEntityType,
         fmt: ExportFormat,
         *,
@@ -302,91 +337,111 @@ class ExportService:
         project_id: uuid.UUID | None,
     ) -> list[dict[str, object]]:
         if entity_type == ImportEntityType.PERSON:
-            items, total = self.person_repository.list(limit=self.max_rows, offset=0)
+            items, total = self.person_repository.list(
+                organization_id, limit=self.max_rows, offset=0
+            )
             self._check_cap(total)
             return [_person_row(person) for person in items]
 
         if entity_type == ImportEntityType.TEAM:
-            items, total = self.team_repository.list(limit=self.max_rows, offset=0)
+            items, total = self.team_repository.list(
+                organization_id, limit=self.max_rows, offset=0
+            )
             self._check_cap(total)
             return [_team_row(team) for team in items]
 
         if entity_type == ImportEntityType.TEAM_MEMBERSHIP:
             if team_id is not None:
-                memberships = self.team_membership_repository.list_for_team(team_id)
+                memberships = self.team_membership_repository.list_for_team(
+                    team_id, organization_id
+                )
                 self._check_cap(len(memberships))
             else:
                 memberships, total = self.team_membership_repository.list(
-                    limit=self.max_rows, offset=0
+                    organization_id, limit=self.max_rows, offset=0
                 )
                 self._check_cap(total)
-            people = self._people_by_id({m.person_id for m in memberships})
-            teams = self._teams_by_id({m.team_id for m in memberships})
+            people = self._people_by_id(organization_id, {m.person_id for m in memberships})
+            teams = self._teams_by_id(organization_id, {m.team_id for m in memberships})
             return [_team_membership_row(m, people, teams) for m in memberships]
 
         if entity_type == ImportEntityType.PROJECT:
-            items, total = self.project_repository.list(limit=self.max_rows, offset=0)
+            items, total = self.project_repository.list(
+                organization_id, limit=self.max_rows, offset=0
+            )
             self._check_cap(total)
             return [_project_row(project) for project in items]
 
         if entity_type == ImportEntityType.ALLOCATION:
             allocations, total = self.allocation_repository.list_filtered(
-                person_id=person_id, project_id=project_id, limit=self.max_rows, offset=0
+                organization_id,
+                person_id=person_id,
+                project_id=project_id,
+                limit=self.max_rows,
+                offset=0,
             )
             self._check_cap(total)
-            people = self._people_by_id({a.person_id for a in allocations})
-            projects = self._projects_by_id({a.project_id for a in allocations})
+            people = self._people_by_id(organization_id, {a.person_id for a in allocations})
+            projects = self._projects_by_id(organization_id, {a.project_id for a in allocations})
             return [_allocation_row(a, people, projects) for a in allocations]
 
         if entity_type == ImportEntityType.WORKING_SCHEDULE:
             if person_id is not None:
-                schedules = self.working_schedule_repository.list_for_person(person_id)
+                schedules = self.working_schedule_repository.list_for_person(
+                    person_id, organization_id
+                )
                 self._check_cap(len(schedules))
             else:
                 schedules, total = self.working_schedule_repository.list(
-                    limit=self.max_rows, offset=0
+                    organization_id, limit=self.max_rows, offset=0
                 )
                 self._check_cap(total)
-            people = self._people_by_id({s.person_id for s in schedules})
+            people = self._people_by_id(organization_id, {s.person_id for s in schedules})
             return [_working_schedule_row(s, people, fmt) for s in schedules]
 
         if entity_type == ImportEntityType.AVAILABILITY_EXCEPTION:
             exceptions, total = self.availability_exception_repository.list_filtered(
-                person_id=person_id, limit=self.max_rows, offset=0
+                organization_id, person_id=person_id, limit=self.max_rows, offset=0
             )
             self._check_cap(total)
-            people = self._people_by_id({e.person_id for e in exceptions})
+            people = self._people_by_id(organization_id, {e.person_id for e in exceptions})
             return [_availability_exception_row(e, people) for e in exceptions]
 
         if entity_type == ImportEntityType.SKILL:
-            items, total = self.skill_repository.list_filtered(limit=self.max_rows, offset=0)
+            items, total = self.skill_repository.list_filtered(
+                organization_id, limit=self.max_rows, offset=0
+            )
             self._check_cap(total)
             return [_skill_row(skill) for skill in items]
 
         if entity_type == ImportEntityType.PERSON_SKILL:
             if person_id is not None:
-                person_skills = self.person_skill_repository.list_for_person(person_id)
+                person_skills = self.person_skill_repository.list_for_person(
+                    person_id, organization_id
+                )
                 self._check_cap(len(person_skills))
             else:
                 person_skills, total = self.person_skill_repository.list(
-                    limit=self.max_rows, offset=0
+                    organization_id, limit=self.max_rows, offset=0
                 )
                 self._check_cap(total)
-            people = self._people_by_id({ps.person_id for ps in person_skills})
-            skills = self._skills_by_id({ps.skill_id for ps in person_skills})
+            people = self._people_by_id(organization_id, {ps.person_id for ps in person_skills})
+            skills = self._skills_by_id(organization_id, {ps.skill_id for ps in person_skills})
             return [_person_skill_row(ps, people, skills) for ps in person_skills]
 
         requirements: list[ProjectSkillRequirement]
         if project_id is not None:
-            requirements = self.project_skill_requirement_repository.list_for_project(project_id)
+            requirements = self.project_skill_requirement_repository.list_for_project(
+                project_id, organization_id
+            )
             self._check_cap(len(requirements))
         else:
             requirements, total = self.project_skill_requirement_repository.list(
-                limit=self.max_rows, offset=0
+                organization_id, limit=self.max_rows, offset=0
             )
             self._check_cap(total)
-        projects = self._projects_by_id({r.project_id for r in requirements})
-        skills = self._skills_by_id({r.skill_id for r in requirements})
+        projects = self._projects_by_id(organization_id, {r.project_id for r in requirements})
+        skills = self._skills_by_id(organization_id, {r.skill_id for r in requirements})
         return [_project_skill_requirement_row(r, projects, skills) for r in requirements]
 
     def _serialize(
