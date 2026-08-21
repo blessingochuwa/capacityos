@@ -154,6 +154,58 @@ class RiskStatus(StrEnum):
     CLOSED = "closed"
 
 
+class StakeholderInfluence(StrEnum):
+    """Controlled vocabulary for Stakeholder.influence (Phase 14,
+    CLAUDE.md §16) — how much power this stakeholder has to affect the
+    project's outcome or direction.
+
+    A deliberately coarse 3-tier scale, DB-CHECK-constrained like
+    RiskProbability/RiskImpact — the well-established power/interest
+    grid from stakeholder-management practice (CLAUDE.md §37: prefer
+    established frameworks) uses exactly this granularity. No numeric
+    weighting or combined score is derived from it anywhere — CLAUDE.md
+    §16/§17's "do not imply false precision" applies here exactly as it
+    does to Risk.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class StakeholderInterest(StrEnum):
+    """Controlled vocabulary for Stakeholder.interest (Phase 14,
+    CLAUDE.md §16) — how invested this stakeholder is in the project's
+    outcome. See StakeholderInfluence's docstring — same rationale, same
+    3-tier scale, the other axis of the same established power/interest
+    grid."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class StakeholderDecisionAuthority(StrEnum):
+    """Controlled vocabulary for Stakeholder.decision_authority (Phase 14,
+    CLAUDE.md §16) — how much say this stakeholder has in project
+    decisions. CLAUDE.md §5: "every important... decision... should have
+    an accountable owner" — this field is what lets a decision's owner be
+    identified among a project's stakeholders.
+
+    DECISION_MAKER: can make or veto the decision outright. ADVISOR: is
+    consulted before a decision is made but doesn't make it. INFORMED:
+    is told about decisions after the fact, with no input into them.
+    Three ordered levels, not a full RACI matrix — CLAUDE.md §16 asks for
+    one "decision authority" field, not a responsibility-assignment
+    system; a fourth axis (who does the work) is a different concept this
+    phase does not model.
+    """
+
+    DECISION_MAKER = "decision_maker"
+    ADVISOR = "advisor"
+    INFORMED = "informed"
+
+
 class UserRole(StrEnum):
     """Controlled vocabulary for User.role (Phase 10).
 
@@ -274,6 +326,10 @@ class AuditAction(StrEnum):
     RISK_CREATE = "risk.create"
     RISK_UPDATE = "risk.update"
     RISK_DELETE = "risk.delete"
+
+    STAKEHOLDER_CREATE = "stakeholder.create"
+    STAKEHOLDER_UPDATE = "stakeholder.update"
+    STAKEHOLDER_DELETE = "stakeholder.delete"
 
     SCENARIO_CREATE = "scenario.create"
     SCENARIO_UPDATE = "scenario.update"

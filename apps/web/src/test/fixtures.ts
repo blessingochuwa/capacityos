@@ -34,6 +34,7 @@ import type {
   TeamSkillCapacityEntry,
 } from '@/features/skills/types/skills'
 import type { Risk as RiskEntity } from '@/features/risks/types/risks'
+import type { Stakeholder } from '@/features/stakeholders/types/stakeholders'
 import type {
   AIInsightResponse,
   AIResponseEnvelope,
@@ -499,6 +500,23 @@ export function makeProjectRisk(overrides: Partial<RiskEntity> = {}): RiskEntity
     owner_person_id: null,
     status: 'open',
     review_date: null,
+    created_at: '2026-08-17T00:00:00Z',
+    updated_at: '2026-08-17T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeStakeholder(overrides: Partial<Stakeholder> = {}): Stakeholder {
+  return {
+    id: 'stakeholder-1',
+    project_id: 'project-1',
+    name: 'Jordan Client',
+    person_id: null,
+    role: 'Sponsor',
+    influence: 'medium',
+    interest: 'medium',
+    decision_authority: 'informed',
+    communication_needs: null,
     created_at: '2026-08-17T00:00:00Z',
     updated_at: '2026-08-17T00:00:00Z',
     ...overrides,

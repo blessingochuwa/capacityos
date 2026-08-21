@@ -19,6 +19,7 @@ from app.models.risk import Risk
 from app.models.scenario import Scenario, ScenarioOperation
 from app.models.session import UserSession
 from app.models.skill import Skill
+from app.models.stakeholder import Stakeholder
 from app.models.team import Team
 from app.models.team_access_grant import TeamAccessGrant
 from app.models.team_membership import TeamMembership
@@ -40,6 +41,7 @@ __all__ = [
     "Scenario",
     "ScenarioOperation",
     "Skill",
+    "Stakeholder",
     "Team",
     "TeamAccessGrant",
     "TeamMembership",

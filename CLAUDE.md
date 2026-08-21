@@ -1112,10 +1112,26 @@ audited foundation. No new capacity formula, no second signal system
 Insights pipeline), no risk score implying false precision. See
 docs/adr/0013-phase-13-risk-management.md.
 
+### Phase 14
+Stakeholder management (§16) — a project-scoped stakeholder register
+(name, optional link to an existing Person, role, influence, interest,
+decision authority, communication needs) on the same organization-scoped,
+RBAC-protected, Phase-11-instance-scoped, audited foundation Risk (Phase
+13) already established — CRUD nested under `/projects/{id}/stakeholders`,
+identical authorization shape to `ProjectSkillRequirement`/`Risk`. No
+numeric score, health score, or engagement-quadrant classification is
+computed anywhere — influence/interest/decision authority are stored
+3-tier/3-level enums, never combined into a derived value. Deliberately
+**not** integrated into Insights (§16 defines no deterministic signal —
+no threshold, no fact to classify — so none was invented) and deliberately
+**not** registered into Import/Export (not specified; deferred, matching
+Phase 13's own precedent for a new entity that wasn't explicitly asked
+for). See docs/adr/0014-phase-14-stakeholder-management.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
-§23, §32) pending an explicit request, not implied to be "Phase 14."
-Deferred items accumulated across Phases 11/12/13 that a future phase
+§23, §32) pending an explicit request, not implied to be the next phase.
+Deferred items accumulated across Phases 11/12/13/14 that a future phase
 should pick up deliberately, not assume: Team→Project access-grant
 inheritance and instance-level scoping for Person-keyed resources
 (WorkingSchedule, AvailabilityException, PersonSkill, Scenario — see ADR
@@ -1124,9 +1140,10 @@ SSO/OAuth, billing, organization hierarchies, cross-organization data
 sharing, per-organization feature flags, and a per-organization "last
 active Owner account" disable invariant (see ADR 0012's Consequences);
 Risk Import/Export registration, an org-wide cross-project risk register,
-and the Stakeholder (§16) / Prioritization (§18) domain concepts (see ADR
-0013's Consequences). None of these are scheduled — do not build any of
-them without an explicit request, per §32.
+and the Prioritization (§18) domain concept (see ADR 0013's Consequences);
+Stakeholder Import/Export registration and an org-wide cross-project
+stakeholder register (see ADR 0014's Consequences). None of these are
+scheduled — do not build any of them without an explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.
 

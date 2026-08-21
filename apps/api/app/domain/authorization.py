@@ -59,6 +59,10 @@ class Permission(StrEnum):
     RISK_WRITE = "risk.write"
     RISK_DELETE = "risk.delete"
 
+    STAKEHOLDER_READ = "stakeholder.read"
+    STAKEHOLDER_WRITE = "stakeholder.write"
+    STAKEHOLDER_DELETE = "stakeholder.delete"
+
     SCENARIO_READ = "scenario.read"
     SCENARIO_WRITE = "scenario.write"
     SCENARIO_DELETE = "scenario.delete"
@@ -102,6 +106,7 @@ _READ_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.SCHEDULE_READ,
         Permission.SKILL_READ,
         Permission.RISK_READ,
+        Permission.STAKEHOLDER_READ,
         Permission.SCENARIO_READ,
         Permission.INSIGHT_READ,
         Permission.AI_USE,
@@ -127,6 +132,8 @@ _WRITE_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.SKILL_DELETE,
         Permission.RISK_WRITE,
         Permission.RISK_DELETE,
+        Permission.STAKEHOLDER_WRITE,
+        Permission.STAKEHOLDER_DELETE,
         Permission.SCENARIO_WRITE,
         Permission.SCENARIO_DELETE,
         Permission.IMPORT_USE,

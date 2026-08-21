@@ -23,6 +23,9 @@ from app.models.enums import (
     RiskProbability,
     RiskStatus,
     SkillProficiency,
+    StakeholderDecisionAuthority,
+    StakeholderInfluence,
+    StakeholderInterest,
     UserRole,
     UserStatus,
 )
@@ -35,6 +38,7 @@ from app.models.project_access_grant import ProjectAccessGrant
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
 from app.models.skill import Skill
+from app.models.stakeholder import Stakeholder
 from app.models.team import Team
 from app.models.team_access_grant import TeamAccessGrant
 from app.models.team_membership import TeamMembership
@@ -387,3 +391,32 @@ def make_risk(
     session.add(risk)
     session.flush()
     return risk
+
+
+def make_stakeholder(
+    session: Session,
+    *,
+    organization: Organization,
+    project: Project,
+    name: str = "Jordan Client",
+    person: Person | None = None,
+    role: str = "Sponsor",
+    influence: StakeholderInfluence = StakeholderInfluence.MEDIUM,
+    interest: StakeholderInterest = StakeholderInterest.MEDIUM,
+    decision_authority: StakeholderDecisionAuthority = StakeholderDecisionAuthority.INFORMED,
+    communication_needs: str | None = None,
+) -> Stakeholder:
+    stakeholder = Stakeholder(
+        organization_id=organization.id,
+        project_id=project.id,
+        name=name,
+        person_id=person.id if person is not None else None,
+        role=role,
+        influence=influence,
+        interest=interest,
+        decision_authority=decision_authority,
+        communication_needs=communication_needs,
+    )
+    session.add(stakeholder)
+    session.flush()
+    return stakeholder

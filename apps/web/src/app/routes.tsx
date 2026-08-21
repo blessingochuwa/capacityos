@@ -14,6 +14,7 @@ import { RisksOverviewPage } from '@/features/risks/views/RisksOverviewPage'
 import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
 import { ScenarioWorkspacePage } from '@/features/scenarios/views/ScenarioWorkspacePage'
 import { SkillsOverviewPage } from '@/features/skills/views/SkillsOverviewPage'
+import { StakeholdersOverviewPage } from '@/features/stakeholders/views/StakeholdersOverviewPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       { path: 'insights', element: <InsightsOverviewPage /> },
       { path: 'skills', element: <SkillsOverviewPage /> },
       { path: 'risks', element: <RisksOverviewPage /> },
+      { path: 'stakeholders', element: <StakeholdersOverviewPage /> },
       { path: 'import-export', element: <ImportExportPage /> },
       { path: 'admin/access', element: <AccessManagementPage /> },
     ],

@@ -421,4 +421,24 @@ A risk reports at most one signal — `risk_high_exposure` takes priority when b
 
 ### What Phase 13 does NOT do
 
-No Import/Export registration (deferred — CLAUDE.md §17 doesn't require it, and it's a large enough addition to warrant its own phase). No org-wide/cross-project risk register (every route is nested under one project). No Stakeholder or Prioritization entities (CLAUDE.md §16/§18 — separate, unbuilt concepts). No per-organization "last active Owner" account-disable invariant (a pre-existing gap from Phase 12, out of this phase's scope — see ADR 0012's Consequences). No risk score, no probability/impact numeric weighting, no AI-generated risk assessments.
+No Import/Export registration (deferred — CLAUDE.md §17 doesn't require it, and it's a large enough addition to warrant its own phase). No org-wide/cross-project risk register (every route is nested under one project). No Prioritization entity (CLAUDE.md §18 — a separate, unbuilt concept; Stakeholder Management, CLAUDE.md §16, was built in Phase 14 — see below). No per-organization "last active Owner" account-disable invariant (a pre-existing gap from Phase 12, out of this phase's scope — see ADR 0012's Consequences). No risk score, no probability/impact numeric weighting, no AI-generated risk assessments.
+
+## Stakeholder Management (Phase 14)
+
+Phase 14 answers "who needs to know, and who decides?" (CLAUDE.md §16). See [ADR 0014](adr/0014-phase-14-stakeholder-management.md) for the full reasoning; this section is the vocabulary and rules.
+
+### `Stakeholder`
+
+A project-scoped record: `name` (required — always the stakeholder's own recorded identity), `person_id` (optional link to an existing `Person`), `role` (free text — e.g. "Sponsor," "End user," "Regulator"), `influence`, `interest`, `decision_authority`, `communication_needs`. Organization-scoped like every entity since Phase 12, `CASCADE`-deleted with its `Project` — "relevant project/work context" from §16's field list is satisfied by this scoping itself, not a separate stored field, the same reasoning `Risk` applies to the identical phrase in §17.
+
+### Not every stakeholder is a `Person`
+
+Real stakeholders are frequently external to the organization's own staffed roster — a client contact, a regulator, an executive at a partner organization. `Stakeholder.name` is always required and always stored explicitly; `person_id` is an *optional* nullable link, `SET NULL` on delete (matching `Risk.owner_person_id`'s precedent) — the stakeholder record outlives whichever `Person` it happens to be linked to, and a stakeholder never has to be a fabricated `Person` row just to exist. `(project_id, person_id)` is a composite unique constraint (a person can be a stakeholder on a given project at most once); multiple external stakeholders with no linked person don't collide, matching `Project.external_id`'s nullable-uniqueness precedent.
+
+### Influence, interest, and decision authority — stored, never combined
+
+`influence`/`interest` are each a 3-tier scale (`low`/`medium`/`high`) — the two axes of the well-established stakeholder power/interest grid, at the same granularity CapacityOS already uses for `Risk.probability`/`Risk.impact`. `decision_authority` is a 3-level scale (`decision_maker` / `advisor` / `informed`) answering CLAUDE.md §5's "every important decision should have an accountable owner" for exactly the one field §16 names — not a full RACI matrix. None of these are ever combined into a score, health rating, or "engagement quadrant" label — CLAUDE.md §16/§17's "no false precision" rule applies here exactly as it does to Risk. `communication_needs` is free text (open vocabulary, like `AvailabilityType`) — communication preferences vary too much to fit a fixed set.
+
+### What Phase 14 does NOT do
+
+No Insights integration — CLAUDE.md §16 defines no threshold or derived fact to classify into a signal, so none was invented (the existing Phase 5/7/13 signals each exist because a real, specified, deterministic condition is being checked; nothing comparable exists for Stakeholder). No Import/Export registration (deferred, matching Phase 13's own precedent for a new entity not explicitly asked for). No org-wide/cross-project stakeholder register (every route is nested under one project). No stakeholder score, health score, or engagement-quadrant classification. No Prioritization entity (CLAUDE.md §18 — still a separate, unbuilt concept).

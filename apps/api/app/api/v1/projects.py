@@ -25,6 +25,7 @@ from app.repositories.project import ProjectRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
+from app.repositories.stakeholder import StakeholderRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -37,11 +38,13 @@ from app.schemas.project_skill_requirement import (
 )
 from app.schemas.risk import RiskCreate, RiskRead, RiskUpdate, risk_to_read
 from app.schemas.skill_capacity import ProjectSkillCoverageRead
+from app.schemas.stakeholder import StakeholderCreate, StakeholderRead, StakeholderUpdate
 from app.services.audit import AuditService
 from app.services.project import ProjectService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
 from app.services.risk import RiskService
 from app.services.skill_capacity import SkillCapacityService
+from app.services.stakeholder import StakeholderService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -60,6 +63,12 @@ def get_project_skill_requirement_service(
 
 def get_risk_service(db: Session = Depends(get_db)) -> RiskService:
     return RiskService(RiskRepository(db), ProjectRepository(db), PersonRepository(db))
+
+
+def get_stakeholder_service(db: Session = Depends(get_db)) -> StakeholderService:
+    return StakeholderService(
+        StakeholderRepository(db), ProjectRepository(db), PersonRepository(db)
+    )
 
 
 def get_skill_capacity_service(db: Session = Depends(get_db)) -> SkillCapacityService:
@@ -380,6 +389,108 @@ def delete_project_risk(
         outcome=AuditOutcome.SUCCESS,
         resource_type="risk",
         resource_id=str(risk_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stakeholders (Phase 14, CLAUDE.md §16)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{project_id}/stakeholders", response_model=list[StakeholderRead])
+def list_project_stakeholders(
+    project_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.STAKEHOLDER_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: StakeholderService = Depends(get_stakeholder_service),
+) -> list[StakeholderRead]:
+    return [
+        StakeholderRead.model_validate(stakeholder)
+        for stakeholder in service.list_for_project(membership.organization_id, project_id)
+    ]
+
+
+@router.post(
+    "/{project_id}/stakeholders",
+    response_model=StakeholderRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
+def create_project_stakeholder(
+    project_id: uuid.UUID,
+    data: StakeholderCreate,
+    current_user: User = Depends(require_project_access(Permission.STAKEHOLDER_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: StakeholderService = Depends(get_stakeholder_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> StakeholderRead:
+    stakeholder = service.create(membership.organization_id, project_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.STAKEHOLDER_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="stakeholder",
+        resource_id=str(stakeholder.id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"project_id": str(project_id)},
+    )
+    return StakeholderRead.model_validate(stakeholder)
+
+
+@router.patch(
+    "/{project_id}/stakeholders/{stakeholder_id}",
+    response_model=StakeholderRead,
+    dependencies=[Depends(require_csrf)],
+)
+def update_project_stakeholder(
+    project_id: uuid.UUID,
+    stakeholder_id: uuid.UUID,
+    data: StakeholderUpdate,
+    current_user: User = Depends(require_project_access(Permission.STAKEHOLDER_WRITE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: StakeholderService = Depends(get_stakeholder_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> StakeholderRead:
+    stakeholder = service.update(membership.organization_id, project_id, stakeholder_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.STAKEHOLDER_UPDATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="stakeholder",
+        resource_id=str(stakeholder_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
+    )
+    return StakeholderRead.model_validate(stakeholder)
+
+
+@router.delete(
+    "/{project_id}/stakeholders/{stakeholder_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
+)
+def delete_project_stakeholder(
+    project_id: uuid.UUID,
+    stakeholder_id: uuid.UUID,
+    current_user: User = Depends(require_project_access(Permission.STAKEHOLDER_DELETE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: StakeholderService = Depends(get_stakeholder_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> None:
+    service.delete(membership.organization_id, project_id, stakeholder_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.STAKEHOLDER_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="stakeholder",
+        resource_id=str(stakeholder_id),
         request_id=request_id_var.get(),
         organization_id=membership.organization_id,
     )
