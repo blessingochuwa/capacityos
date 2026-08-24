@@ -18,6 +18,7 @@ from app.models.enums import (
     AvailabilityType,
     EmploymentStatus,
     MembershipStatus,
+    PrioritizationFrameworkType,
     ProjectStatus,
     RiskImpact,
     RiskProbability,
@@ -34,8 +35,12 @@ from app.models.organization import Organization
 from app.models.organization_membership import OrganizationMembership
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.prioritization_criterion import PrioritizationCriterion
+from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
+from app.models.project_priority_criterion_value import ProjectPriorityCriterionValue
+from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
 from app.models.scenario import Scenario
@@ -451,3 +456,84 @@ def make_scenario(
     session.add(scenario)
     session.flush()
     return scenario
+
+
+def make_prioritization_framework(
+    session: Session,
+    *,
+    organization: Organization,
+    name: str = "Test RICE",
+    framework_type: PrioritizationFrameworkType = PrioritizationFrameworkType.RICE,
+    is_active: bool = True,
+) -> PrioritizationFramework:
+    """Added Phase 17. Does NOT seed criteria — call make_prioritization_criterion
+    separately (matching every other org-owned "parent, then children"
+    factory pair in this module, e.g. make_team/make_team_membership)."""
+    framework = PrioritizationFramework(
+        organization_id=organization.id,
+        name=name,
+        framework_type=framework_type,
+        is_active=is_active,
+    )
+    session.add(framework)
+    session.flush()
+    return framework
+
+
+def make_prioritization_criterion(
+    session: Session,
+    *,
+    organization: Organization,
+    framework: PrioritizationFramework,
+    key: str,
+    name: str = "Criterion",
+    weight: Decimal | None = Decimal(1),
+    is_editable: bool = True,
+    sequence: int = 0,
+) -> PrioritizationCriterion:
+    criterion = PrioritizationCriterion(
+        framework_id=framework.id,
+        organization_id=organization.id,
+        key=key,
+        name=name,
+        weight=weight,
+        is_editable=is_editable,
+        sequence=sequence,
+    )
+    session.add(criterion)
+    session.flush()
+    return criterion
+
+
+def make_project_priority_score(
+    session: Session,
+    *,
+    organization: Organization,
+    project: Project,
+    framework: PrioritizationFramework,
+    notes: str | None = None,
+) -> ProjectPriorityScore:
+    score = ProjectPriorityScore(
+        organization_id=organization.id,
+        project_id=project.id,
+        framework_id=framework.id,
+        notes=notes,
+    )
+    session.add(score)
+    session.flush()
+    return score
+
+
+def make_project_priority_criterion_value(
+    session: Session,
+    *,
+    score: ProjectPriorityScore,
+    criterion: PrioritizationCriterion,
+    value: Decimal,
+) -> ProjectPriorityCriterionValue:
+    criterion_value = ProjectPriorityCriterionValue(
+        score_id=score.id, criterion_id=criterion.id, value=value
+    )
+    session.add(criterion_value)
+    session.flush()
+    return criterion_value

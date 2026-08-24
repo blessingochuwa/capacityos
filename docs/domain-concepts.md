@@ -474,3 +474,23 @@ Any Manager (a role that holds `schedule.write`/`skill.write`/`scenario.write` u
 ### What Phase 16 actually found and fixed
 
 Not an authorization bug — a test-coverage gap. Every organization-owned entity's repository already enforced the Phase 12 tenant boundary; only Risk and Stakeholder had a regression test proving it. `tests/api/test_cross_organization_boundaries.py` closes that gap for every remaining entity (Person, Team, TeamMembership, Skill, PersonSkill, ProjectSkillRequirement, WorkingSchedule, AvailabilityException, Allocation, Scenario), and one instance-level Manager-grant test block was added to `Risk`'s own test file to match its sibling `Stakeholder`'s existing coverage. Zero production code changed as a result — every one of these tests passed against the existing implementation on the first run.
+
+## Prioritization (Phase 17, v1)
+
+Phase 17 answers CLAUDE.md §18's question: "given limited people, time, and capacity, what should this organization work on first?" See [the PRD](PRD-phase-17-prioritization.md) for the original product design (written and confirmed with the user before any code was written — the first CapacityOS phase that is a new product module, not an extension of existing infrastructure) and [ADR 0017](adr/0017-prioritization-engine.md) for what was actually built; this section is the resulting vocabulary and rules.
+
+### `PrioritizationFramework` — an organization-chosen method, never a CapacityOS default
+
+CLAUDE.md §18 is explicit: "do not prescribe one prioritization framework as universally correct." An organization defines however many frameworks it wants (`name`, `framework_type`, its `PrioritizationCriterion` rows). v1 supports two framework types — **RICE** (`(Reach x Impact x Confidence) / Effort`, four fixed, non-organization-editable criteria seeded automatically) and **Weighted Scoring** (`Σ value x weight` across fully organization-defined criteria). ICE, WSJF, and MoSCoW are named in CLAUDE.md §18 as "may be supported later" but have no formula implemented yet — adding one is a pure code change (`PrioritizationFrameworkType` is deliberately not DB-CHECK-constrained, matching `AvailabilityType`'s open-vocabulary precedent) routed through the one dispatch point, `app/domain/prioritization.py::calculate_priority_score`.
+
+### A score is always derived, never stored
+
+Only the human-entered criterion **values** (`ProjectPriorityCriterionValue`) are persisted — the computed score itself is recalculated on every read from those values plus the framework's current criteria/weights, the same "derive, never cache" discipline `Risk.exposure` and every Scenario result already follow. A score with incomplete inputs reports `score: null` and exactly which criteria are `missing_criteria`, never a value computed by treating a gap as zero; the portfolio ranking lists such a project last, unranked.
+
+### Framework management vs. scoring — two different authorization tiers
+
+Creating or editing a `PrioritizationFramework` is Owner/Admin only (`Permission.PRIORITIZATION_MANAGE`) — deliberately stricter than Skill's Manager-writable org-wide-catalog precedent, since a framework change reshuffles every project's rank across the whole organization at once. Scoring one specific project under an existing framework is Manager+, gated by the same Phase 11 `ProjectAccessGrant` mechanism Risk/Stakeholder/Allocation already use (`Permission.PRIORITIZATION_SCORE` + `require_project_access`) — "Managers can score projects they manage," not the whole portfolio.
+
+### What v1 does NOT do
+
+No ICE/WSJF/MoSCoW formula yet. No `ProjectDependency`/dependency graph or cycle detection. No `PortfolioSnapshot` (a point-in-time saved ranking, distinct from the always-fresh live ranking). No scenario-vs-baseline ranking comparison. No AI priority explanation. No editing a framework's criteria after creation (deactivate and recreate instead). No Import/Export registration (deferred, matching Risk/Stakeholder's own Phase 13/14 precedent). Each is a named, deliberately scoped v1 boundary confirmed with the user before implementation — see the PRD's "Recommended v1 slice" and ADR 0017's Consequences for the full list and reasoning.

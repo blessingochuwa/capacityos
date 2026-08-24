@@ -206,6 +206,25 @@ class StakeholderDecisionAuthority(StrEnum):
     INFORMED = "informed"
 
 
+class PrioritizationFrameworkType(StrEnum):
+    """Controlled vocabulary for PrioritizationFramework.framework_type
+    (Phase 17, CLAUDE.md §18).
+
+    Deliberately NOT DB-CHECK-constrained (see
+    PrioritizationFramework.__table_args__) — matching AvailabilityType's
+    precedent, not RiskProbability's: CLAUDE.md §18 names RICE, WSJF, ICE,
+    MoSCoW, and weighted scoring as frameworks that "may be supported
+    later," so this vocabulary is expected to grow across phases, and a
+    new framework type must stay a pure code change, never a migration.
+    Only the types an actual `app/domain/prioritization.py` formula exists
+    for are listed here — see docs/PRD-phase-17-prioritization.md for the
+    full five-framework plan and which are deferred past this phase.
+    """
+
+    RICE = "rice"
+    WEIGHTED = "weighted"
+
+
 class UserRole(StrEnum):
     """Controlled vocabulary for User.role (Phase 10).
 
@@ -366,3 +385,10 @@ class AuditAction(StrEnum):
     route with no valid active-organization context (none selected, or the
     membership/organization was revoked/deactivated since login) — the
     Phase 12 counterpart to PERMISSION_DENIED/RESOURCE_ACCESS_DENIED."""
+
+    PRIORITIZATION_FRAMEWORK_CREATE = "prioritization_framework.create"
+    PRIORITIZATION_FRAMEWORK_UPDATE = "prioritization_framework.update"
+    PRIORITIZATION_FRAMEWORK_DEACTIVATE = "prioritization_framework.deactivate"
+    PROJECT_PRIORITY_SCORE_CREATE = "project_priority_score.create"
+    PROJECT_PRIORITY_SCORE_UPDATE = "project_priority_score.update"
+    PROJECT_PRIORITY_SCORE_DELETE = "project_priority_score.delete"

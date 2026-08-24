@@ -96,6 +96,28 @@ class Permission(StrEnum):
     — Admin/Owner only, never folded into _WRITE_PERMISSIONS, since it is
     what would let a Manager grant themselves (or anyone) a higher role."""
 
+    PRIORITIZATION_READ = "prioritization.read"
+    """Read a PrioritizationFramework, a ProjectPriorityScore, or a
+    portfolio ranking (Phase 17). Folded into _READ_PERMISSIONS — every
+    role including Viewer may see how the organization has prioritized
+    its portfolio, matching every other *_READ permission's precedent."""
+
+    PRIORITIZATION_SCORE = "prioritization.score"
+    """Create/update/delete a ProjectPriorityScore for a specific Project
+    (Phase 17) — Manager+, and instance-scoped via the existing
+    ProjectAccessGrant mechanism (require_project_access), exactly like
+    Risk/Stakeholder/Allocation: "Managers can score projects they
+    manage," not every project in the organization."""
+
+    PRIORITIZATION_MANAGE = "prioritization.manage"
+    """Create/update/deactivate a PrioritizationFramework itself (Phase
+    17) — Admin/Owner only, deliberately NOT Manager-level despite
+    Skill's own org-wide-catalog precedent being Manager-writable: a
+    framework change reshuffles every project's rank across the whole
+    organization at once, closer in blast radius to MEMBERSHIP_MANAGE/
+    ORGANIZATION_MANAGE than to an ordinary catalog edit. See
+    docs/PRD-phase-17-prioritization.md §11."""
+
 
 _READ_PERMISSIONS: frozenset[Permission] = frozenset(
     {
@@ -110,6 +132,7 @@ _READ_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.SCENARIO_READ,
         Permission.INSIGHT_READ,
         Permission.AI_USE,
+        Permission.PRIORITIZATION_READ,
     }
 )
 """Granted to every role, including Viewer — reads are gated on
@@ -137,6 +160,7 @@ _WRITE_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.SCENARIO_WRITE,
         Permission.SCENARIO_DELETE,
         Permission.IMPORT_USE,
+        Permission.PRIORITIZATION_SCORE,
     }
 )
 
@@ -151,6 +175,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
         | {Permission.USER_READ, Permission.USER_WRITE, Permission.AUDIT_READ}
         | {Permission.ACCESS_MANAGE}
         | {Permission.MEMBERSHIP_MANAGE}
+        | {Permission.PRIORITIZATION_MANAGE}
     ),
     UserRole.OWNER: (
         _READ_PERMISSIONS
@@ -160,6 +185,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
         | {Permission.ACCESS_MANAGE}
         | {Permission.MEMBERSHIP_MANAGE}
         | {Permission.ORGANIZATION_MANAGE}
+        | {Permission.PRIORITIZATION_MANAGE}
     ),
     # Owner and Admin share almost the identical permission set — what
     # distinguishes Owner is ORGANIZATION_MANAGE (rename/deactivate the

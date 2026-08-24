@@ -34,6 +34,12 @@ import type {
   TeamSkillCapacityEntry,
 } from '@/features/skills/types/skills'
 import type { Risk as RiskEntity } from '@/features/risks/types/risks'
+import type {
+  PortfolioRankingEntry,
+  PrioritizationCriterion,
+  PrioritizationFramework,
+  ProjectPriorityScore,
+} from '@/features/prioritization/types/prioritization'
 import type { Stakeholder } from '@/features/stakeholders/types/stakeholders'
 import type {
   AIInsightResponse,
@@ -587,6 +593,74 @@ export function makeTeamSkillCapacityEntry(
     skill_label: 'Backend Development',
     qualified_available_hours: '20.00',
     qualified_people: [makeQualifiedPerson()],
+    ...overrides,
+  }
+}
+
+export function makePrioritizationCriterion(
+  overrides: Partial<PrioritizationCriterion> = {},
+): PrioritizationCriterion {
+  return {
+    id: 'criterion-1',
+    key: 'reach',
+    name: 'Reach',
+    weight: null,
+    is_editable: false,
+    sequence: 0,
+    ...overrides,
+  }
+}
+
+export function makePrioritizationFramework(
+  overrides: Partial<PrioritizationFramework> = {},
+): PrioritizationFramework {
+  return {
+    id: 'framework-1',
+    organization_id: 'org-1',
+    name: 'Feature RICE',
+    framework_type: 'rice',
+    is_active: true,
+    criteria: [
+      makePrioritizationCriterion({ id: 'c-reach', key: 'reach', name: 'Reach' }),
+      makePrioritizationCriterion({ id: 'c-impact', key: 'impact', name: 'Impact' }),
+      makePrioritizationCriterion({ id: 'c-confidence', key: 'confidence', name: 'Confidence' }),
+      makePrioritizationCriterion({ id: 'c-effort', key: 'effort', name: 'Effort' }),
+    ],
+    created_at: '2026-08-24T00:00:00Z',
+    updated_at: '2026-08-24T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeProjectPriorityScore(
+  overrides: Partial<ProjectPriorityScore> = {},
+): ProjectPriorityScore {
+  return {
+    id: 'score-1',
+    project_id: 'project-1',
+    framework_id: 'framework-1',
+    framework_name: 'Feature RICE',
+    framework_type: 'rice',
+    score: '400.00',
+    missing_criteria: [],
+    breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
+    notes: null,
+    created_at: '2026-08-24T00:00:00Z',
+    updated_at: '2026-08-24T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makePortfolioRankingEntry(
+  overrides: Partial<PortfolioRankingEntry> = {},
+): PortfolioRankingEntry {
+  return {
+    project_id: 'project-1',
+    project_name: 'Website Redesign',
+    score: '400.00',
+    rank: 1,
+    missing_criteria: [],
+    breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
     ...overrides,
   }
 }

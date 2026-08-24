@@ -10,6 +10,7 @@ import { LoginPage } from '@/features/auth/views/LoginPage'
 import { SelectOrganizationPage } from '@/features/auth/views/SelectOrganizationPage'
 import { ImportExportPage } from '@/features/import-export/views/ImportExportPage'
 import { InsightsOverviewPage } from '@/features/insights/views/InsightsOverviewPage'
+import { PrioritizationOverviewPage } from '@/features/prioritization/views/PrioritizationOverviewPage'
 import { RisksOverviewPage } from '@/features/risks/views/RisksOverviewPage'
 import { ScenarioListPage } from '@/features/scenarios/views/ScenarioListPage'
 import { ScenarioWorkspacePage } from '@/features/scenarios/views/ScenarioWorkspacePage'
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: 'skills', element: <SkillsOverviewPage /> },
       { path: 'risks', element: <RisksOverviewPage /> },
       { path: 'stakeholders', element: <StakeholdersOverviewPage /> },
+      { path: 'prioritization', element: <PrioritizationOverviewPage /> },
       { path: 'import-export', element: <ImportExportPage /> },
       { path: 'admin/access', element: <AccessManagementPage /> },
     ],

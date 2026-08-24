@@ -47,6 +47,9 @@ export function AppShell() {
               <NavLink to="/stakeholders" className={NAV_LINK_CLASS}>
                 Stakeholders
               </NavLink>
+              <NavLink to="/prioritization" className={NAV_LINK_CLASS}>
+                Prioritization
+              </NavLink>
               {/* Hidden entirely, not disabled, for a role that can never
                * export (CLAUDE.md §13's "view-only access" principle) —
                * the backend independently enforces this regardless. */}

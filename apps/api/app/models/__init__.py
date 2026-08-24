@@ -12,8 +12,12 @@ from app.models.organization import Organization
 from app.models.organization_membership import OrganizationMembership
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.prioritization_criterion import PrioritizationCriterion
+from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
+from app.models.project_priority_criterion_value import ProjectPriorityCriterionValue
+from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
 from app.models.scenario import Scenario, ScenarioOperation
@@ -34,8 +38,12 @@ __all__ = [
     "OrganizationMembership",
     "Person",
     "PersonSkill",
+    "PrioritizationCriterion",
+    "PrioritizationFramework",
     "Project",
     "ProjectAccessGrant",
+    "ProjectPriorityCriterionValue",
+    "ProjectPriorityScore",
     "ProjectSkillRequirement",
     "Risk",
     "Scenario",

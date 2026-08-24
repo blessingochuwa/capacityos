@@ -13,6 +13,7 @@ from app.models.enums import ProjectStatus
 
 if TYPE_CHECKING:
     from app.models.allocation import Allocation
+    from app.models.project_priority_score import ProjectPriorityScore
     from app.models.project_skill_requirement import ProjectSkillRequirement
     from app.models.risk import Risk
     from app.models.stakeholder import Stakeholder
@@ -81,5 +82,8 @@ class Project(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         back_populates="project", cascade="all, delete-orphan"
     )
     stakeholders: Mapped[list[Stakeholder]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    priority_scores: Mapped[list[ProjectPriorityScore]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )

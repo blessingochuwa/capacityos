@@ -1169,10 +1169,33 @@ re-verified with one regression test each. 0 new tables, 0 migrations, 0
 new permissions, 0 behavior changes. See
 docs/adr/0016-instance-authorization-completion.md.
 
+### Phase 17 (v1 slice)
+Prioritization engine (§18) — "given limited people, time, and capacity,
+what should this organization work on first?", answered by an
+organization-chosen framework, never one CapacityOS prescribes (§18: "do
+not prescribe one prioritization framework as universally correct"). The
+first phase that is a new product module rather than an extension of
+existing infrastructure — a PRD (docs/PRD-phase-17-prioritization.md) was
+written and confirmed with the user before any code was written, per
+CLAUDE.md §31's planning-first instruction for complex/ambiguous work.
+Two decisions were confirmed before implementation: build a reduced v1
+slice first (RICE + Weighted Scoring only, no dependency graph, no
+scenario comparison, no AI yet), and use the PRD's own recommended
+defaults for the remaining open questions (normalized criterion-value
+storage, RICE/WSJF criteria non-editable, framework management Admin/
+Owner only). A score is always derived at read time from recorded
+criterion inputs plus the framework's current definition, never stored
+or cached — the same discipline Risk.exposure and every Scenario result
+already follow. 4 new tables, 3 new permissions
+(PRIORITIZATION_READ/SCORE/MANAGE — framework management is deliberately
+Admin/Owner only, scoring is Manager+ via the existing Phase 11
+ProjectAccessGrant mechanism), 0 changes to any existing table or
+permission. See docs/adr/0017-prioritization-engine.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-16 that a future phase should
+Deferred items accumulated across Phases 11-17 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1183,8 +1206,10 @@ gaps, are resolved-as-retained per Phase 16,
 docs/adr/0016-instance-authorization-completion.md — re-opening either
 requires a new, explicit product requirement naming the missing ownership
 concept, not a rebuild of what Phase 16 already decided);
-Risk Import/Export registration, an org-wide cross-project risk register,
-and the Prioritization (§18) domain concept (see ADR 0013's Consequences);
+Risk Import/Export registration and an org-wide cross-project risk
+register (see ADR 0013's Consequences — its other listed gap, the
+Prioritization (§18) domain concept, is resolved as a v1 slice per Phase
+17, docs/adr/0017-prioritization-engine.md);
 Stakeholder Import/Export registration and an org-wide cross-project
 stakeholder register (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
@@ -1192,7 +1217,13 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); a membership- or user-management UI — no such page exists
 anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response. None of these are
+through beyond the raw 422 response; ICE/WSJF/MoSCoW prioritization
+formulas, project dependency tracking and cycle detection, portfolio
+snapshots, scenario-vs-baseline ranking comparison, AI priority
+explanation, and editing a prioritization framework's criteria after
+creation (see ADR 0017's Consequences — each a named v1 boundary, not an
+oversight); Prioritization Import/Export registration (matching Risk/
+Stakeholder's own precedent, not specified). None of these are
 scheduled — do not build any of them without an explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.

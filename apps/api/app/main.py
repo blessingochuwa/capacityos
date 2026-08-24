@@ -19,6 +19,7 @@ from app.api.v1.imports import router as imports_router
 from app.api.v1.insights import router as insights_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.people import router as people_router
+from app.api.v1.prioritization import router as prioritization_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.scenarios import router as scenarios_router
 from app.api.v1.skills import router as skills_router
@@ -98,4 +99,5 @@ app.include_router(insights_router)
 app.include_router(imports_router)
 app.include_router(exports_router)
 app.include_router(skills_router)
+app.include_router(prioritization_router)
 app.include_router(ai_router)
