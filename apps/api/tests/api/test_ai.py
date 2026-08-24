@@ -1,9 +1,10 @@
 """Endpoint tests for Phase 8's /api/v1/ai/* surface: status, summary,
-explain-signal, explain-scenario, and ask — provider-unavailable (default
-Settings), provider-configured (mock, via a get_settings override, matching
-the existing convention in tests/api/test_exports.py/test_insights.py),
-grounding, security (prompt-injection-as-data), and never-mutates-data
-checks. No test ever reaches a real network/AI provider.
+explain-signal, explain-scenario, explain-priority (Phase 19), and ask —
+provider-unavailable (default Settings), provider-configured (mock, via a
+get_settings override, matching the existing convention in
+tests/api/test_exports.py/test_insights.py), grounding, security
+(prompt-injection-as-data), and never-mutates-data checks. No test ever
+reaches a real network/AI provider.
 """
 
 import uuid
@@ -14,7 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
-from tests.factories import make_organization, make_person
+from tests.factories import (
+    make_organization,
+    make_person,
+    make_prioritization_framework,
+    make_project,
+    make_project_priority_score,
+)
 
 START = "2026-08-17"  # Monday
 END = "2026-08-21"  # Friday
@@ -341,6 +348,107 @@ def test_explain_scenario_404_for_unknown_scenario(client: TestClient) -> None:
     try:
         response = client.post(
             "/api/v1/ai/explain-scenario", json={"scenario_id": str(uuid.uuid4())}
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Explain priority (Phase 19)
+# ---------------------------------------------------------------------------
+
+
+def _create_rice_score(
+    client: TestClient, *, project_name: str = "Website Redesign"
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Returns (project, score) — a project scored against a fresh RICE
+    framework with all four criteria filled in, matching
+    tests/api/test_prioritization.py's own `_create_rice_framework`
+    helper shape."""
+    project = _create_project(client, name=project_name)
+    framework = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={"name": f"RICE for {project_name}", "framework_type": "rice", "criteria": []},
+    ).json()
+    score = client.post(
+        f"/api/v1/projects/{project['id']}/priority-scores",
+        json={
+            "framework_id": framework["id"],
+            "values": [
+                {"criterion_key": "reach", "value": "1000"},
+                {"criterion_key": "impact", "value": "2"},
+                {"criterion_key": "confidence", "value": "0.8"},
+                {"criterion_key": "effort", "value": "4"},
+            ],
+        },
+    ).json()
+    return project, score
+
+
+def test_explain_priority_is_unavailable_by_default_but_still_returns_200(
+    client: TestClient,
+) -> None:
+    project, score = _create_rice_score(client)
+    response = client.post(
+        "/api/v1/ai/explain-priority",
+        json={"project_id": project["id"], "score_id": score["id"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "unavailable"
+    assert body["response"] is None
+
+
+def test_explain_priority_succeeds(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        project, score = _create_rice_score(client)
+        response = client.post(
+            "/api/v1/ai/explain-priority",
+            json={"project_id": project["id"], "score_id": score["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["response"]["summary"]
+
+
+def test_explain_priority_404_for_unknown_score(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        project, _score = _create_rice_score(client)
+        response = client.post(
+            "/api/v1/ai/explain-priority",
+            json={"project_id": project["id"], "score_id": str(uuid.uuid4())},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_priority_404_for_score_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Same Phase 16-style proof as test_summary_404_for_person_in_another_
+    organization above: AIContextBuilder.build_for_priority_score goes
+    through ProjectPriorityScoreService.get, the same org-scoped repository
+    path every other prioritization route already uses — for a
+    genuinely-existing cross-organization project and score, not just a
+    random uuid."""
+    org_b = make_organization(db_session, slug="org-b-ai-priority")
+    project_b = make_project(db_session, organization=org_b, name="Org B Project")
+    framework_b = make_prioritization_framework(db_session, organization=org_b, name="Org B RICE")
+    score_b = make_project_priority_score(
+        db_session, organization=org_b, project=project_b, framework=framework_b
+    )
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/explain-priority",
+            json={"project_id": str(project_b.id), "score_id": str(score_b.id)},
         )
     finally:
         del app.dependency_overrides[get_settings]

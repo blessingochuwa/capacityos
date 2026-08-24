@@ -20,6 +20,7 @@ class AISourceReferenceType(StrEnum):
     CAPACITY = "capacity"
     SCENARIO = "scenario"
     SKILL_COVERAGE = "skill_coverage"
+    PRIORITY_SCORE = "priority_score"
 
 
 class AISourceReference(BaseModel):
@@ -116,6 +117,16 @@ class AIExplainSignalRequest(BaseModel):
 
 class AIExplainScenarioRequest(BaseModel):
     scenario_id: uuid.UUID
+
+
+class AIExplainPriorityRequest(BaseModel):
+    """Addressed the same way every other ProjectPriorityScore route is
+    (project_id + score_id) — see app/api/v1/prioritization.py — rather
+    than by framework_id, since a project may hold at most one score per
+    framework and the score itself is the concrete thing being explained."""
+
+    project_id: uuid.UUID
+    score_id: uuid.UUID
 
 
 class AIAskRequest(BaseModel):

@@ -7,6 +7,7 @@ building is covered by tests/api/test_ai.py.
 import logging
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -28,7 +29,12 @@ from app.schemas.ai import (
     AISourceReference,
     AISourceReferenceType,
 )
-from app.services.ai_context import AIContextBuilder, AIEntityContext, AIInsightContext
+from app.services.ai_context import (
+    AIContextBuilder,
+    AIEntityContext,
+    AIInsightContext,
+    AIPriorityFact,
+)
 from app.services.ai_service import AIService, frame_user_question, ground, serialize_context
 
 PERSON_A = uuid.UUID(int=1)
@@ -72,6 +78,11 @@ class _FakeContextBuilder(AIContextBuilder):
 
     def build_for_scenario(
         self, organization_id: uuid.UUID, scenario_id: uuid.UUID
+    ) -> AIInsightContext:
+        return self._context
+
+    def build_for_priority_score(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, score_id: uuid.UUID
     ) -> AIInsightContext:
         return self._context
 
@@ -256,6 +267,86 @@ def test_serialize_context_includes_malicious_label_verbatim_as_data() -> None:
     assert malicious_label in serialized
 
 
+def test_serialize_context_renders_priority_fact_with_source_reference() -> None:
+    score_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("project", uuid.uuid4(), "Website Redesign"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        priority=AIPriorityFact(
+            score_id=score_id,
+            project_label="Website Redesign",
+            framework_id=uuid.uuid4(),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            score=Decimal("400.00"),
+            missing_criteria=(),
+            breakdown={"reach": Decimal("1000"), "effort": Decimal("4")},
+            category=None,
+        ),
+    )
+    serialized = serialize_context(context)
+    assert "Feature RICE" in serialized
+    assert "score=400.00" in serialized
+    assert f"type=priority_score, entity_id={score_id}" in serialized
+    assert "reach=1000" in serialized
+
+
+def test_serialize_context_renders_missing_criteria_and_category() -> None:
+    context = AIInsightContext(
+        scope=AIEntityContext("project", uuid.uuid4(), "Mobile App"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        priority=AIPriorityFact(
+            score_id=uuid.uuid4(),
+            project_label="Mobile App",
+            framework_id=uuid.uuid4(),
+            framework_name="Release MoSCoW",
+            framework_type="moscow",
+            score=None,
+            missing_criteria=("effort",),
+            breakdown={},
+            category="must",
+        ),
+    )
+    serialized = serialize_context(context)
+    assert "category=must" in serialized
+    assert "missing criteria: effort" in serialized
+
+
+def test_known_references_includes_priority_score_when_present() -> None:
+    score_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("project", uuid.uuid4(), "Website Redesign"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        priority=AIPriorityFact(
+            score_id=score_id,
+            project_label="Website Redesign",
+            framework_id=uuid.uuid4(),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            score=Decimal("400.00"),
+            missing_criteria=(),
+            breakdown={},
+            category=None,
+        ),
+    )
+    assert ("priority_score", str(score_id)) in context.known_references()
+
+
 # ---------------------------------------------------------------------------
 # AIService — unavailable / error handling, exercised through its public
 # capability methods (summarize) rather than the protected _generate.
@@ -359,6 +450,40 @@ def test_explain_signal_errors_when_no_matching_signal_in_context() -> None:
     assert envelope.response is None
     assert envelope.message is not None
     assert "over_allocation" in envelope.message
+
+
+def test_explain_priority_ok_response_grounds_from_priority_context() -> None:
+    score_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("project", uuid.uuid4(), "Website Redesign"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        priority=AIPriorityFact(
+            score_id=score_id,
+            project_label="Website Redesign",
+            framework_id=uuid.uuid4(),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            score=Decimal("400.00"),
+            missing_criteria=(),
+            breakdown={"reach": Decimal("1000")},
+            category=None,
+        ),
+    )
+    service = AIService(
+        context_builder=_FakeContextBuilder(context),
+        provider=MockAIProvider(),
+        provider_name="mock",
+        model_name="test-model",
+        max_output_tokens=1024,
+    )
+    envelope = service.explain_priority(ORGANIZATION_ID, uuid.uuid4(), score_id)
+    assert envelope.status == AIResponseStatus.OK
+    assert envelope.response is not None
 
 
 def test_status_reports_unavailable_with_no_model_when_no_provider() -> None:

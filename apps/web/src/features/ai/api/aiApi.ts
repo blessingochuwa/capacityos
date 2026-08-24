@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from '@/api/client'
 import type {
   AIAskRequest,
+  AIExplainPriorityRequest,
   AIExplainScenarioRequest,
   AIExplainSignalRequest,
   AIResponseEnvelope,
@@ -25,6 +26,9 @@ export const aiApi = {
 
   explainScenario: (data: AIExplainScenarioRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/explain-scenario', data),
+
+  explainPriority: (data: AIExplainPriorityRequest) =>
+    apiPost<AIResponseEnvelope>('/api/v1/ai/explain-priority', data),
 
   ask: (data: AIAskRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/ask', data),

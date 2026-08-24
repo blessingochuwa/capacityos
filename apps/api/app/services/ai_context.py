@@ -23,6 +23,7 @@ from app.repositories.team import TeamRepository
 from app.schemas.insights import SignalRead
 from app.services.capacity import CapacityService
 from app.services.insight_service import InsightService
+from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.scenario_calculation import ScenarioCalculationService
 from app.services.skill_capacity import SkillCapacityService
 
@@ -82,6 +83,28 @@ class AIScenarioFact:
 
 
 @dataclass(frozen=True)
+class AIPriorityFact:
+    """Phase 19 — the same (score, PriorityScoreResult) shape
+    ProjectPriorityScoreService.get already returns and
+    project_priority_score_to_read already renders to the API, just
+    reshaped into this module's DB-free fact vocabulary. No number here
+    is ever recomputed by this module — score/missing_criteria/breakdown/
+    category are copied verbatim from the result the deterministic
+    prioritization engine (app/domain/prioritization.py) already
+    produced."""
+
+    score_id: uuid.UUID
+    project_label: str
+    framework_id: uuid.UUID
+    framework_name: str
+    framework_type: str
+    score: Decimal | None
+    missing_criteria: tuple[str, ...]
+    breakdown: dict[str, Decimal]
+    category: str | None
+
+
+@dataclass(frozen=True)
 class AIInsightContext:
     scope: AIEntityContext
     start_date: date | None
@@ -90,6 +113,7 @@ class AIInsightContext:
     signals: tuple[AISignalFact, ...]
     skill_coverage: tuple[AISkillCoverageFact, ...]
     scenario: AIScenarioFact | None
+    priority: AIPriorityFact | None = None
 
     def known_references(self) -> frozenset[tuple[str, str]]:
         """(reference_type, id-as-str) pairs actually present in this
@@ -103,6 +127,8 @@ class AIInsightContext:
             refs.add(("skill_coverage", str(coverage.skill_id)))
         if self.scenario is not None:
             refs.add(("scenario", str(self.scenario.scenario_id)))
+        if self.priority is not None:
+            refs.add(("priority_score", str(self.priority.score_id)))
         return frozenset(refs)
 
 
@@ -138,6 +164,7 @@ class AIContextBuilder:
         insight_service: InsightService,
         scenario_calculation_service: ScenarioCalculationService,
         skill_capacity_service: SkillCapacityService,
+        priority_score_service: ProjectPriorityScoreService,
         person_repository: PersonRepository,
         team_repository: TeamRepository,
         project_repository: ProjectRepository,
@@ -146,6 +173,7 @@ class AIContextBuilder:
         self.insight_service = insight_service
         self.scenario_calculation_service = scenario_calculation_service
         self.skill_capacity_service = skill_capacity_service
+        self.priority_score_service = priority_score_service
         self.person_repository = person_repository
         self.team_repository = team_repository
         self.project_repository = project_repository
@@ -239,6 +267,39 @@ class AIContextBuilder:
             signals=tuple(_signal_fact(s) for s in signals),
             skill_coverage=(),
             scenario=scenario_fact,
+        )
+
+    def build_for_priority_score(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, score_id: uuid.UUID
+    ) -> AIInsightContext:
+        """Phase 19. Reuses ProjectPriorityScoreService.get verbatim — the
+        exact same (score, PriorityScoreResult) pair
+        project_priority_score_to_read already builds the API response
+        from — rather than recomputing anything itself, matching every
+        other build_for_* method's "call the existing deterministic
+        service, never recalculate" discipline."""
+        score, result = self.priority_score_service.get(organization_id, project_id, score_id)
+        label = self._project_label(organization_id, project_id)
+        priority_fact = AIPriorityFact(
+            score_id=score.id,
+            project_label=label,
+            framework_id=score.framework_id,
+            framework_name=score.framework.name,
+            framework_type=score.framework.framework_type.value,
+            score=result.score,
+            missing_criteria=result.missing_criteria,
+            breakdown=result.breakdown,
+            category=result.category.value if result.category is not None else None,
+        )
+        return AIInsightContext(
+            scope=AIEntityContext("project", project_id, label),
+            start_date=None,
+            end_date=None,
+            capacity=None,
+            signals=(),
+            skill_coverage=(),
+            scenario=None,
+            priority=priority_fact,
         )
 
     def _team_skill_coverage(

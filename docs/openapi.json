@@ -6493,6 +6493,47 @@
         }
       }
     },
+    "/api/v1/ai/explain-priority": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Post Ai Explain Priority",
+        "operationId": "post_ai_explain_priority_api_v1_ai_explain_priority_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIExplainPriorityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIResponseEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/ask": {
       "post": {
         "tags": [
@@ -6598,6 +6639,27 @@
         ],
         "title": "AIConfidence",
         "description": "Never a numeric probability \u2014 CLAUDE.md/Phase 8 spec \u00a710 is explicit\nthat an LLM logit is not a calibrated reliability metric. These are\ncategories the model chooses to convey how directly its context\nsupports a claim, not a statistic."
+      },
+      "AIExplainPriorityRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "score_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Score Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "score_id"
+        ],
+        "title": "AIExplainPriorityRequest",
+        "description": "Addressed the same way every other ProjectPriorityScore route is\n(project_id + score_id) \u2014 see app/api/v1/prioritization.py \u2014 rather\nthan by framework_id, since a project may hold at most one score per\nframework and the score itself is the concrete thing being explained."
       },
       "AIExplainScenarioRequest": {
         "properties": {
@@ -6823,7 +6885,8 @@
           "signal",
           "capacity",
           "scenario",
-          "skill_coverage"
+          "skill_coverage",
+          "priority_score"
         ],
         "title": "AISourceReferenceType"
       },

@@ -17,7 +17,9 @@ from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
@@ -25,6 +27,7 @@ from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
 from app.schemas.ai import (
     AIAskRequest,
+    AIExplainPriorityRequest,
     AIExplainScenarioRequest,
     AIExplainSignalRequest,
     AIResponseEnvelope,
@@ -33,6 +36,7 @@ from app.schemas.ai import (
 )
 from app.services.ai_context import AIContextBuilder
 from app.services.ai_service import AIService
+from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.skill_capacity import SkillCapacityService
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
@@ -77,6 +81,11 @@ def get_ai_service(
             WorkingScheduleRepository(db),
             AvailabilityExceptionRepository(db),
             AllocationRepository(db),
+        ),
+        priority_score_service=ProjectPriorityScoreService(
+            ProjectPriorityScoreRepository(db),
+            ProjectRepository(db),
+            PrioritizationFrameworkRepository(db),
         ),
         person_repository=PersonRepository(db),
         team_repository=TeamRepository(db),
@@ -143,6 +152,16 @@ def post_ai_explain_scenario(
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.explain_scenario(membership.organization_id, data.scenario_id)
+
+
+@router.post("/explain-priority", response_model=AIResponseEnvelope)
+def post_ai_explain_priority(
+    data: AIExplainPriorityRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: AIService = Depends(get_ai_service),
+) -> AIResponseEnvelope:
+    return service.explain_priority(membership.organization_id, data.project_id, data.score_id)
 
 
 @router.post("/ask", response_model=AIResponseEnvelope)

@@ -345,7 +345,7 @@ Phase 8 answers "why does this matter, and what might I consider?" — strictly 
 
 ### AI context
 
-`AIInsightContext` (and its component `AICapacityFact`/`AISignalFact`/`AISkillCoverageFact`/`AIScenarioFact`) is an explicit, minimal, typed snapshot built from the same `CapacityService`/`InsightService`/`ScenarioCalculationService`/`SkillCapacityService` calls every other phase's UI already uses. No SQLAlchemy row and no field outside this typed shape is ever sent to a provider. Entity labels are display names, never emails — data minimization by construction.
+`AIInsightContext` (and its component `AICapacityFact`/`AISignalFact`/`AISkillCoverageFact`/`AIScenarioFact`/`AIPriorityFact`) is an explicit, minimal, typed snapshot built from the same `CapacityService`/`InsightService`/`ScenarioCalculationService`/`SkillCapacityService`/`ProjectPriorityScoreService` calls every other phase's UI already uses. No SQLAlchemy row and no field outside this typed shape is ever sent to a provider. Entity labels are display names, never emails — data minimization by construction. `AIPriorityFact` was added in Phase 19 (see below) — every other component predates it and is unchanged.
 
 ### Structured output and grounding
 
@@ -362,6 +362,7 @@ Every `/api/v1/ai/*` endpoint returns `{status, response, message}` with **HTTP 
 | Summary | `POST /api/v1/ai/summary` | What's the operational picture for this person/team/project and period? |
 | Explain signal | `POST /api/v1/ai/explain-signal` | Why does this existing signal exist, and what's the evidence? (also covers skill bottlenecks — `skill_gap`/`single_skill_holder`/`skill_concentration` are signal types like any other) |
 | Explain scenario | `POST /api/v1/ai/explain-scenario` | What changed between baseline and scenario, and why? |
+| Explain priority | `POST /api/v1/ai/explain-priority` | Why is this project's priority score what it is, and what's missing? (Phase 19 — see [Prioritization](#prioritization-phases-17-19) below) |
 | Ask | `POST /api/v1/ai/ask` | A controlled natural-language question about one scope, answered only from that scope's assembled facts — never generated SQL, never arbitrary tool/endpoint calls. |
 
 ### What Phase 8 does NOT do
@@ -475,9 +476,9 @@ Any Manager (a role that holds `schedule.write`/`skill.write`/`scenario.write` u
 
 Not an authorization bug — a test-coverage gap. Every organization-owned entity's repository already enforced the Phase 12 tenant boundary; only Risk and Stakeholder had a regression test proving it. `tests/api/test_cross_organization_boundaries.py` closes that gap for every remaining entity (Person, Team, TeamMembership, Skill, PersonSkill, ProjectSkillRequirement, WorkingSchedule, AvailabilityException, Allocation, Scenario), and one instance-level Manager-grant test block was added to `Risk`'s own test file to match its sibling `Stakeholder`'s existing coverage. Zero production code changed as a result — every one of these tests passed against the existing implementation on the first run.
 
-## Prioritization (Phases 17-18)
+## Prioritization (Phases 17-19)
 
-Phase 17 answers CLAUDE.md §18's question: "given limited people, time, and capacity, what should this organization work on first?" See [the PRD](PRD-phase-17-prioritization.md) for the original product design (written and confirmed with the user before any code was written — the first CapacityOS phase that is a new product module, not an extension of existing infrastructure), [ADR 0017](adr/0017-prioritization-engine.md) for the v1 slice, and [ADR 0018](adr/0018-prioritization-frameworks-and-dependencies.md) for the framework-set/criteria-editing/dependency-graph slice that followed it; this section is the resulting vocabulary and rules.
+Phase 17 answers CLAUDE.md §18's question: "given limited people, time, and capacity, what should this organization work on first?" See [the PRD](PRD-phase-17-prioritization.md) for the original product design (written and confirmed with the user before any code was written — the first CapacityOS phase that is a new product module, not an extension of existing infrastructure), [ADR 0017](adr/0017-prioritization-engine.md) for the v1 slice, [ADR 0018](adr/0018-prioritization-frameworks-and-dependencies.md) for the framework-set/criteria-editing/dependency-graph slice that followed it, and [ADR 0019](adr/0019-ai-priority-explanation.md) for the AI explanation capability built on top of both; this section is the resulting vocabulary and rules.
 
 ### `PrioritizationFramework` — an organization-chosen method, never a CapacityOS default
 
@@ -499,6 +500,10 @@ A project may `block`, `relate to`, or `enable` another (`ProjectDependencyType`
 
 Creating or editing a `PrioritizationFramework` (including its criteria) is Owner/Admin only (`Permission.PRIORITIZATION_MANAGE`) — deliberately stricter than Skill's Manager-writable org-wide-catalog precedent, since a framework change reshuffles every project's rank across the whole organization at once. Scoring one specific project under an existing framework, and creating/deleting its dependencies, is Manager+, gated by the same Phase 11 `ProjectAccessGrant` mechanism Risk/Stakeholder/Allocation already use (`Permission.PRIORITIZATION_SCORE` + `require_project_access`) — "Managers can score projects (and record their dependencies) they manage," not the whole portfolio.
 
+### AI priority explanation — interpretation only, never a second scoring engine
+
+`POST /api/v1/ai/explain-priority` (`AIService.explain_priority`) explains an *existing* `ProjectPriorityScore` — a fifth capability on the unchanged Phase 8 pipeline (`AIContextBuilder`/`AIService`/grounding), alongside `summarize`/`explain-signal`/`explain-scenario`/`ask`. `AIContextBuilder.build_for_priority_score` calls `ProjectPriorityScoreService.get` verbatim; no score, breakdown, or category is ever recalculated by the AI layer (CLAUDE.md §4/§21 — AI is never the source of truth for a calculation). Gated by `Permission.AI_USE` only, granted to every role, exactly like every other AI endpoint — no new permission, no new grant-scoping, since the underlying read already goes through the same organization-scoped `ProjectPriorityScoreService` every other prioritization route uses.
+
 ### What's still deferred
 
-No `PortfolioSnapshot` (a point-in-time saved ranking, distinct from the always-fresh live ranking). No scenario-vs-baseline ranking comparison. No AI priority explanation. No Import/Export registration for `ProjectPriorityScore` or `ProjectDependency` (deferred, matching Risk/Stakeholder's own Phase 13/14 precedent). Each is a named, deliberately scoped boundary confirmed with the user before implementation — see the PRD's "Recommended v1 slice," ADR 0017's Consequences, and ADR 0018's Consequences for the full list and reasoning.
+No `PortfolioSnapshot` (a point-in-time saved ranking, distinct from the always-fresh live ranking). No scenario-vs-baseline ranking comparison — audited during Phase 19 and found to require a genuine product decision first: Scenario operations (ADD_ALLOCATION, etc.) don't currently touch a project's prioritization criterion values at all, so "how does accepting this scenario change portfolio priority" has no defined computation yet. No Priority Explanation frontend panel beyond the single `ExplainPriorityButton` (a Scenario Comparison view, and five Recharts visualizations, remain unbuilt). No Import/Export registration for `ProjectPriorityScore` or `ProjectDependency` (deferred, matching Risk/Stakeholder's own Phase 13/14 precedent). Each is a named, deliberately scoped boundary confirmed with the user before implementation — see the PRD's "Recommended v1 slice," ADR 0017's Consequences, ADR 0018's Consequences, and ADR 0019's Consequences for the full list and reasoning.

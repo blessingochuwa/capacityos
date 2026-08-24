@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { ProjectFilterPicker } from '@/features/insights/components/ProjectFilterPicker'
+import { ExplainPriorityButton } from '@/features/ai/components/ExplainPriorityButton'
 import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
 import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
@@ -26,9 +27,11 @@ import { useProjectPriorityScores } from '../hooks/useProjectPriorityScores'
  * organization-chosen framework, never a framework CapacityOS prescribes.
  * Phase 18 completes the framework set (RICE, ICE, WSJF, MoSCoW, Weighted
  * Scoring), lets a Weighted Scoring framework's criteria be edited after
- * creation, and adds the project dependency graph. Scenario comparison
- * and the AI explanation panel remain deferred (see
- * docs/PRD-phase-17-prioritization.md and docs/adr/0018).
+ * creation, and adds the project dependency graph. Phase 19 adds an AI
+ * explanation for an existing score (ExplainPriorityButton), reusing the
+ * Phase 8 AI infrastructure verbatim. PortfolioSnapshot and scenario-vs-
+ * baseline comparison remain deferred (see
+ * docs/PRD-phase-17-prioritization.md, docs/adr/0018, and docs/adr/0019).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -163,14 +166,22 @@ export function PrioritizationOverviewPage() {
                   const framework = frameworks.find((f) => f.id === frameworkId)
                   if (!framework) return null
                   return (
-                    <ScoreForm
-                      key={existing?.id ?? 'create'}
-                      projectId={scoringProjectId}
-                      framework={framework}
-                      score={existing}
-                      onDone={() => setScoringProjectId(undefined)}
-                      onCancel={() => setScoringProjectId(undefined)}
-                    />
+                    <div className="space-y-4">
+                      <ScoreForm
+                        key={existing?.id ?? 'create'}
+                        projectId={scoringProjectId}
+                        framework={framework}
+                        score={existing}
+                        onDone={() => setScoringProjectId(undefined)}
+                        onCancel={() => setScoringProjectId(undefined)}
+                      />
+                      {existing ? (
+                        <ExplainPriorityButton
+                          projectId={scoringProjectId}
+                          scoreId={existing.id}
+                        />
+                      ) : null}
+                    </div>
                   )
                 }}
               </QueryBoundary>

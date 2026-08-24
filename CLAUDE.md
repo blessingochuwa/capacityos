@@ -1216,10 +1216,35 @@ reuse PRIORITIZATION_SCORE via the existing Phase 11 ProjectAccessGrant
 mechanism), 0 changes to any existing permission's grant set. See
 docs/adr/0018-prioritization-frameworks-and-dependencies.md.
 
+### Phase 19
+AI priority explanation — of the six items docs/roadmap.md's "Proposed
+next" section named as the still-open remainder of the Phase 17 PRD
+(PortfolioSnapshot, scenario-vs-baseline ranking comparison, AI priority
+explanation, the Priority Explanation Panel and Scenario Comparison
+frontend views, and five Recharts visualizations), only this one was
+built — chosen after an explicit repository audit because it is a
+same-shape fifth capability on the existing Phase 8 AI pipeline
+(`summarize`/`explain-signal`/`explain-scenario`/`ask` already establish
+the pattern `explain_priority` follows exactly), requires no new
+persistence concept, and resolves no ambiguous domain-model question.
+Scenario-vs-baseline comparison was specifically audited and found to
+require a genuine product decision first — Scenario operations
+(ADD_ALLOCATION, etc.) never touch a project's prioritization criterion
+values today, so "how does accepting this scenario change portfolio
+priority" has no defined computation — and was deliberately left
+unbuilt rather than guessed at. `AIContextBuilder.build_for_priority_score`
+calls `ProjectPriorityScoreService.get` verbatim — no number is
+recalculated, every fact handed to the model was already produced by the
+Phase 17/18 deterministic engine. 0 new tables, 0 migrations, 0 new
+permissions (`Permission.AI_USE`, already granted to every role, is the
+only gate) — reuses the existing organization-scoped
+`ProjectPriorityScoreService.get` for tenancy, exactly like every other
+prioritization route. See docs/adr/0019-ai-priority-explanation.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-18 that a future phase should
+Deferred items accumulated across Phases 11-19 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1241,12 +1266,19 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); a membership- or user-management UI — no such page exists
 anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response; portfolio snapshots, scenario-vs-
-baseline ranking comparison, and AI priority explanation (ICE/WSJF/MoSCoW
-formulas, project dependency tracking/cycle detection, and criteria
-editing are resolved as of Phase 18,
-docs/adr/0018-prioritization-frameworks-and-dependencies.md — see ADR
-0017/0018's Consequences for the remaining named v1 boundaries);
+through beyond the raw 422 response; portfolio snapshots and scenario-vs-
+baseline ranking comparison (ICE/WSJF/MoSCoW formulas, project dependency
+tracking/cycle detection, and criteria editing are resolved as of Phase
+18, docs/adr/0018-prioritization-frameworks-and-dependencies.md; AI
+priority explanation is resolved as of Phase 19,
+docs/adr/0019-ai-priority-explanation.md — scenario-vs-baseline comparison
+was specifically audited during Phase 19 and found to require a genuine
+product decision about what a Scenario actually changes about a project's
+prioritization inputs, which don't exist as a link today — see ADR 0019's
+Consequences for the remaining named boundaries); the Priority Explanation
+Panel is resolved as of Phase 19 (ExplainPriorityButton); the Scenario
+Comparison frontend view and the five remaining Recharts visualizations
+remain unbuilt;
 Prioritization and Project Dependency Import/Export registration
 (matching Risk/Stakeholder's own precedent, not specified). None of these
 are scheduled — do not build any of them without an explicit request, per

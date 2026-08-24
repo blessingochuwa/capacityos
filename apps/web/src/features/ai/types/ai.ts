@@ -11,6 +11,7 @@ export type AISourceReferenceType =
   | 'capacity'
   | 'scenario'
   | 'skill_coverage'
+  | 'priority_score'
 
 export interface AISourceReference {
   type: AISourceReferenceType
@@ -78,6 +79,11 @@ export interface AIExplainSignalRequest {
 
 export interface AIExplainScenarioRequest {
   scenario_id: string
+}
+
+export interface AIExplainPriorityRequest {
+  project_id: string
+  score_id: string
 }
 
 export interface AIAskRequest {

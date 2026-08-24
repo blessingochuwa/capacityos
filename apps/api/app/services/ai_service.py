@@ -130,6 +130,22 @@ def serialize_context(context: AIInsightContext) -> str:
         for description in sc.new_risk_descriptions:
             lines.append(f"  - new risk: {description}")
 
+    if context.priority is not None:
+        p = context.priority
+        score = p.score if p.score is not None else "n/a (score incomplete or non-numeric)"
+        category = p.category if p.category is not None else "none assigned yet"
+        lines.append(
+            f'priority score for project "{p.project_label}" under framework '
+            f'"{p.framework_name}" ({p.framework_type}): score={score} category={category} '
+            f"(source_reference: type=priority_score, entity_id={p.score_id})"
+        )
+        if p.breakdown:
+            lines.append("  submitted criterion values:")
+            for key, value in p.breakdown.items():
+                lines.append(f"    - {key}={value}")
+        if p.missing_criteria:
+            lines.append(f"  missing criteria: {', '.join(p.missing_criteria)}")
+
     return "\n".join(lines)
 
 
@@ -258,6 +274,27 @@ class AIService:
             "remaining-capacity changes, new risks, resolved risks, and affected people/projects. "
             "Do not recalculate any number yourself — only interpret the baseline/scenario facts "
             "already given."
+        )
+        return self._generate(context, question)
+
+    def explain_priority(
+        self, organization_id: uuid.UUID, project_id: uuid.UUID, score_id: uuid.UUID
+    ) -> AIResponseEnvelope:
+        """Phase 19 — explains an EXISTING, already-computed
+        ProjectPriorityScore. Never asked to produce or suggest a score
+        itself (CLAUDE.md §4/§21: AI is never the source of truth for a
+        calculation) — the question below is deliberately framed as
+        interpretation of figures already given, mirroring
+        explain_scenario's own "do not recalculate" framing."""
+        context = self.context_builder.build_for_priority_score(
+            organization_id, project_id, score_id
+        )
+        question = (
+            "Explain why this project's priority score is what it is: which criteria "
+            "are driving it, which (if any) are still missing, what the assigned MoSCoW "
+            "category means if one is set, and what a reviewer might want to check before "
+            "trusting this ranking. Do not recalculate or suggest a different score "
+            "yourself — only interpret the figures already given."
         )
         return self._generate(context, question)
 
