@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing. This repository is governed by [CLAUDE.md](./CLAUDE.md) — read it before making architectural or domain-model decisions. When in doubt, CLAUDE.md's operating philosophy and scope discipline take precedence over convenience.
 
+Before picking up work, check [docs/roadmap.md](./docs/roadmap.md) for what's already built (Phases 0–16, each with an ADR) and what's proposed next — it's the fastest way to see whether something you want to build is already done, already decided against (and why), or genuinely open.
+
 ## Setup
 
 1. Install [Node.js](https://nodejs.org/) 24+ and [uv](https://docs.astral.sh/uv/).
