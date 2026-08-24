@@ -11,17 +11,31 @@ interface WeightedCriterionDraft {
 
 const FRAMEWORK_TYPE_OPTIONS: { value: PrioritizationFrameworkType; label: string }[] = [
   { value: 'rice', label: 'RICE (Reach, Impact, Confidence, Effort)' },
+  { value: 'ice', label: 'ICE (Impact, Confidence, Ease)' },
+  { value: 'wsjf', label: 'WSJF (Business Value, Time Criticality, Risk/Opportunity, Job Size)' },
+  { value: 'moscow', label: 'MoSCoW (Must / Should / Could / Won’t)' },
   { value: 'weighted', label: 'Weighted scoring (your own criteria)' },
 ]
+
+const FIXED_CRITERIA_HINT: Partial<Record<PrioritizationFrameworkType, string>> = {
+  rice: "RICE's four criteria (Reach, Impact, Confidence, Effort) are fixed and will be created automatically.",
+  ice: "ICE's three criteria (Impact, Confidence, Ease) are fixed and will be created automatically.",
+  wsjf: "WSJF's four criteria (Business Value, Time Criticality, Risk Reduction/Opportunity Enablement, Job Size) are fixed and will be created automatically.",
+  moscow:
+    'MoSCoW has no numeric criteria at all — each project is instead assigned a Must/Should/Could/Won’t category directly when scored.',
+}
 
 /** Owner/Admin only — gated by the caller (PrioritizationOverviewPage) via
  * can('prioritization.manage'), matching every other admin-only form in
  * this codebase (FrameworkBuilder does not re-check permissions itself,
  * same as every other feature form — the backend is what actually
- * enforces this regardless, CLAUDE.md §21). RICE needs no criteria input
- * at all — its four criteria are fixed server-side (see
- * app/domain/prioritization.py::RICE_CRITERION_KEYS) and are seeded
- * automatically once the framework is created. */
+ * enforces this regardless, CLAUDE.md §21). RICE/ICE/WSJF need no
+ * criteria input at all — their criteria are fixed server-side (see
+ * app/domain/prioritization.py::FIXED_CRITERION_KEYS) and are seeded
+ * automatically once the framework is created. MoSCoW has no criteria
+ * input either — it has no criteria at all (see
+ * calculate_moscow_result's docstring). Only Weighted Scoring accepts
+ * criteria here. */
 export function FrameworkForm({ onDone }: { onDone?: () => void }) {
   const [name, setName] = useState('')
   const [frameworkType, setFrameworkType] = useState<PrioritizationFrameworkType>('rice')
@@ -126,10 +140,7 @@ export function FrameworkForm({ onDone }: { onDone?: () => void }) {
           </Button>
         </div>
       ) : (
-        <p className="text-xs text-slate-400">
-          RICE's four criteria (Reach, Impact, Confidence, Effort) are fixed and will be
-          created automatically.
-        </p>
+        <p className="text-xs text-slate-400">{FIXED_CRITERIA_HINT[frameworkType]}</p>
       )}
 
       <div className="flex items-center gap-3">

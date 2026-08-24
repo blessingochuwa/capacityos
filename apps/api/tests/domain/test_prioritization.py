@@ -10,11 +10,15 @@ import pytest
 from app.core.exceptions import DomainValidationError
 from app.domain.prioritization import (
     CriterionWeight,
+    calculate_ice_score,
+    calculate_moscow_result,
     calculate_priority_score,
     calculate_rice_score,
     calculate_weighted_score,
+    calculate_wsjf_score,
+    detects_cycle,
 )
-from app.models.enums import PrioritizationFrameworkType
+from app.models.enums import MoscowCategory, PrioritizationFrameworkType
 
 # ---------------------------------------------------------------------------
 # calculate_rice_score
@@ -160,3 +164,147 @@ def test_dispatch_routes_weighted_to_the_weighted_formula() -> None:
         PrioritizationFrameworkType.WEIGHTED, criteria, {"value": Decimal(5)}
     )
     assert result.score == Decimal(10)
+
+
+# ---------------------------------------------------------------------------
+# calculate_ice_score (Phase 18)
+# ---------------------------------------------------------------------------
+
+
+def test_ice_score_is_average_of_impact_confidence_ease() -> None:
+    result = calculate_ice_score(
+        {"impact": Decimal(8), "confidence": Decimal(7), "ease": Decimal(6)}
+    )
+    assert result.score == Decimal(21) / Decimal(3)
+    assert result.missing_criteria == ()
+
+
+def test_ice_score_is_none_with_missing_criteria() -> None:
+    result = calculate_ice_score({"impact": Decimal(8)})
+    assert result.score is None
+    assert set(result.missing_criteria) == {"confidence", "ease"}
+    assert result.breakdown == {"impact": Decimal(8)}
+
+
+# ---------------------------------------------------------------------------
+# calculate_wsjf_score (Phase 18)
+# ---------------------------------------------------------------------------
+
+
+def test_wsjf_score_is_cost_of_delay_divided_by_job_size() -> None:
+    result = calculate_wsjf_score(
+        {
+            "business_value": Decimal(8),
+            "time_criticality": Decimal(5),
+            "risk_reduction_opportunity_enablement": Decimal(3),
+            "job_size": Decimal(4),
+        }
+    )
+    assert result.score == Decimal(16) / Decimal(4)
+    assert result.missing_criteria == ()
+
+
+def test_wsjf_score_rejects_zero_job_size() -> None:
+    with pytest.raises(DomainValidationError):
+        calculate_wsjf_score(
+            {
+                "business_value": Decimal(8),
+                "time_criticality": Decimal(5),
+                "risk_reduction_opportunity_enablement": Decimal(3),
+                "job_size": Decimal(0),
+            }
+        )
+
+
+def test_wsjf_score_is_none_with_missing_criteria() -> None:
+    result = calculate_wsjf_score({"business_value": Decimal(8)})
+    assert result.score is None
+    assert set(result.missing_criteria) == {
+        "time_criticality",
+        "risk_reduction_opportunity_enablement",
+        "job_size",
+    }
+
+
+# ---------------------------------------------------------------------------
+# calculate_moscow_result (Phase 18)
+# ---------------------------------------------------------------------------
+
+
+def test_moscow_result_never_produces_a_numeric_score() -> None:
+    result = calculate_moscow_result(MoscowCategory.MUST)
+    assert result.score is None
+    assert result.category == MoscowCategory.MUST
+    assert result.missing_criteria == ()
+    assert result.breakdown == {}
+
+
+def test_moscow_result_with_no_category_is_still_score_none() -> None:
+    result = calculate_moscow_result(None)
+    assert result.score is None
+    assert result.category is None
+
+
+def test_dispatch_routes_moscow_to_the_moscow_result() -> None:
+    result = calculate_priority_score(
+        PrioritizationFrameworkType.MOSCOW, [], {}, category=MoscowCategory.SHOULD
+    )
+    assert result.score is None
+    assert result.category == MoscowCategory.SHOULD
+
+
+def test_dispatch_routes_ice_to_the_ice_formula() -> None:
+    result = calculate_priority_score(
+        PrioritizationFrameworkType.ICE,
+        [],
+        {"impact": Decimal(9), "confidence": Decimal(9), "ease": Decimal(9)},
+    )
+    assert result.score == Decimal(9)
+
+
+def test_dispatch_routes_wsjf_to_the_wsjf_formula() -> None:
+    result = calculate_priority_score(
+        PrioritizationFrameworkType.WSJF,
+        [],
+        {
+            "business_value": Decimal(2),
+            "time_criticality": Decimal(2),
+            "risk_reduction_opportunity_enablement": Decimal(2),
+            "job_size": Decimal(3),
+        },
+    )
+    assert result.score == Decimal(2)
+
+
+# ---------------------------------------------------------------------------
+# detects_cycle (Phase 18)
+# ---------------------------------------------------------------------------
+
+
+def test_detects_cycle_true_for_direct_self_loop() -> None:
+    assert detects_cycle([], ("a", "a")) is True
+
+
+def test_detects_cycle_true_when_new_edge_closes_a_loop() -> None:
+    # a -> b -> c already exists; adding c -> a would close the cycle.
+    existing = [("a", "b"), ("b", "c")]
+    assert detects_cycle(existing, ("c", "a")) is True
+
+
+def test_detects_cycle_false_when_no_path_back_exists() -> None:
+    existing = [("a", "b"), ("b", "c")]
+    assert detects_cycle(existing, ("a", "d")) is False
+
+
+def test_detects_cycle_false_for_disjoint_edges() -> None:
+    existing = [("x", "y")]
+    assert detects_cycle(existing, ("a", "b")) is False
+
+
+def test_detects_cycle_false_for_a_reverse_edge_with_no_existing_edges() -> None:
+    assert detects_cycle([], ("a", "b")) is False
+
+
+def test_detects_cycle_true_for_immediate_reverse_edge() -> None:
+    # a -> b already exists; adding b -> a is a 2-node cycle.
+    assert detects_cycle([("a", "b")], ("b", "a")) is True

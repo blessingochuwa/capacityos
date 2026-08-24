@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
 import { useCreateScore, useUpdateScore } from '../hooks/useScoreMutations'
-import type { PrioritizationFramework, ProjectPriorityScore } from '../types/prioritization'
+import type { MoscowCategory, PrioritizationFramework, ProjectPriorityScore } from '../types/prioritization'
 
 interface ScoreFormProps {
   projectId: string
@@ -14,15 +15,26 @@ interface ScoreFormProps {
   onCancel?: () => void
 }
 
+const MOSCOW_OPTIONS: { value: MoscowCategory; label: string }[] = [
+  { value: 'must', label: 'Must have' },
+  { value: 'should', label: 'Should have' },
+  { value: 'could', label: 'Could have' },
+  { value: 'wont', label: "Won't have (this time)" },
+]
+
 /** The Project Scoring Drawer (rendered inline, not as an overlay — no
  * drawer/modal primitive exists yet in components/ui/, and adding one
  * purely for this phase would be new design-system surface beyond
  * "reuse existing," see docs/PRD-phase-17-prioritization.md). One input
- * per criterion the framework actually defines — RICE's four fixed
- * criteria for a RICE framework, or whatever an organization defined for
- * a Weighted Scoring framework. */
+ * per criterion the framework actually defines — RICE/ICE/WSJF's fixed
+ * criteria, or whatever an organization defined for a Weighted Scoring
+ * framework. A MoSCoW framework has no criteria at all (Phase 18) — it
+ * gets a single category selector instead, never a numeric input (see
+ * calculate_moscow_result's docstring: "do not create scores that imply
+ * false precision"). */
 export function ScoreForm({ projectId, framework, score, onDone, onCancel }: ScoreFormProps) {
   const isEditing = score !== undefined
+  const isMoscow = framework.framework_type === 'moscow'
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
     if (score) {
@@ -33,6 +45,7 @@ export function ScoreForm({ projectId, framework, score, onDone, onCancel }: Sco
     }
     return initial
   })
+  const [category, setCategory] = useState<MoscowCategory | ''>(score?.category ?? '')
   const [notes, setNotes] = useState(score?.notes ?? '')
   const createScore = useCreateScore(projectId)
   const updateScore = useUpdateScore(projectId)
@@ -43,17 +56,30 @@ export function ScoreForm({ projectId, framework, score, onDone, onCancel }: Sco
     const submittedValues = Object.entries(values)
       .filter(([, value]) => value.trim() !== '')
       .map(([criterion_key, value]) => ({ criterion_key, value: value.trim() }))
+    const submittedCategory = isMoscow ? category || null : undefined
 
     if (isEditing) {
       updateScore.mutate(
-        { scoreId: score.id, data: { values: submittedValues, notes: notes.trim() || null } },
+        {
+          scoreId: score.id,
+          data: {
+            values: isMoscow ? undefined : submittedValues,
+            category: submittedCategory,
+            notes: notes.trim() || null,
+          },
+        },
         { onSuccess: () => onDone?.() },
       )
       return
     }
 
     createScore.mutate(
-      { framework_id: framework.id, values: submittedValues, notes: notes.trim() || undefined },
+      {
+        framework_id: framework.id,
+        values: isMoscow ? [] : submittedValues,
+        category: submittedCategory,
+        notes: notes.trim() || undefined,
+      },
       { onSuccess: () => onDone?.() },
     )
   }
@@ -62,33 +88,47 @@ export function ScoreForm({ projectId, framework, score, onDone, onCancel }: Sco
     <form onSubmit={handleSubmit} className="space-y-3">
       <p className="text-xs text-slate-400">
         Scoring against <span className="font-medium text-slate-200">{framework.name}</span>.
-        Leave a criterion blank to record it later — an incomplete score is shown as such,
-        never guessed.
+        {isMoscow
+          ? ' Assign a Must/Should/Could/Won’t category — MoSCoW never produces a numeric score.'
+          : ' Leave a criterion blank to record it later — an incomplete score is shown as such, never guessed.'}
       </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {framework.criteria.map((criterion) => (
-          <div key={criterion.id} className="flex flex-col gap-1">
-            <label
-              htmlFor={`criterion-${criterion.key}`}
-              className="text-xs font-medium text-slate-400"
-            >
-              {criterion.name}
-              {criterion.weight !== null ? (
-                <span className="ml-1 text-slate-500">(weight {criterion.weight})</span>
-              ) : null}
-            </label>
-            <input
-              id={`criterion-${criterion.key}`}
-              inputMode="decimal"
-              value={values[criterion.key] ?? ''}
-              onChange={(event) =>
-                setValues((prev) => ({ ...prev, [criterion.key]: event.target.value }))
-              }
-              className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
-            />
-          </div>
-        ))}
-      </div>
+
+      {isMoscow ? (
+        <div className="w-64">
+          <Select
+            label="Category"
+            value={category}
+            placeholder="Select a category"
+            options={MOSCOW_OPTIONS}
+            onChange={(event) => setCategory(event.target.value as MoscowCategory)}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {framework.criteria.map((criterion) => (
+            <div key={criterion.id} className="flex flex-col gap-1">
+              <label
+                htmlFor={`criterion-${criterion.key}`}
+                className="text-xs font-medium text-slate-400"
+              >
+                {criterion.name}
+                {criterion.weight !== null ? (
+                  <span className="ml-1 text-slate-500">(weight {criterion.weight})</span>
+                ) : null}
+              </label>
+              <input
+                id={`criterion-${criterion.key}`}
+                inputMode="decimal"
+                value={values[criterion.key] ?? ''}
+                onChange={(event) =>
+                  setValues((prev) => ({ ...prev, [criterion.key]: event.target.value }))
+                }
+                className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col gap-1">
         <label htmlFor="score-notes" className="text-xs font-medium text-slate-400">

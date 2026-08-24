@@ -82,4 +82,39 @@ describe('FrameworkForm', () => {
     render(<FrameworkForm />)
     expect(screen.getByText('A framework named X already exists.')).toBeInTheDocument()
   })
+
+  it('submits a MoSCoW framework with no criteria at all', async () => {
+    const mutate = vi.fn()
+    mockMutation({ mutate })
+    const user = userEvent.setup()
+    render(<FrameworkForm />)
+
+    await user.type(screen.getByLabelText('Framework name'), 'Release MoSCoW')
+    await user.selectOptions(screen.getByLabelText('Framework type'), 'moscow')
+    expect(
+      screen.getByText(/MoSCoW has no numeric criteria at all/i),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /create framework/i }))
+
+    expect(mutate).toHaveBeenCalledWith(
+      { name: 'Release MoSCoW', framework_type: 'moscow', criteria: [] },
+      expect.anything(),
+    )
+  })
+
+  it('submits an ICE framework with no criteria', async () => {
+    const mutate = vi.fn()
+    mockMutation({ mutate })
+    const user = userEvent.setup()
+    render(<FrameworkForm />)
+
+    await user.type(screen.getByLabelText('Framework name'), 'Feature ICE')
+    await user.selectOptions(screen.getByLabelText('Framework type'), 'ice')
+    await user.click(screen.getByRole('button', { name: /create framework/i }))
+
+    expect(mutate).toHaveBeenCalledWith(
+      { name: 'Feature ICE', framework_type: 'ice', criteria: [] },
+      expect.anything(),
+    )
+  })
 })

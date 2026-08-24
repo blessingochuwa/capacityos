@@ -101,3 +101,50 @@ describe('ScoreForm (edit mode)', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 })
+
+describe('ScoreForm (MoSCoW framework)', () => {
+  it('renders a category selector instead of criterion inputs', () => {
+    mockMutations()
+    const framework = makePrioritizationFramework({ framework_type: 'moscow', criteria: [] })
+    render(<ScoreForm projectId="project-1" framework={framework} />)
+    expect(screen.getByLabelText('Category')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Reach')).not.toBeInTheDocument()
+  })
+
+  it('submits the selected category and no numeric values', async () => {
+    const mutate = vi.fn()
+    mockMutations({ create: { mutate } })
+    const framework = makePrioritizationFramework({
+      id: 'framework-moscow',
+      framework_type: 'moscow',
+      criteria: [],
+    })
+    const user = userEvent.setup()
+    render(<ScoreForm projectId="project-1" framework={framework} />)
+
+    await user.selectOptions(screen.getByLabelText('Category'), 'must')
+    await user.click(screen.getByRole('button', { name: /save score/i }))
+
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        framework_id: 'framework-moscow',
+        values: [],
+        category: 'must',
+        notes: undefined,
+      },
+      expect.anything(),
+    )
+  })
+
+  it('pre-fills the category when editing an existing MoSCoW score', () => {
+    mockMutations()
+    const framework = makePrioritizationFramework({ framework_type: 'moscow', criteria: [] })
+    const score = makeProjectPriorityScore({
+      framework_type: 'moscow',
+      breakdown: {},
+      category: 'should',
+    })
+    render(<ScoreForm projectId="project-1" framework={framework} score={score} />)
+    expect(screen.getByLabelText('Category')).toHaveValue('should')
+  })
+})

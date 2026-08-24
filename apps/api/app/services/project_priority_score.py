@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.domain.prioritization import CriterionWeight, PriorityScoreResult, calculate_priority_score
+from app.models.enums import MoscowCategory, PrioritizationFrameworkType
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
 from app.models.project_priority_criterion_value import ProjectPriorityCriterionValue
@@ -58,11 +59,13 @@ class ProjectPriorityScoreService:
                 "update it instead of creating a second one."
             )
 
+        self._validate_category(framework, data.category)
         score = self.repository.add(
             ProjectPriorityScore(
                 organization_id=organization_id,
                 project_id=project_id,
                 framework_id=data.framework_id,
+                category=data.category,
                 notes=data.notes,
             )
         )
@@ -95,6 +98,8 @@ class ProjectPriorityScoreService:
         framework = score.framework
 
         updates = data.model_dump(exclude_unset=True, exclude={"values"})
+        if "category" in updates:
+            self._validate_category(framework, updates["category"])
         for field, value in updates.items():
             setattr(score, field, value)
         if data.values is not None:
@@ -161,7 +166,22 @@ class ProjectPriorityScoreService:
             criterion = criteria_by_id.get(criterion_value.criterion_id)
             if criterion is not None:
                 values[criterion.key] = criterion_value.value
-        return calculate_priority_score(framework.framework_type, weights, values)
+        return calculate_priority_score(
+            framework.framework_type, weights, values, category=score.category
+        )
+
+    def _validate_category(
+        self, framework: PrioritizationFramework, category: MoscowCategory | None
+    ) -> None:
+        """`category` is only ever meaningful for a MOSCOW framework — see
+        ProjectPriorityScore.category's model docstring. Supplying it
+        against any other framework_type is rejected rather than silently
+        ignored, since a caller who set it clearly expected it to matter."""
+        if category is not None and framework.framework_type != PrioritizationFrameworkType.MOSCOW:
+            raise DomainValidationError(
+                f"'category' is only meaningful for a MOSCOW framework, not "
+                f"{framework.framework_type.value.upper()}."
+            )
 
     def _require_framework(
         self, organization_id: uuid.UUID, framework_id: uuid.UUID

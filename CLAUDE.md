@@ -1192,10 +1192,34 @@ Admin/Owner only, scoring is Manager+ via the existing Phase 11
 ProjectAccessGrant mechanism), 0 changes to any existing table or
 permission. See docs/adr/0017-prioritization-engine.md.
 
+### Phase 18
+Prioritization frameworks & dependencies (§18, completing the "Phase 17b"
+remainder named in docs/roadmap.md) — a further-reduced slice proposed in
+plain text (not a second blocking question) after the user confirmed the
+macro-scope "rest of Prioritization," per CLAUDE.md §31's "smallest
+complete slice" principle applied a second time to this same feature area.
+Built: ICE and WSJF formulas (both dispatch through the same
+`FIXED_CRITERION_KEYS`-driven engine RICE already proved, generalized
+rather than duplicated); MoSCoW, deliberately categorical and never
+numeric (§17: "do not create scores that imply false precision" — a
+project's `category` is a stored `MoscowCategory` enum, never coerced onto
+an invented scale); editing a Weighted Scoring framework's criteria after
+creation (add/rename/reweight/remove, each independently re-checking
+`is_editable` server-side — RICE/ICE/WSJF/MoSCoW's criteria remain
+unreachable through these routes regardless of what the UI shows);
+`ProjectDependency` (blocks/related/enables) with cycle detection scoped
+to `blocks` edges only, and a Dependency Graph frontend view (a table, not
+a new charting dependency — §29 forbids decorative charts and none was
+added). 1 new table, 1 new column on an existing table, 0 new permissions
+(criterion edits reuse PRIORITIZATION_MANAGE; dependency create/delete
+reuse PRIORITIZATION_SCORE via the existing Phase 11 ProjectAccessGrant
+mechanism), 0 changes to any existing permission's grant set. See
+docs/adr/0018-prioritization-frameworks-and-dependencies.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-17 that a future phase should
+Deferred items accumulated across Phases 11-18 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1217,14 +1241,16 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); a membership- or user-management UI — no such page exists
 anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response; ICE/WSJF/MoSCoW prioritization
-formulas, project dependency tracking and cycle detection, portfolio
-snapshots, scenario-vs-baseline ranking comparison, AI priority
-explanation, and editing a prioritization framework's criteria after
-creation (see ADR 0017's Consequences — each a named v1 boundary, not an
-oversight); Prioritization Import/Export registration (matching Risk/
-Stakeholder's own precedent, not specified). None of these are
-scheduled — do not build any of them without an explicit request, per §32.
+through beyond the raw 422 response; portfolio snapshots, scenario-vs-
+baseline ranking comparison, and AI priority explanation (ICE/WSJF/MoSCoW
+formulas, project dependency tracking/cycle detection, and criteria
+editing are resolved as of Phase 18,
+docs/adr/0018-prioritization-frameworks-and-dependencies.md — see ADR
+0017/0018's Consequences for the remaining named v1 boundaries);
+Prioritization and Project Dependency Import/Export registration
+(matching Risk/Stakeholder's own precedent, not specified). None of these
+are scheduled — do not build any of them without an explicit request, per
+§32.
 
 Do not jump ahead while the underlying domain is unstable.
 

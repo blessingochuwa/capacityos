@@ -12,13 +12,14 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.enums import PrioritizationFrameworkType, UserRole
+from app.models.enums import PrioritizationFrameworkType, ProjectDependencyType, UserRole
 from tests.conftest import user_id_of
 from tests.factories import (
     make_organization,
     make_prioritization_criterion,
     make_prioritization_framework,
     make_project,
+    make_project_dependency,
     make_project_priority_score,
 )
 
@@ -55,6 +56,30 @@ def _create_weighted_framework(
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def _create_framework(
+    client: TestClient, framework_type: str, name: str
+) -> dict[str, object]:
+    client.activate()  # type: ignore[attr-defined]
+    response = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={"name": name, "framework_type": framework_type, "criteria": []},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _create_ice_framework(client: TestClient, name: str = "Feature ICE") -> dict[str, object]:
+    return _create_framework(client, "ice", name)
+
+
+def _create_wsjf_framework(client: TestClient, name: str = "Feature WSJF") -> dict[str, object]:
+    return _create_framework(client, "wsjf", name)
+
+
+def _create_moscow_framework(client: TestClient, name: str = "Release MoSCoW") -> dict[str, object]:
+    return _create_framework(client, "moscow", name)
 
 
 def _grant_project_access(owner: TestClient, project_id: object, user_id: str) -> None:
@@ -743,3 +768,548 @@ def test_portfolio_ranking_never_includes_another_organizations_projects(
         ).status_code
         == 404
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — ICE/WSJF/MoSCoW framework creation and seeding
+# ---------------------------------------------------------------------------
+
+
+def test_create_ice_framework_seeds_three_fixed_criteria(client: TestClient) -> None:
+    framework = _create_ice_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    assert {c["key"] for c in criteria} == {"impact", "confidence", "ease"}
+    assert all(c["is_editable"] is False for c in criteria)
+
+
+def test_create_wsjf_framework_seeds_four_fixed_criteria(client: TestClient) -> None:
+    framework = _create_wsjf_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    assert {c["key"] for c in criteria} == {
+        "business_value",
+        "time_criticality",
+        "risk_reduction_opportunity_enablement",
+        "job_size",
+    }
+    assert all(c["is_editable"] is False for c in criteria)
+
+
+def test_create_moscow_framework_has_no_criteria_at_all(client: TestClient) -> None:
+    framework = _create_moscow_framework(client)
+    assert framework["criteria"] == []
+
+
+def test_create_ice_framework_with_supplied_criteria_returns_422(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={
+            "name": "Bad ICE",
+            "framework_type": "ice",
+            "criteria": [{"name": "X", "weight": "1"}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_moscow_framework_with_supplied_criteria_returns_422(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={
+            "name": "Bad MoSCoW",
+            "framework_type": "moscow",
+            "criteria": [{"name": "X", "weight": "1"}],
+        },
+    )
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — criterion editing (Weighted Scoring only)
+# ---------------------------------------------------------------------------
+
+
+def test_add_criterion_to_weighted_framework(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    response = client.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Risk", "weight": "1.5"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["name"] == "Risk"
+    assert body["key"] == "risk"
+    assert body["is_editable"] is True
+
+
+def test_add_criterion_to_rice_framework_returns_403(client: TestClient) -> None:
+    framework = _create_rice_framework(client)
+    response = client.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Extra", "weight": "1"},
+    )
+    assert response.status_code == 403
+
+
+def test_add_criterion_to_moscow_framework_returns_403(client: TestClient) -> None:
+    framework = _create_moscow_framework(client)
+    response = client.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Extra", "weight": "1"},
+    )
+    assert response.status_code == 403
+
+
+def test_add_criterion_with_duplicate_key_returns_409(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    response = client.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Business Value", "weight": "1"},
+    )
+    assert response.status_code == 409
+
+
+def test_update_editable_criterion_renames_and_reweights(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    criterion_id = next(c["id"] for c in criteria if c["name"] == "Urgency")
+
+    response = client.patch(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion_id}",
+        json={"name": "Time Pressure", "weight": "4"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["name"] == "Time Pressure"
+    assert body["weight"] == "4.000"
+    # Key stays stable across a rename.
+    assert body["key"] == "urgency"
+
+
+def test_update_fixed_criterion_returns_403(client: TestClient) -> None:
+    framework = _create_rice_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    criterion_id = next(c["id"] for c in criteria if c["key"] == "reach")
+
+    response = client.patch(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion_id}",
+        json={"name": "Renamed Reach"},
+    )
+    assert response.status_code == 403
+
+
+def test_remove_editable_criterion(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    criterion_id = next(c["id"] for c in criteria if c["name"] == "Urgency")
+
+    response = client.delete(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion_id}"
+    )
+    assert response.status_code == 204
+
+
+def test_remove_last_remaining_criterion_returns_422(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    for criterion in criteria[:-1]:
+        client.delete(
+            f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion['id']}"
+        )
+    last = criteria[-1]
+    response = client.delete(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{last['id']}"
+    )
+    assert response.status_code == 422
+
+
+def test_remove_fixed_criterion_returns_403(client: TestClient) -> None:
+    framework = _create_wsjf_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    criterion_id = next(c["id"] for c in criteria if c["key"] == "job_size")
+    response = client.delete(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion_id}"
+    )
+    assert response.status_code == 403
+
+
+def test_manager_cannot_add_a_criterion(client_as: Callable[[UserRole], TestClient]) -> None:
+    owner = client_as(UserRole.OWNER)
+    framework = _create_weighted_framework(owner)
+    manager = client_as(UserRole.MANAGER)
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Extra", "weight": "1"},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — MoSCoW category scoring
+# ---------------------------------------------------------------------------
+
+
+def test_create_moscow_score_with_category(client: TestClient) -> None:
+    project = _create_project(client)
+    framework = _create_moscow_framework(client)
+    client.activate()  # type: ignore[attr-defined]
+
+    response = client.post(
+        f"/api/v1/projects/{project['id']}/priority-scores",
+        json={"framework_id": framework["id"], "category": "must"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["category"] == "must"
+    assert body["score"] is None
+
+
+def test_category_rejected_for_non_moscow_framework(client: TestClient) -> None:
+    project = _create_project(client)
+    framework = _create_rice_framework(client)
+    client.activate()  # type: ignore[attr-defined]
+
+    response = client.post(
+        f"/api/v1/projects/{project['id']}/priority-scores",
+        json={"framework_id": framework["id"], "category": "must", "values": []},
+    )
+    assert response.status_code == 422
+
+
+def test_update_moscow_score_category(client: TestClient) -> None:
+    project = _create_project(client)
+    framework = _create_moscow_framework(client)
+    client.activate()  # type: ignore[attr-defined]
+    created = client.post(
+        f"/api/v1/projects/{project['id']}/priority-scores",
+        json={"framework_id": framework["id"], "category": "could"},
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/projects/{project['id']}/priority-scores/{created['id']}",
+        json={"category": "must"},
+    )
+    assert response.status_code == 200
+    assert response.json()["category"] == "must"
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — project dependencies
+# ---------------------------------------------------------------------------
+
+
+def test_create_dependency_edge(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+
+    response = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["from_project_id"] == project_a["id"]
+    assert body["to_project_id"] == project_b["id"]
+    assert body["dependency_type"] == "blocks"
+
+
+def test_create_dependency_self_loop_returns_422(client: TestClient) -> None:
+    project = _create_project(client)
+    client.activate()  # type: ignore[attr-defined]
+    response = client.post(
+        f"/api/v1/projects/{project['id']}/dependencies",
+        json={"to_project_id": project["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 422
+
+
+def test_create_duplicate_dependency_edge_returns_409(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    response = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 409
+
+
+def test_create_dependency_that_would_close_a_cycle_returns_422(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    project_c = _create_project(client, "Project C")
+    client.activate()  # type: ignore[attr-defined]
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    client.post(
+        f"/api/v1/projects/{project_b['id']}/dependencies",
+        json={"to_project_id": project_c["id"], "dependency_type": "blocks"},
+    )
+    response = client.post(
+        f"/api/v1/projects/{project_c['id']}/dependencies",
+        json={"to_project_id": project_a["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 422
+
+
+def test_related_edges_do_not_participate_in_cycle_detection(client: TestClient) -> None:
+    """`related`/`enables` don't imply a strict ordering — see
+    detects_cycle's docstring — so a `related` cycle is allowed even
+    though the equivalent `blocks` cycle would be rejected."""
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "related"},
+    )
+    response = client.post(
+        f"/api/v1/projects/{project_b['id']}/dependencies",
+        json={"to_project_id": project_a["id"], "dependency_type": "related"},
+    )
+    assert response.status_code == 201
+
+
+def test_list_dependencies_for_project_includes_both_directions(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+
+    items_a = client.get(f"/api/v1/projects/{project_a['id']}/dependencies").json()
+    items_b = client.get(f"/api/v1/projects/{project_b['id']}/dependencies").json()
+    assert len(items_a) == 1
+    assert len(items_b) == 1
+    assert items_a[0]["id"] == items_b[0]["id"]
+
+
+def test_delete_dependency_edge(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    created = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    ).json()
+
+    response = client.delete(f"/api/v1/projects/{project_a['id']}/dependencies/{created['id']}")
+    assert response.status_code == 204
+    assert client.get(f"/api/v1/projects/{project_a['id']}/dependencies").json() == []
+
+
+def test_delete_dependency_from_the_non_owning_project_returns_404(client: TestClient) -> None:
+    """Only the `from_project`'s URL can delete the edge — see
+    ProjectDependencyCreate's docstring on "the URL names the owning
+    project"."""
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    created = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    ).json()
+
+    response = client.delete(f"/api/v1/projects/{project_b['id']}/dependencies/{created['id']}")
+    assert response.status_code == 404
+
+
+def test_dependency_graph_returns_nodes_and_edges(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+
+    graph = client.get("/api/v1/prioritization/dependency-graph").json()
+    node_ids = {n["project_id"] for n in graph["nodes"]}
+    assert {project_a["id"], project_b["id"]} <= node_ids
+    assert len(graph["edges"]) == 1
+
+
+def test_manager_without_grant_cannot_create_a_dependency(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project_a = _create_project(owner, "Project A")
+    project_b = _create_project(owner, "Project B")
+    manager = client_as(UserRole.MANAGER)
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 403
+
+
+def test_manager_can_create_a_dependency_once_granted(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project_a = _create_project(owner, "Project A")
+    project_b = _create_project(owner, "Project B")
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project_a["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    )
+    assert response.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — audit
+# ---------------------------------------------------------------------------
+
+
+def test_adding_a_criterion_produces_an_audit_event(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    created = client.post(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria",
+        json={"name": "Risk", "weight": "1"},
+    ).json()
+
+    events = client.get(
+        "/api/v1/audit",
+        params={
+            "action": "prioritization_criterion.create",
+            "resource_type": "prioritization_criterion",
+        },
+    ).json()["items"]
+    assert any(e["resource_id"] == created["id"] for e in events)
+
+
+def test_removing_a_criterion_produces_an_audit_event(client: TestClient) -> None:
+    framework = _create_weighted_framework(client)
+    criteria = framework["criteria"]
+    assert isinstance(criteria, list)
+    criterion_id = next(c["id"] for c in criteria if c["name"] == "Urgency")
+    client.delete(
+        f"/api/v1/prioritization/frameworks/{framework['id']}/criteria/{criterion_id}"
+    )
+
+    events = client.get(
+        "/api/v1/audit",
+        params={
+            "action": "prioritization_criterion.delete",
+            "resource_type": "prioritization_criterion",
+        },
+    ).json()["items"]
+    assert any(e["resource_id"] == criterion_id for e in events)
+
+
+def test_creating_a_dependency_produces_an_audit_event(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    created = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    ).json()
+
+    events = client.get(
+        "/api/v1/audit",
+        params={
+            "action": "project_dependency.create",
+            "resource_type": "project_dependency",
+        },
+    ).json()["items"]
+    assert any(e["resource_id"] == created["id"] for e in events)
+
+
+def test_deleting_a_dependency_produces_an_audit_event(client: TestClient) -> None:
+    project_a = _create_project(client, "Project A")
+    project_b = _create_project(client, "Project B")
+    client.activate()  # type: ignore[attr-defined]
+    created = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": project_b["id"], "dependency_type": "blocks"},
+    ).json()
+    client.delete(f"/api/v1/projects/{project_a['id']}/dependencies/{created['id']}")
+
+    events = client.get(
+        "/api/v1/audit",
+        params={
+            "action": "project_dependency.delete",
+            "resource_type": "project_dependency",
+        },
+    ).json()["items"]
+    assert any(e["resource_id"] == created["id"] for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Phase 18 — multi-tenancy IDOR for dependencies
+# ---------------------------------------------------------------------------
+
+
+def test_dependency_across_organizations_is_invisible(
+    client: TestClient, db_session: Session
+) -> None:
+    org_b = make_organization(db_session, slug="org-b-dependency")
+    project_b1 = make_project(db_session, organization=org_b, name="Org B Project 1")
+    project_b2 = make_project(db_session, organization=org_b, name="Org B Project 2")
+    dependency_b = make_project_dependency(
+        db_session,
+        organization=org_b,
+        from_project=project_b1,
+        to_project=project_b2,
+        dependency_type=ProjectDependencyType.BLOCKS,
+    )
+
+    assert client.get(f"/api/v1/projects/{project_b1.id}/dependencies").status_code == 404
+    assert (
+        client.delete(
+            f"/api/v1/projects/{project_b1.id}/dependencies/{dependency_b.id}"
+        ).status_code
+        == 404
+    )
+
+
+def test_cannot_create_dependency_to_a_project_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    org_b = make_organization(db_session, slug="org-b-cross-dependency")
+    project_b = make_project(db_session, organization=org_b, name="Org B Project")
+
+    project_a = _create_project(client)
+    response = client.post(
+        f"/api/v1/projects/{project_a['id']}/dependencies",
+        json={"to_project_id": str(project_b.id), "dependency_type": "blocks"},
+    )
+    assert response.status_code == 404
+
+
+def test_dependency_graph_never_includes_another_organizations_edges(
+    client: TestClient, db_session: Session
+) -> None:
+    org_b = make_organization(db_session, slug="org-b-graph")
+    project_b1 = make_project(db_session, organization=org_b, name="Org B Project 1")
+    project_b2 = make_project(db_session, organization=org_b, name="Org B Project 2")
+    make_project_dependency(
+        db_session, organization=org_b, from_project=project_b1, to_project=project_b2
+    )
+
+    graph = client.get("/api/v1/prioritization/dependency-graph").json()
+    assert graph["nodes"] == []
+    assert graph["edges"] == []

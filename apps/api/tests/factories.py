@@ -18,7 +18,9 @@ from app.models.enums import (
     AvailabilityType,
     EmploymentStatus,
     MembershipStatus,
+    MoscowCategory,
     PrioritizationFrameworkType,
+    ProjectDependencyType,
     ProjectStatus,
     RiskImpact,
     RiskProbability,
@@ -39,6 +41,7 @@ from app.models.prioritization_criterion import PrioritizationCriterion
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
+from app.models.project_dependency import ProjectDependency
 from app.models.project_priority_criterion_value import ProjectPriorityCriterionValue
 from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
@@ -511,12 +514,14 @@ def make_project_priority_score(
     organization: Organization,
     project: Project,
     framework: PrioritizationFramework,
+    category: MoscowCategory | None = None,
     notes: str | None = None,
 ) -> ProjectPriorityScore:
     score = ProjectPriorityScore(
         organization_id=organization.id,
         project_id=project.id,
         framework_id=framework.id,
+        category=category,
         notes=notes,
     )
     session.add(score)
@@ -537,3 +542,23 @@ def make_project_priority_criterion_value(
     session.add(criterion_value)
     session.flush()
     return criterion_value
+
+
+def make_project_dependency(
+    session: Session,
+    *,
+    organization: Organization,
+    from_project: Project,
+    to_project: Project,
+    dependency_type: ProjectDependencyType = ProjectDependencyType.BLOCKS,
+) -> ProjectDependency:
+    """Added Phase 18."""
+    dependency = ProjectDependency(
+        organization_id=organization.id,
+        from_project_id=from_project.id,
+        to_project_id=to_project.id,
+        dependency_type=dependency_type,
+    )
+    session.add(dependency)
+    session.flush()
+    return dependency

@@ -1,9 +1,14 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/api/client'
 import type { Page } from '@/types/entities'
 import type {
+  DependencyGraph,
+  MoscowCategory,
   PortfolioRanking,
+  PrioritizationCriterion,
   PrioritizationFramework,
   PrioritizationFrameworkType,
+  ProjectDependency,
+  ProjectDependencyType,
   ProjectPriorityScore,
 } from '../types/prioritization'
 
@@ -23,6 +28,11 @@ export interface FrameworkUpdateInput {
   is_active?: boolean
 }
 
+export interface CriterionUpdateInput {
+  name?: string
+  weight?: string
+}
+
 export interface CriterionValueInput {
   criterion_key: string
   value: string
@@ -31,12 +41,19 @@ export interface CriterionValueInput {
 export interface ScoreCreateInput {
   framework_id: string
   values: CriterionValueInput[]
+  category?: MoscowCategory | null
   notes?: string | null
 }
 
 export interface ScoreUpdateInput {
   values?: CriterionValueInput[]
+  category?: MoscowCategory | null
   notes?: string | null
+}
+
+export interface DependencyCreateInput {
+  to_project_id: string
+  dependency_type: ProjectDependencyType
 }
 
 export const prioritizationApi = {
@@ -54,6 +71,19 @@ export const prioritizationApi = {
   deactivateFramework: (frameworkId: string) =>
     apiDelete<PrioritizationFramework>(`/api/v1/prioritization/frameworks/${frameworkId}`),
 
+  addCriterion: (frameworkId: string, data: CriterionInput) =>
+    apiPost<PrioritizationCriterion>(
+      `/api/v1/prioritization/frameworks/${frameworkId}/criteria`,
+      data,
+    ),
+  updateCriterion: (frameworkId: string, criterionId: string, data: CriterionUpdateInput) =>
+    apiPatch<PrioritizationCriterion>(
+      `/api/v1/prioritization/frameworks/${frameworkId}/criteria/${criterionId}`,
+      data,
+    ),
+  removeCriterion: (frameworkId: string, criterionId: string) =>
+    apiDelete(`/api/v1/prioritization/frameworks/${frameworkId}/criteria/${criterionId}`),
+
   rankPortfolio: (frameworkId: string) =>
     apiGet<PortfolioRanking>('/api/v1/prioritization/portfolio', { framework_id: frameworkId }),
 
@@ -68,4 +98,13 @@ export const prioritizationApi = {
     ),
   deleteScore: (projectId: string, scoreId: string) =>
     apiDelete(`/api/v1/projects/${projectId}/priority-scores/${scoreId}`),
+
+  listDependenciesForProject: (projectId: string) =>
+    apiGet<ProjectDependency[]>(`/api/v1/projects/${projectId}/dependencies`),
+  createDependency: (projectId: string, data: DependencyCreateInput) =>
+    apiPost<ProjectDependency>(`/api/v1/projects/${projectId}/dependencies`, data),
+  deleteDependency: (projectId: string, dependencyId: string) =>
+    apiDelete(`/api/v1/projects/${projectId}/dependencies/${dependencyId}`),
+  getDependencyGraph: () =>
+    apiGet<DependencyGraph>('/api/v1/prioritization/dependency-graph'),
 }

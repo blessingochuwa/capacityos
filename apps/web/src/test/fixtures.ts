@@ -35,9 +35,11 @@ import type {
 } from '@/features/skills/types/skills'
 import type { Risk as RiskEntity } from '@/features/risks/types/risks'
 import type {
+  DependencyGraph,
   PortfolioRankingEntry,
   PrioritizationCriterion,
   PrioritizationFramework,
+  ProjectDependency,
   ProjectPriorityScore,
 } from '@/features/prioritization/types/prioritization'
 import type { Stakeholder } from '@/features/stakeholders/types/stakeholders'
@@ -644,6 +646,7 @@ export function makeProjectPriorityScore(
     score: '400.00',
     missing_criteria: [],
     breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
+    category: null,
     notes: null,
     created_at: '2026-08-24T00:00:00Z',
     updated_at: '2026-08-24T00:00:00Z',
@@ -661,6 +664,33 @@ export function makePortfolioRankingEntry(
     rank: 1,
     missing_criteria: [],
     breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
+    category: null,
+    ...overrides,
+  }
+}
+
+export function makeProjectDependency(
+  overrides: Partial<ProjectDependency> = {},
+): ProjectDependency {
+  return {
+    id: 'dependency-1',
+    from_project_id: 'project-1',
+    from_project_name: 'Website Redesign',
+    to_project_id: 'project-2',
+    to_project_name: 'Mobile App',
+    dependency_type: 'blocks',
+    created_at: '2026-08-24T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeDependencyGraph(overrides: Partial<DependencyGraph> = {}): DependencyGraph {
+  return {
+    nodes: [
+      { project_id: 'project-1', project_name: 'Website Redesign' },
+      { project_id: 'project-2', project_name: 'Mobile App' },
+    ],
+    edges: [makeProjectDependency()],
     ...overrides,
   }
 }

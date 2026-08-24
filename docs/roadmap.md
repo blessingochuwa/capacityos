@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–17) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat "Phase 17b" onward as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–17 were each confirmed as they happened.
+This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–18) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat anything below "Completed phases" as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–18 were each confirmed as they happened.
 
 ## Status legend
 
@@ -11,7 +11,7 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 🔜 Proposed next | Named by name in this doc's most recent revision as the next thing to build |
 | 📋 Proposed, unscheduled | A real, named gap — not yet ordered or confirmed |
 
-## Completed phases (0–17)
+## Completed phases (0–18)
 
 | Phase | Name | Key deliverable | ADR |
 |---|---|---|---|
@@ -32,31 +32,29 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 14 | Stakeholder management | Project-scoped stakeholder register, influence/interest/decision-authority stored but never scored | [0014](adr/0014-phase-14-stakeholder-management.md) |
 | 15 | Last-owner invariant | Every active Organization retains ≥1 Owner who can actually authenticate; closes a Phase 12 gap; atomic-guarded-UPDATE concurrency fix | [0015](adr/0015-last-owner-invariant.md) |
 | 16 | Instance-authorization completion | Audited every remaining Phase 11 deferral (Team→Project inheritance, Person-keyed scoping, Scenario scoping) and deliberately retained each; closed a real cross-org test-coverage gap instead | [0016](adr/0016-instance-authorization-completion.md) |
-| 17 🚧 | Prioritization engine (v1 slice) | RICE + Weighted Scoring rank a portfolio against an organization-chosen framework; a score is always derived at read time, never stored. First phase preceded by a [PRD](PRD-phase-17-prioritization.md), confirmed with the user before implementation. See "Phase 17b" below for the named remainder. | [0017](adr/0017-prioritization-engine.md) |
+| 17 🚧 | Prioritization engine (v1 slice) | RICE + Weighted Scoring rank a portfolio against an organization-chosen framework; a score is always derived at read time, never stored. First phase preceded by a [PRD](PRD-phase-17-prioritization.md), confirmed with the user before implementation. | [0017](adr/0017-prioritization-engine.md) |
+| 18 🚧 | Prioritization frameworks & dependencies (Phase 17b slice) | ICE/WSJF/MoSCoW formulas complete the framework set; a Weighted Scoring framework's criteria can be edited after creation; `ProjectDependency` (blocks/related/enables) with cycle detection, plus a Dependency Graph view. See "Proposed next" below for the still-named remainder. | [0018](adr/0018-prioritization-frameworks-and-dependencies.md) |
 
-**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phase 17 landed after the tag).
+**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–18 landed after the tag).
 
 ## Proposed future phases
 
-None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–17 each were.
+None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–18 each were.
 
-### 🔜 Proposed next: Phase 17b — the rest of Prioritization
+### 🔜 Proposed next: the rest of Prioritization
 
-Phase 17 shipped a deliberately reduced v1 slice (confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Named, scoped, not dropped:
+Phases 17 and 18 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
 
-- ICE and WSJF formulas (both fit the same generic scoring engine RICE/Weighted Scoring already proved) and MoSCoW (categorical, not numeric — CLAUDE.md is explicit that no framework is prescribed as universally correct, and MoSCoW's own answer intentionally has no invented score).
-- `ProjectDependency` (blocks/related/enables) and cycle detection.
 - `PortfolioSnapshot` — an explicit, point-in-time saved ranking for historical trend tracking, distinct from the always-fresh live ranking.
 - Scenario-vs-baseline ranking comparison ("if we accept this project, how does portfolio priority change?").
 - AI priority explanation, extending the existing Phase 8 `AIContextBuilder`/grounding pattern — never AI-generated scores.
-- Editing a framework's criteria after creation (v1: deactivate and recreate instead).
-- The remaining frontend views (Priority Explanation Panel, Scenario Comparison, Dependency Graph) and Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
+- The remaining frontend views (Priority Explanation Panel, Scenario Comparison) and Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
 
-See [ADR 0017](adr/0017-prioritization-engine.md)'s Consequences for the authoritative list.
+See [ADR 0018](adr/0018-prioritization-frameworks-and-dependencies.md)'s Consequences for the authoritative list.
 
 ### 📋 Proposed, unscheduled
 
-- **Risk & Stakeholder Import/Export registration** — both Phase 13 and Phase 14 explicitly deferred registering their entity into the Phase 6 Import/Export system (ADR 0013/0014 Consequences). Prioritization joined this same deferred list in Phase 17 (ADR 0017 Consequences).
+- **Risk, Stakeholder & Project Dependency Import/Export registration** — Phase 13 and Phase 14 explicitly deferred registering their entity into the Phase 6 Import/Export system (ADR 0013/0014 Consequences); Prioritization joined this same deferred list in Phase 17, and `ProjectDependency` in Phase 18 (ADR 0017/0018 Consequences).
 - **Org-wide cross-project Risk and Stakeholder registers** — both entities are currently nested under one Project only; a register spanning every project in an organization was named but not built (ADR 0013/0014 Consequences).
 - **Membership- / user-management UI** — every backend route for adding/removing members, changing roles, and disabling accounts (Phases 10/12/15) has existed API-only since Phase 12; no frontend page lists or manages them yet (ADR 0015/0016 Consequences).
 - **External integrations foundation** (CLAUDE.md §22) — Slack, Jira, Linear, Asana, ClickUp, Google Calendar, via an isolated adapter layer (`External System → Integration Adapter → CapacityOS Internal Model → Domain Engine`) so vendor-specific logic never spreads into the domain layer. Deliberately not started in any phase through 17.

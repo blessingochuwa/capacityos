@@ -208,7 +208,7 @@ class StakeholderDecisionAuthority(StrEnum):
 
 class PrioritizationFrameworkType(StrEnum):
     """Controlled vocabulary for PrioritizationFramework.framework_type
-    (Phase 17, CLAUDE.md §18).
+    (Phase 17/18, CLAUDE.md §18).
 
     Deliberately NOT DB-CHECK-constrained (see
     PrioritizationFramework.__table_args__) — matching AvailabilityType's
@@ -216,13 +216,50 @@ class PrioritizationFrameworkType(StrEnum):
     MoSCoW, and weighted scoring as frameworks that "may be supported
     later," so this vocabulary is expected to grow across phases, and a
     new framework type must stay a pure code change, never a migration.
-    Only the types an actual `app/domain/prioritization.py` formula exists
-    for are listed here — see docs/PRD-phase-17-prioritization.md for the
-    full five-framework plan and which are deferred past this phase.
+    Phase 18 completes the set CLAUDE.md §18 names — every member here now
+    has a formula in app/domain/prioritization.py. See
+    docs/adr/0017-prioritization-engine.md and
+    docs/adr/0018-prioritization-frameworks-and-dependencies.md.
     """
 
     RICE = "rice"
+    ICE = "ice"
+    WSJF = "wsjf"
+    MOSCOW = "moscow"
     WEIGHTED = "weighted"
+
+
+class MoscowCategory(StrEnum):
+    """Controlled vocabulary for ProjectPriorityScore.category (Phase 18)
+    — MoSCoW's own four buckets, a fixed, universally-defined method
+    (unlike PrioritizationFrameworkType itself) — DB-CHECK-constrained
+    like RiskProbability/RiskImpact, matching the "small, fixed vocabulary
+    with real business meaning" precedent rather than AvailabilityType's
+    open one. Deliberately categorical, never combined into a numeric
+    score — see app/domain/prioritization.py's module docstring for why
+    MoSCoW has no formula at all."""
+
+    MUST = "must"
+    SHOULD = "should"
+    COULD = "could"
+    WONT = "wont"
+
+
+class ProjectDependencyType(StrEnum):
+    """Controlled vocabulary for ProjectDependency.dependency_type (Phase
+    18). `blocks` is the one directional type cycle detection is applied
+    to (see app/domain/prioritization.py::detects_cycle) — `blocked_by`
+    is deliberately NOT a stored type, it is the reverse query of
+    `blocks` (see ProjectDependency's model docstring). `related` is
+    symmetric/non-directional in meaning though still stored as one
+    directional row; `enables` is directional but, like `related`, is not
+    cycle-checked (see docs/adr/0018-prioritization-frameworks-and-dependencies.md
+    for why cycle-checking is scoped to `blocks` only in this phase).
+    DB-CHECK-constrained — a small, fixed, closed vocabulary."""
+
+    BLOCKS = "blocks"
+    RELATED = "related"
+    ENABLES = "enables"
 
 
 class UserRole(StrEnum):
@@ -392,3 +429,9 @@ class AuditAction(StrEnum):
     PROJECT_PRIORITY_SCORE_CREATE = "project_priority_score.create"
     PROJECT_PRIORITY_SCORE_UPDATE = "project_priority_score.update"
     PROJECT_PRIORITY_SCORE_DELETE = "project_priority_score.delete"
+
+    PRIORITIZATION_CRITERION_CREATE = "prioritization_criterion.create"
+    PRIORITIZATION_CRITERION_UPDATE = "prioritization_criterion.update"
+    PRIORITIZATION_CRITERION_DELETE = "prioritization_criterion.delete"
+    PROJECT_DEPENDENCY_CREATE = "project_dependency.create"
+    PROJECT_DEPENDENCY_DELETE = "project_dependency.delete"

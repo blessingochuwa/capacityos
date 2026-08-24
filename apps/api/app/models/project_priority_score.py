@@ -3,11 +3,12 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.enums import MoscowCategory
 
 if TYPE_CHECKING:
     from app.models.prioritization_framework import PrioritizationFramework
@@ -36,6 +37,15 @@ class ProjectPriorityScore(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     framework_id: matches the same reasoning, though in practice a
     framework is soft-deleted (is_active=False), not hard-deleted — see
     PrioritizationFramework's docstring.
+
+    category (Phase 18) is the ONLY input a MOSCOW-framework score has —
+    nullable because it's meaningless for every other framework_type
+    (RICE/ICE/WSJF/WEIGHTED score through `values`/ProjectPriorityCriterionValue
+    instead; a MOSCOW score has zero PrioritizationCriterion rows to
+    attach a value to at all). Which column is actually used is decided
+    entirely by the linked framework's framework_type, enforced at the
+    service layer (app/services/project_priority_score.py), not by a DB
+    CHECK spanning two tables.
     """
 
     __tablename__ = "project_priority_scores"
@@ -55,6 +65,16 @@ class ProjectPriorityScore(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("prioritization_frameworks.id", ondelete="CASCADE"), nullable=False, index=True
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[MoscowCategory | None] = mapped_column(
+        Enum(
+            MoscowCategory,
+            name="ck_project_priority_scores_category",
+            native_enum=False,
+            validate_strings=True,
+            length=32,
+            create_constraint=True,
+        )
+    )
 
     project: Mapped[Project] = relationship(back_populates="priority_scores")
     framework: Mapped[PrioritizationFramework] = relationship()

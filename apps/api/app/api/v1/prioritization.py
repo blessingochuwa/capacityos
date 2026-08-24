@@ -19,22 +19,32 @@ from app.models.user import User
 from app.repositories.prioritization_criterion import PrioritizationCriterionRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_dependency import ProjectDependencyRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.schemas.common import Page
 from app.schemas.prioritization import (
+    CriterionCreate,
+    CriterionRead,
+    CriterionUpdate,
+    DependencyGraphNodeRead,
+    DependencyGraphRead,
     PortfolioRankingEntryRead,
     PortfolioRankingRead,
     PrioritizationFrameworkCreate,
     PrioritizationFrameworkRead,
     PrioritizationFrameworkUpdate,
+    ProjectDependencyCreate,
+    ProjectDependencyRead,
     ProjectPriorityScoreCreate,
     ProjectPriorityScoreRead,
     ProjectPriorityScoreUpdate,
     framework_to_read,
+    project_dependency_to_read,
     project_priority_score_to_read,
 )
 from app.services.audit import AuditService
 from app.services.prioritization_framework import PrioritizationFrameworkService
+from app.services.project_dependency import ProjectDependencyService
 from app.services.project_priority_score import ProjectPriorityScoreService
 
 router = APIRouter(tags=["prioritization"])
@@ -52,6 +62,10 @@ def get_score_service(db: Session = Depends(get_db)) -> ProjectPriorityScoreServ
         ProjectRepository(db),
         PrioritizationFrameworkRepository(db),
     )
+
+
+def get_dependency_service(db: Session = Depends(get_db)) -> ProjectDependencyService:
+    return ProjectDependencyService(ProjectDependencyRepository(db), ProjectRepository(db))
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +197,96 @@ def deactivate_framework(
     return framework_to_read(framework)
 
 
+@router.post(
+    "/api/v1/prioritization/frameworks/{framework_id}/criteria",
+    response_model=CriterionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
+def add_criterion(
+    framework_id: uuid.UUID,
+    data: CriterionCreate,
+    current_user: User = Depends(require_permission(Permission.PRIORITIZATION_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PrioritizationFrameworkService = Depends(get_framework_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> CriterionRead:
+    """Weighted Scoring only — see PrioritizationFrameworkService.
+    add_criterion's docstring for why RICE/ICE/WSJF/MOSCOW reject this
+    with 403."""
+    criterion = service.add_criterion(membership.organization_id, framework_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PRIORITIZATION_CRITERION_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="prioritization_criterion",
+        resource_id=str(criterion.id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"framework_id": str(framework_id), "name": criterion.name},
+    )
+    return CriterionRead.model_validate(criterion)
+
+
+@router.patch(
+    "/api/v1/prioritization/frameworks/{framework_id}/criteria/{criterion_id}",
+    response_model=CriterionRead,
+    dependencies=[Depends(require_csrf)],
+)
+def update_criterion(
+    framework_id: uuid.UUID,
+    criterion_id: uuid.UUID,
+    data: CriterionUpdate,
+    current_user: User = Depends(require_permission(Permission.PRIORITIZATION_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PrioritizationFrameworkService = Depends(get_framework_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> CriterionRead:
+    criterion = service.update_criterion(
+        membership.organization_id, framework_id, criterion_id, data
+    )
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PRIORITIZATION_CRITERION_UPDATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="prioritization_criterion",
+        resource_id=str(criterion_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"fields": sorted(data.model_dump(exclude_unset=True).keys())},
+    )
+    return CriterionRead.model_validate(criterion)
+
+
+@router.delete(
+    "/api/v1/prioritization/frameworks/{framework_id}/criteria/{criterion_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
+)
+def remove_criterion(
+    framework_id: uuid.UUID,
+    criterion_id: uuid.UUID,
+    current_user: User = Depends(require_permission(Permission.PRIORITIZATION_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PrioritizationFrameworkService = Depends(get_framework_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> None:
+    service.remove_criterion(membership.organization_id, framework_id, criterion_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PRIORITIZATION_CRITERION_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="prioritization_criterion",
+        resource_id=str(criterion_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={"framework_id": str(framework_id)},
+    )
+
+
 @router.get("/api/v1/prioritization/portfolio", response_model=PortfolioRankingRead)
 def rank_portfolio(
     framework_id: uuid.UUID = Query(),
@@ -199,6 +303,7 @@ def rank_portfolio(
             rank=rank if result.score is not None else None,
             missing_criteria=list(result.missing_criteria),
             breakdown=result.breakdown,
+            category=result.category,
         )
         for rank, (project, _score, result) in enumerate(ranked, start=1)
     ]
@@ -328,4 +433,117 @@ def delete_project_priority_score(
         resource_id=str(score_id),
         request_id=request_id_var.get(),
         organization_id=membership.organization_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Project dependencies (Phase 18) — nested under Project like priority
+# scores above; gated by the same PRIORITIZATION_SCORE permission via
+# require_project_access on the `from_project` side (see
+# ProjectDependencyCreate's docstring for why the URL's project is always
+# the owning/from side). The graph endpoint is organization-wide, gated by
+# the read-only PRIORITIZATION_READ permission.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/projects/{project_id}/dependencies",
+    response_model=ProjectDependencyRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
+def create_project_dependency(
+    project_id: uuid.UUID,
+    data: ProjectDependencyCreate,
+    current_user: User = Depends(require_project_access(Permission.PRIORITIZATION_SCORE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: ProjectDependencyService = Depends(get_dependency_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> ProjectDependencyRead:
+    dependency = service.create(membership.organization_id, project_id, data)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PROJECT_DEPENDENCY_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="project_dependency",
+        resource_id=str(dependency.id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={
+            "to_project_id": str(dependency.to_project_id),
+            "dependency_type": dependency.dependency_type.value,
+        },
+    )
+    return project_dependency_to_read(dependency)
+
+
+@router.get(
+    "/api/v1/projects/{project_id}/dependencies",
+    response_model=list[ProjectDependencyRead],
+)
+def list_project_dependencies(
+    project_id: uuid.UUID,
+    _: User = Depends(require_permission(Permission.PRIORITIZATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: ProjectDependencyService = Depends(get_dependency_service),
+) -> list[ProjectDependencyRead]:
+    """Both directions — every edge where this project is either the
+    `from` or `to` side (see ProjectDependencyRepository.list_for_project's
+    docstring). The frontend derives "blocks"/"blocked by" from comparing
+    each edge's from_project_id against this project_id itself."""
+    dependencies = service.list_for_project(membership.organization_id, project_id)
+    return [project_dependency_to_read(d) for d in dependencies]
+
+
+@router.delete(
+    "/api/v1/projects/{project_id}/dependencies/{dependency_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
+)
+def delete_project_dependency(
+    project_id: uuid.UUID,
+    dependency_id: uuid.UUID,
+    current_user: User = Depends(require_project_access(Permission.PRIORITIZATION_SCORE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: ProjectDependencyService = Depends(get_dependency_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> None:
+    service.delete(membership.organization_id, project_id, dependency_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PROJECT_DEPENDENCY_DELETE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="project_dependency",
+        resource_id=str(dependency_id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+    )
+
+
+@router.get("/api/v1/prioritization/dependency-graph", response_model=DependencyGraphRead)
+def get_dependency_graph(
+    _: User = Depends(require_permission(Permission.PRIORITIZATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: ProjectDependencyService = Depends(get_dependency_service),
+) -> DependencyGraphRead:
+    edges = service.graph(membership.organization_id)
+    nodes_by_id: dict[uuid.UUID, DependencyGraphNodeRead] = {}
+    for edge in edges:
+        nodes_by_id.setdefault(
+            edge.from_project_id,
+            DependencyGraphNodeRead(
+                project_id=edge.from_project_id, project_name=edge.from_project.name
+            ),
+        )
+        nodes_by_id.setdefault(
+            edge.to_project_id,
+            DependencyGraphNodeRead(
+                project_id=edge.to_project_id, project_name=edge.to_project.name
+            ),
+        )
+    return DependencyGraphRead(
+        nodes=list(nodes_by_id.values()),
+        edges=[project_dependency_to_read(edge) for edge in edges],
     )

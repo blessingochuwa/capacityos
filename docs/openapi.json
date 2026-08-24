@@ -5475,6 +5475,879 @@
         }
       }
     },
+    "/api/v1/prioritization/frameworks": {
+      "post": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Create Framework",
+        "operationId": "create_framework_api_v1_prioritization_frameworks_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrioritizationFrameworkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrioritizationFrameworkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "List Frameworks",
+        "operationId": "list_frameworks_api_v1_prioritization_frameworks_get",
+        "parameters": [
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PrioritizationFrameworkRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prioritization/frameworks/{framework_id}": {
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Get Framework",
+        "operationId": "get_framework_api_v1_prioritization_frameworks__framework_id__get",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrioritizationFrameworkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Update Framework",
+        "operationId": "update_framework_api_v1_prioritization_frameworks__framework_id__patch",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrioritizationFrameworkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrioritizationFrameworkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Deactivate Framework",
+        "description": "Soft-delete only \u2014 see PrioritizationFramework.is_active's\ndocstring. Matches Skill's DELETE-means-deactivate precedent\nexactly.",
+        "operationId": "deactivate_framework_api_v1_prioritization_frameworks__framework_id__delete",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrioritizationFrameworkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prioritization/frameworks/{framework_id}/criteria": {
+      "post": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Add Criterion",
+        "description": "Weighted Scoring only \u2014 see PrioritizationFrameworkService.\nadd_criterion's docstring for why RICE/ICE/WSJF/MOSCOW reject this\nwith 403.",
+        "operationId": "add_criterion_api_v1_prioritization_frameworks__framework_id__criteria_post",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CriterionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriterionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prioritization/frameworks/{framework_id}/criteria/{criterion_id}": {
+      "patch": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Update Criterion",
+        "operationId": "update_criterion_api_v1_prioritization_frameworks__framework_id__criteria__criterion_id__patch",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          },
+          {
+            "name": "criterion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Criterion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CriterionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriterionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Remove Criterion",
+        "operationId": "remove_criterion_api_v1_prioritization_frameworks__framework_id__criteria__criterion_id__delete",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          },
+          {
+            "name": "criterion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Criterion Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prioritization/portfolio": {
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Rank Portfolio",
+        "operationId": "rank_portfolio_api_v1_prioritization_portfolio_get",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioRankingRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/priority-scores": {
+      "post": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Create Project Priority Score",
+        "operationId": "create_project_priority_score_api_v1_projects__project_id__priority_scores_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPriorityScoreCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPriorityScoreRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "List Project Priority Scores",
+        "operationId": "list_project_priority_scores_api_v1_projects__project_id__priority_scores_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectPriorityScoreRead"
+                  },
+                  "title": "Response List Project Priority Scores Api V1 Projects  Project Id  Priority Scores Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/priority-scores/{score_id}": {
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Get Project Priority Score",
+        "operationId": "get_project_priority_score_api_v1_projects__project_id__priority_scores__score_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "score_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Score Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPriorityScoreRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Update Project Priority Score",
+        "operationId": "update_project_priority_score_api_v1_projects__project_id__priority_scores__score_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "score_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Score Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPriorityScoreUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPriorityScoreRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Delete Project Priority Score",
+        "operationId": "delete_project_priority_score_api_v1_projects__project_id__priority_scores__score_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "score_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Score Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/dependencies": {
+      "post": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Create Project Dependency",
+        "operationId": "create_project_dependency_api_v1_projects__project_id__dependencies_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectDependencyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDependencyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "List Project Dependencies",
+        "description": "Both directions \u2014 every edge where this project is either the\n`from` or `to` side (see ProjectDependencyRepository.list_for_project's\ndocstring). The frontend derives \"blocks\"/\"blocked by\" from comparing\neach edge's from_project_id against this project_id itself.",
+        "operationId": "list_project_dependencies_api_v1_projects__project_id__dependencies_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectDependencyRead"
+                  },
+                  "title": "Response List Project Dependencies Api V1 Projects  Project Id  Dependencies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/dependencies/{dependency_id}": {
+      "delete": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Delete Project Dependency",
+        "operationId": "delete_project_dependency_api_v1_projects__project_id__dependencies__dependency_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "dependency_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dependency Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prioritization/dependency-graph": {
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Get Dependency Graph",
+        "operationId": "get_dependency_graph_api_v1_prioritization_dependency_graph_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyGraphRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/status": {
       "get": {
         "tags": [
@@ -7250,6 +8123,147 @@
         ],
         "title": "ConcentrationAreaRead"
       },
+      "CriterionCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "weight"
+        ],
+        "title": "CriterionCreate",
+        "description": "Only meaningful for a Weighted Scoring framework \u2014 RICE's four\ncriteria are seeded automatically by the service and must never be\nsupplied here (see PrioritizationFrameworkCreate's docstring)."
+      },
+      "CriterionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "is_editable": {
+            "type": "boolean",
+            "title": "Is Editable"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "name",
+          "weight",
+          "is_editable",
+          "sequence"
+        ],
+        "title": "CriterionRead"
+      },
+      "CriterionUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "type": "object",
+        "title": "CriterionUpdate",
+        "description": "Rename and/or reweight ONE existing criterion (Phase 18) \u2014 only\never valid for a criterion with is_editable=True (a Weighted Scoring\ncriterion). Attempting this against a RICE/ICE/WSJF criterion is a\nForbiddenError at the service layer, not a missing feature."
+      },
+      "CriterionValueInput": {
+        "properties": {
+          "criterion_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Criterion Key"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion_key",
+          "value"
+        ],
+        "title": "CriterionValueInput"
+      },
       "DailyCapacityRead": {
         "properties": {
           "date": {
@@ -7313,6 +8327,51 @@
         ],
         "title": "DailyCapacityRead",
         "description": "One day's full capacity picture. utilization is null (not 0) when\neffective_capacity is 0 \u2014 see PersonCapacityRead.utilization."
+      },
+      "DependencyGraphNodeRead": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name"
+        ],
+        "title": "DependencyGraphNodeRead",
+        "description": "One project as it appears in the organization's dependency graph \u2014\nonly the projects that actually participate in at least one edge are\nincluded (see the service's graph-building logic), not every project\nin the organization."
+      },
+      "DependencyGraphRead": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyGraphNodeRead"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectDependencyRead"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "DependencyGraphRead",
+        "description": "The organization's full dependency graph, flattened to nodes+edges\nfor a frontend graph view to render directly \u2014 no server-side layout\nis computed, matching CLAUDE.md \u00a729's \"no decorative charts\" and\n\"reuse existing chart tooling\" (this isn't a chart at all, just a\nnode/edge list)."
       },
       "EmploymentStatus": {
         "type": "string",
@@ -8102,6 +9161,17 @@
         ],
         "title": "MetricDelta[int]"
       },
+      "MoscowCategory": {
+        "type": "string",
+        "enum": [
+          "must",
+          "should",
+          "could",
+          "wont"
+        ],
+        "title": "MoscowCategory",
+        "description": "Controlled vocabulary for ProjectPriorityScore.category (Phase 18)\n\u2014 MoSCoW's own four buckets, a fixed, universally-defined method\n(unlike PrioritizationFrameworkType itself) \u2014 DB-CHECK-constrained\nlike RiskProbability/RiskImpact, matching the \"small, fixed vocabulary\nwith real business meaning\" precedent rather than AvailabilityType's\nopen one. Deliberately categorical, never combined into a numeric\nscore \u2014 see app/domain/prioritization.py's module docstring for why\nMoSCoW has no formula at all."
+      },
       "MoveAllocationPayload-Input": {
         "properties": {
           "operation_type": {
@@ -8396,6 +9466,27 @@
           "total"
         ],
         "title": "Page[PersonRead]"
+      },
+      "Page_PrioritizationFrameworkRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrioritizationFrameworkRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "Page[PrioritizationFrameworkRead]"
       },
       "Page_ProjectRead_": {
         "properties": {
@@ -9101,6 +10192,233 @@
         "type": "object",
         "title": "PersonUpdate"
       },
+      "PortfolioRankingEntryRead": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "missing_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Criteria"
+          },
+          "breakdown": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Breakdown"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "score",
+          "rank",
+          "missing_criteria",
+          "breakdown"
+        ],
+        "title": "PortfolioRankingEntryRead",
+        "description": "One project's position in a portfolio ranking. `rank` is None\nexactly when `score` is None (an incomplete score can't be ranked\nagainst complete ones \u2014 it's listed, unranked, rather than silently\nsorted as if it were zero)."
+      },
+      "PortfolioRankingRead": {
+        "properties": {
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioRankingEntryRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "items"
+        ],
+        "title": "PortfolioRankingRead"
+      },
+      "PrioritizationFrameworkCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/CriterionCreate"
+            },
+            "type": "array",
+            "title": "Criteria"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "framework_type"
+        ],
+        "title": "PrioritizationFrameworkCreate",
+        "description": "For framework_type=WEIGHTED, `criteria` must be non-empty \u2014 a\nweighted framework with no criteria could never produce a score. For\nevery other framework_type, `criteria` must be empty \u2014 RICE/ICE/WSJF's\ncriteria are fixed and seeded by the service itself, and MOSCOW has\nnone; supplying them here would suggest they're organization-editable,\nwhich they are not."
+      },
+      "PrioritizationFrameworkRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/CriterionRead"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "name",
+          "framework_type",
+          "is_active",
+          "criteria",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PrioritizationFrameworkRead"
+      },
+      "PrioritizationFrameworkType": {
+        "type": "string",
+        "enum": [
+          "rice",
+          "ice",
+          "wsjf",
+          "moscow",
+          "weighted"
+        ],
+        "title": "PrioritizationFrameworkType",
+        "description": "Controlled vocabulary for PrioritizationFramework.framework_type\n(Phase 17/18, CLAUDE.md \u00a718).\n\nDeliberately NOT DB-CHECK-constrained (see\nPrioritizationFramework.__table_args__) \u2014 matching AvailabilityType's\nprecedent, not RiskProbability's: CLAUDE.md \u00a718 names RICE, WSJF, ICE,\nMoSCoW, and weighted scoring as frameworks that \"may be supported\nlater,\" so this vocabulary is expected to grow across phases, and a\nnew framework type must stay a pure code change, never a migration.\nPhase 18 completes the set CLAUDE.md \u00a718 names \u2014 every member here now\nhas a formula in app/domain/prioritization.py. See\ndocs/adr/0017-prioritization-engine.md and\ndocs/adr/0018-prioritization-frameworks-and-dependencies.md."
+      },
+      "PrioritizationFrameworkUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "PrioritizationFrameworkUpdate",
+        "description": "Renaming/deactivating only. Editing a framework's criteria after\ncreation (Phase 18) is a separate, dedicated set of endpoints \u2014 see\nCriterionCreate/CriterionUpdate below \u2014 not a bulk field on this\nschema, since RICE/ICE/WSJF/MOSCOW's non-editable criteria must never\nbe reachable through a route that looks like a generic PATCH."
+      },
       "ProjectAccessGrantCreate": {
         "properties": {
           "user_id": {
@@ -9327,6 +10645,81 @@
         "title": "ProjectDemandRead",
         "description": "Allocated hours for a project over [start_date, end_date] \u2014 demand\nonly, no capacity/forecasting concept (a project has no working schedule\nof its own to compare against)."
       },
+      "ProjectDependencyCreate": {
+        "properties": {
+          "to_project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Project Id"
+          },
+          "dependency_type": {
+            "$ref": "#/components/schemas/ProjectDependencyType"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_project_id",
+          "dependency_type"
+        ],
+        "title": "ProjectDependencyCreate",
+        "description": "`from_project_id` is implied by the URL path\n(POST /projects/{project_id}/dependencies) \u2014 only the other side of\nthe edge and its type are supplied in the body, matching\nProjectSkillRequirement/Risk's \"the URL names the owning project\"\nconvention."
+      },
+      "ProjectDependencyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "from_project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Project Id"
+          },
+          "from_project_name": {
+            "type": "string",
+            "title": "From Project Name"
+          },
+          "to_project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Project Id"
+          },
+          "to_project_name": {
+            "type": "string",
+            "title": "To Project Name"
+          },
+          "dependency_type": {
+            "$ref": "#/components/schemas/ProjectDependencyType"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "from_project_id",
+          "from_project_name",
+          "to_project_id",
+          "to_project_name",
+          "dependency_type",
+          "created_at"
+        ],
+        "title": "ProjectDependencyRead"
+      },
+      "ProjectDependencyType": {
+        "type": "string",
+        "enum": [
+          "blocks",
+          "related",
+          "enables"
+        ],
+        "title": "ProjectDependencyType",
+        "description": "Controlled vocabulary for ProjectDependency.dependency_type (Phase\n18). `blocks` is the one directional type cycle detection is applied\nto (see app/domain/prioritization.py::detects_cycle) \u2014 `blocked_by`\nis deliberately NOT a stored type, it is the reverse query of\n`blocks` (see ProjectDependency's model docstring). `related` is\nsymmetric/non-directional in meaning though still stored as one\ndirectional row; `enables` is directional but, like `related`, is not\ncycle-checked (see docs/adr/0018-prioritization-frameworks-and-dependencies.md\nfor why cycle-checking is scoped to `blocks` only in this phase).\nDB-CHECK-constrained \u2014 a small, fixed, closed vocabulary."
+      },
       "ProjectPersonDemandRead": {
         "properties": {
           "person_id": {
@@ -9393,6 +10786,194 @@
           "remaining_capacity"
         ],
         "title": "ProjectPressureRead"
+      },
+      "ProjectPriorityScoreCreate": {
+        "properties": {
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/CriterionValueInput"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "framework_id"
+        ],
+        "title": "ProjectPriorityScoreCreate",
+        "description": "framework_id is in the body (not the path) \u2014 a project can be\nscored under any of the organization's active frameworks, so the\nframework isn't implied by the URL the way project_id is.\n\n`category` (Phase 18) is the MOSCOW-only counterpart to `values` \u2014\nexactly one of the two is meaningful for any given framework_type,\nenforced at the service layer against the linked framework's actual\ntype, not here (this schema has no framework loaded yet to check\nagainst)."
+      },
+      "ProjectPriorityScoreRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "missing_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Criteria"
+          },
+          "breakdown": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Breakdown"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "score",
+          "missing_criteria",
+          "breakdown",
+          "category",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProjectPriorityScoreRead",
+        "description": "score/missing_criteria/breakdown are never stored columns \u2014 see\nProjectPriorityScore's model docstring. Built by\nproject_priority_score_to_read below, never\nProjectPriorityScoreRead.model_validate(score) directly, the same\nreason RiskRead's exposure field is built explicitly."
+      },
+      "ProjectPriorityScoreUpdate": {
+        "properties": {
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CriterionValueInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "ProjectPriorityScoreUpdate",
+        "description": "`values`, when provided, is an UPSERT per criterion_key \u2014 each\nsubmitted value creates or overwrites that one criterion's value; any\ncriterion not mentioned keeps its previously recorded value. This\nlets a score be completed incrementally (e.g. \"Reach\" today,\n\"Effort\" once estimation is done) rather than requiring every\ncriterion to be resent on every edit.\n\n`category` (Phase 18), when provided, replaces the score's current\nMoSCoW category outright \u2014 there's no partial-update concept for a\nsingle categorical value the way there is for a list of criteria."
       },
       "ProjectRead": {
         "properties": {
