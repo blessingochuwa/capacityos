@@ -6,3 +6,4 @@ Reusable business logic must not live only here — extract it into `apps/api/ap
 
 - `seed_demo_data.py` — reproducible DEMO DATA for local development (Phase 3). Never run against production.
 - `create_first_owner.py` — operator-run, one-time bootstrap of the first Owner account (Phase 10). Refuses to run if an Owner already exists; every subsequent user is created via `POST /api/v1/users`. See [docs/adr/0010-authentication-rbac-audit.md](../docs/adr/0010-authentication-rbac-audit.md).
+- `export_openapi_schema.py` — regenerates `docs/openapi.json` from the live route/schema definitions (no server needs to be running). Run after any route change so the checked-in schema doesn't drift.
