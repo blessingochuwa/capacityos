@@ -1,7 +1,8 @@
 import uuid
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.core.security import hash_password
+from app.models.enums import UserStatus
 from app.models.user import User
 from app.repositories.person import PersonRepository
 from app.repositories.user import UserRepository
@@ -25,6 +26,11 @@ class UserService:
     link, since Person itself became organization-scoped in Phase 12 —
     a User's login identity stays global even though the Person it may
     link to belongs to exactly one organization.
+
+    Phase 15: update() closes ADR 0012's other known gap — disabling a
+    User whose account is the last active Owner of one of its
+    organizations. See UserRepository.disable_if_safe and
+    docs/adr/0015-last-owner-invariant.md.
     """
 
     def __init__(self, repository: UserRepository, person_repository: PersonRepository) -> None:
@@ -69,7 +75,21 @@ class UserService:
             if existing is not None and existing.id != user.id:
                 raise ConflictError("This Person is already linked to a user account.")
 
+        disabling = (
+            updates.get("status") == UserStatus.DISABLED and user.status != UserStatus.DISABLED
+        )
         for field, value in updates.items():
+            if field == "status" and disabling:
+                continue  # applied atomically below, guarded by the last-owner invariant
             setattr(user, field, value)
         self.repository.session.flush()
+
+        if disabling:
+            if not self.repository.disable_if_safe(user_id):
+                raise DomainValidationError(
+                    "Cannot disable this user — they are the last remaining active "
+                    "Owner of at least one organization they belong to."
+                )
+            self.repository.session.refresh(user)
+
         return user

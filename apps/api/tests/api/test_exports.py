@@ -2,9 +2,11 @@ import csv
 import io
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from tests.factories import make_allocation, make_organization, make_person, make_project
 
 
 def _create_person(
@@ -287,6 +289,32 @@ def test_export_empty_result_set(client: TestClient) -> None:
 
 def test_export_empty_result_set_json(client: TestClient) -> None:
     response = client.get("/api/v1/exports/person", params={"format": "json"})
+    assert response.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenancy — Phase 16 audit addition
+# ---------------------------------------------------------------------------
+
+
+def test_export_filtered_by_another_organizations_project_returns_nothing(
+    client: TestClient, db_session: Session
+) -> None:
+    """ADR 0012 already hardened ExportService._collect_rows to resolve
+    every optional scope filter (person_id/team_id/project_id) through an
+    organization-scoped repository lookup — this proves it holds: filtering
+    an export by another organization's real project_id must yield zero
+    rows, never that project's actual allocations."""
+    org_b = make_organization(db_session, slug="org-b-export")
+    person_b = make_person(db_session, organization=org_b, email="org-b-export@example.com")
+    project_b = make_project(db_session, organization=org_b, name="Org B Project")
+    make_allocation(db_session, organization=org_b, person=person_b, project=project_b)
+
+    response = client.get(
+        "/api/v1/exports/allocation",
+        params={"format": "json", "project_id": str(project_b.id)},
+    )
+    assert response.status_code == 200
     assert response.json() == []
 
 

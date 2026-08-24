@@ -10,9 +10,11 @@ import uuid
 from datetime import date
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from tests.factories import make_organization, make_person
 
 START = "2026-08-17"  # Monday
 END = "2026-08-21"  # Friday
@@ -202,6 +204,33 @@ def test_summary_404_for_unknown_person(client: TestClient) -> None:
             "/api/v1/ai/summary",
             json={
                 "scope": {"entity_type": "person", "entity_id": str(uuid.uuid4())},
+                "start_date": START,
+                "end_date": END,
+            },
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_summary_404_for_person_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Phase 16 audit addition: AIContextBuilder/AIService make zero
+    independent repository queries — they call back into CapacityService/
+    InsightService only (ADR 0012's Consequences) — so this proves the
+    org-scoping already verified for Insights (tests/api/test_insights.py)
+    actually reaches all the way through the AI layer too, for a
+    genuinely-existing cross-organization person, not just a random uuid."""
+    org_b = make_organization(db_session, slug="org-b-ai")
+    person_b = make_person(db_session, organization=org_b, email="org-b-ai@example.com")
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/summary",
+            json={
+                "scope": {"entity_type": "person", "entity_id": str(person_b.id)},
                 "start_date": START,
                 "end_date": END,
             },

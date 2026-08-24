@@ -1128,21 +1128,71 @@ no threshold, no fact to classify — so none was invented) and deliberately
 Phase 13's own precedent for a new entity that wasn't explicitly asked
 for). See docs/adr/0014-phase-14-stakeholder-management.md.
 
+### Phase 15
+Last-owner invariant (§27's spirit — an organization must never be left
+without an active Owner) — closes the Phase 12 gap ADR 0012 deferred, now
+resolved: every active Organization retains at least one Owner whose
+membership AND whose linked User account are both active (a disabled
+account cannot authenticate, so an Owner membership pointing at one cannot
+exercise Owner authority — see docs/adr/0015-last-owner-invariant.md for
+why this settles the "active Owner" definition this way). Three mutation
+paths guarded — Owner role change, Owner membership revocation, Owner
+account deactivation — each via an atomically guarded UPDATE (the
+invariant folded into the write's own WHERE clause, not a separate
+read-then-decide-then-write) closing a genuine concurrent-request race,
+verified against a real file-backed SQLite database. No schema change, no
+new permission, no frontend change (no membership- or user-management UI
+exists yet to guard — building one was explicitly out of this phase's
+scope). See docs/adr/0015-last-owner-invariant.md.
+
+### Phase 16
+Instance-authorization completion — closes the Phase 11 "which resources
+are deliberately deferred" question ADR 0011/CLAUDE.md §39 carried forward
+across Phases 12-15, now resolved: audited every remaining gap (Team→
+Project inheritance, instance-level scoping for Person-keyed resources —
+WorkingSchedule, AvailabilityException, PersonSkill — and Scenario) against
+the current codebase and every existing specification, and **retained**
+each as role-only by deliberate decision, not oversight — no
+PersonAccessGrant, no Project.team_id, no Scenario ownership FK, since none
+is required by CLAUDE.md or any ADR and inventing one would be exactly the
+unrequested product semantics §25 of this phase's own brief (and this
+document's general philosophy) warns against. What the audit actually
+found and closed was a test-coverage gap, not an authorization bug: only
+Risk and Stakeholder (Phases 13/14) had a dedicated cross-organization
+regression test; every other organization-owned entity (Person, Team,
+TeamMembership, Skill, PersonSkill, ProjectSkillRequirement,
+WorkingSchedule, AvailabilityException, Allocation, Scenario) did not,
+despite Phase 12 already enforcing the boundary in the repository layer.
+Closed with 26 new tests, all passing against unmodified production code;
+Import/Export, Insights, and AI-context boundaries were independently
+re-verified with one regression test each. 0 new tables, 0 migrations, 0
+new permissions, 0 behavior changes. See
+docs/adr/0016-instance-authorization-completion.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11/12/13/14 that a future phase
-should pick up deliberately, not assume: Team→Project access-grant
-inheritance and instance-level scoping for Person-keyed resources
-(WorkingSchedule, AvailabilityException, PersonSkill, Scenario — see ADR
-0011's "Future multi-tenancy seam"/this document's Phase 12 section);
-SSO/OAuth, billing, organization hierarchies, cross-organization data
-sharing, per-organization feature flags, and a per-organization "last
-active Owner account" disable invariant (see ADR 0012's Consequences);
+Deferred items accumulated across Phases 11-16 that a future phase should
+pick up deliberately, not assume: SSO/OAuth, billing, organization
+hierarchies, cross-organization data sharing, and per-organization feature
+flags (see ADR 0012's Consequences — its other listed gap, the
+per-organization "last active Owner account" disable invariant, is
+resolved as of Phase 15, docs/adr/0015-last-owner-invariant.md; Team→
+Project inheritance and Person-keyed/Scenario instance-scoping, ADR 0011's
+gaps, are resolved-as-retained per Phase 16,
+docs/adr/0016-instance-authorization-completion.md — re-opening either
+requires a new, explicit product requirement naming the missing ownership
+concept, not a rebuild of what Phase 16 already decided);
 Risk Import/Export registration, an org-wide cross-project risk register,
 and the Prioritization (§18) domain concept (see ADR 0013's Consequences);
 Stakeholder Import/Export registration and an org-wide cross-project
-stakeholder register (see ADR 0014's Consequences). None of these are
+stakeholder register (see ADR 0014's Consequences); independent
+verification of the Phase 15 last-owner concurrency guard against a real
+PostgreSQL instance under true multi-connection MVCC — only SQLite's
+single-file writer serialization was actually tested (see ADR 0015's
+Consequences); a membership- or user-management UI — no such page exists
+anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
+through beyond the raw 422 response. None of these are
 scheduled — do not build any of them without an explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.

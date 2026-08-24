@@ -22,6 +22,7 @@ from app.models.enums import (
     RiskImpact,
     RiskProbability,
     RiskStatus,
+    ScenarioStatus,
     SkillProficiency,
     StakeholderDecisionAuthority,
     StakeholderInfluence,
@@ -37,6 +38,7 @@ from app.models.project import Project
 from app.models.project_access_grant import ProjectAccessGrant
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
+from app.models.scenario import Scenario
 from app.models.skill import Skill
 from app.models.stakeholder import Stakeholder
 from app.models.team import Team
@@ -420,3 +422,32 @@ def make_stakeholder(
     session.add(stakeholder)
     session.flush()
     return stakeholder
+
+
+def make_scenario(
+    session: Session,
+    *,
+    organization: Organization,
+    name: str = "Q4 hiring plan",
+    description: str | None = None,
+    status: ScenarioStatus = ScenarioStatus.DRAFT,
+    baseline_start_date: date = date(2026, 9, 1),
+    baseline_end_date: date = date(2026, 12, 31),
+    created_by: str | None = None,
+) -> Scenario:
+    """Added Phase 16 — every prior phase's tests built Scenarios only
+    through the API; this direct-DB builder is needed for a cross-
+    organization IDOR test the same way make_risk/make_stakeholder already
+    support theirs (see docs/adr/0016-instance-authorization-completion.md)."""
+    scenario = Scenario(
+        organization_id=organization.id,
+        name=name,
+        description=description,
+        status=status,
+        baseline_start_date=baseline_start_date,
+        baseline_end_date=baseline_end_date,
+        created_by=created_by,
+    )
+    session.add(scenario)
+    session.flush()
+    return scenario

@@ -442,3 +442,35 @@ Real stakeholders are frequently external to the organization's own staffed rost
 ### What Phase 14 does NOT do
 
 No Insights integration — CLAUDE.md §16 defines no threshold or derived fact to classify into a signal, so none was invented (the existing Phase 5/7/13 signals each exist because a real, specified, deterministic condition is being checked; nothing comparable exists for Stakeholder). No Import/Export registration (deferred, matching Phase 13's own precedent for a new entity not explicitly asked for). No org-wide/cross-project stakeholder register (every route is nested under one project). No stakeholder score, health score, or engagement-quadrant classification. No Prioritization entity (CLAUDE.md §18 — still a separate, unbuilt concept).
+
+## Last-Owner Invariant (Phase 15)
+
+Phase 15 closes the gap ADR 0012 deferred: every active `Organization` must retain at least one Owner who can actually act — not merely an `OrganizationMembership` row that says `role=Owner`. See [ADR 0015](adr/0015-last-owner-invariant.md) for the full reasoning; this section is the vocabulary and rules.
+
+### "Active Owner" — the definition this phase settles
+
+An active Owner is an `OrganizationMembership` with `role=Owner` and `status=Active`, whose linked `User.status` is *also* `Active`. `User.status` and `MembershipStatus` remain independent concepts everywhere else in the system (Phase 12: revoking a membership never disables the account) — but for THIS invariant specifically, both must hold, because `AuthService.login`/`resolve_session` already refuse to authenticate a disabled account outright. An Owner membership pointing at a disabled account cannot exercise Owner authority today regardless of what this phase does; counting it would make the invariant lie about whether the organization has a *working* Owner.
+
+### What's guarded, and how
+
+Three mutation paths can reduce an organization's active-Owner count to zero: demoting an Owner's role, revoking an Owner's membership, and disabling an Owner's account. All three are guarded by the same technique — the invariant is folded directly into the write statement's own `WHERE` clause (an atomic guarded `UPDATE`, re-evaluated at write time), not decided in application code from a separate prior read. A plain "read the count, decide, then write" is unsafe under concurrent requests: two simultaneous demotions of an organization's last two Owners could each observe "2 Owners, not the last one" before either writes, and both succeed — leaving zero. The guarded-`UPDATE` technique closes exactly that race; see the ADR for the mechanism and what was and wasn't independently verified.
+
+### What this is not
+
+Not a new permission — an Owner is blocked from removing the last Owner (even themselves) by the same invariant that blocks an Admin, not by a permission check. Not a new error status — the existing `DomainValidationError` → 422 convention the pre-existing role-change/revoke guards already used. Not a schema change — the count is derived from existing `OrganizationMembership`/`User` columns, never a stored `organization.owner_id`. Not a new UI — no membership- or user-management page exists yet in the frontend to add a guard to; the backend enforces this unconditionally regardless of what UI eventually calls these routes.
+
+## Instance-Authorization Completion (Phase 16)
+
+Phase 16 answers the question Phase 11 (§"Which resources are scoped, and which are deliberately deferred") left open: should Team access ever imply Project access, should a Person's schedule/availability/skills be instance-scoped, and should Scenario be? See [ADR 0016](adr/0016-instance-authorization-completion.md) for the full audit; this section is the resulting, settled vocabulary.
+
+### Three deferrals, each resolved the same way: retained
+
+Team→Project inheritance, Person-keyed instance scoping (`WorkingSchedule`, `AvailabilityException`, `PersonSkill`), and Scenario instance scoping are each **deliberately retained as role-only**, not built. In every case the reason is the same one Phase 11 originally gave: there is no single, unambiguous parent resource to key an instance-level grant on without inventing a derived-authorization chain CLAUDE.md never specified (`Project` has no `team_id`; `Person` relates to `Team` many-to-many via `TeamMembership` and to `Project` only indirectly and time-boxed via `Allocation`; `Scenario` has no Team/Project/Person foreign key at all). Building any of these now would mean inventing product/ownership semantics no existing specification defines — the thing CLAUDE.md's own instructions warn against doing.
+
+### What this means in practice
+
+Any Manager (a role that holds `schedule.write`/`skill.write`/`scenario.write` unconditionally) may mutate **any** Person's `WorkingSchedule`/`AvailabilityException`/`PersonSkill`, and **any** `Scenario`, anywhere in their organization — regardless of which Teams or Projects they hold an explicit `TeamAccessGrant`/`ProjectAccessGrant` for. This is not a gap that slipped through; it is the deliberately retained Phase 11 design, now re-confirmed and locked in with regression tests (`tests/api/test_cross_resource_escalation.py`) specifically so an accidental future change would be caught as a test failure rather than discovered as a real authorization bug.
+
+### What Phase 16 actually found and fixed
+
+Not an authorization bug — a test-coverage gap. Every organization-owned entity's repository already enforced the Phase 12 tenant boundary; only Risk and Stakeholder had a regression test proving it. `tests/api/test_cross_organization_boundaries.py` closes that gap for every remaining entity (Person, Team, TeamMembership, Skill, PersonSkill, ProjectSkillRequirement, WorkingSchedule, AvailabilityException, Allocation, Scenario), and one instance-level Manager-grant test block was added to `Risk`'s own test file to match its sibling `Stakeholder`'s existing coverage. Zero production code changed as a result — every one of these tests passed against the existing implementation on the first run.

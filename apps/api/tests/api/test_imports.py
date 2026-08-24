@@ -3,9 +3,11 @@ from collections.abc import Mapping, Sequence
 
 import httpx
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from tests.factories import make_organization, make_person, make_project
 
 
 def _csv_upload(
@@ -355,6 +357,33 @@ def test_allocation_import_unresolvable_person_reference_blocks(client: TestClie
     response = _csv_upload(client, "allocation", csv_text)
     body = response.json()
     assert body["rows"][0]["errors"][0]["code"] == "invalid_reference"
+
+
+def test_allocation_import_cannot_resolve_person_or_project_from_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Phase 16 audit addition: ADR 0012 already hardened every
+    ImportService identity-resolution lookup (email/external_id) to be
+    organization-scoped — this proves it for real rather than trusting the
+    ADR's description alone. A row referencing another organization's real
+    person email + project external_id must be treated exactly like a
+    ghost reference (invalid_reference), never silently resolved against
+    the wrong organization's row."""
+    org_b = make_organization(db_session, slug="org-b-import")
+    person_b = make_person(db_session, organization=org_b, email="org-b-person@example.com")
+    make_project(db_session, organization=org_b, name="Org B Project", external_id="PRJ-1")
+
+    csv_text = (
+        "person_email,project_external_id,start_date,end_date,allocation_hours\n"
+        f"{person_b.email},PRJ-1,2026-09-01,2026-09-05,20\n"
+    )
+    response = _csv_upload(client, "allocation", csv_text)
+    body = response.json()
+    assert body["rows"][0]["status"] == "invalid"
+    assert body["rows"][0]["errors"][0]["code"] == "invalid_reference"
+
+    # And no allocation was created against Org B's project either way.
+    assert client.get("/api/v1/allocations").json()["total"] == 0
 
 
 def test_allocation_import_negative_hours_rejected(client: TestClient) -> None:

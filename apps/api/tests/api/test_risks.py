@@ -10,18 +10,35 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.enums import UserRole
+from tests.conftest import user_id_of
 from tests.factories import make_organization, make_person, make_project, make_risk
 
 
 def _create_project(client: TestClient, name: str = "Website Redesign") -> dict[str, object]:
+    client.activate()  # type: ignore[attr-defined]
     return client.post("/api/v1/projects", json={"name": name}).json()
 
 
 def _create_person(client: TestClient, email: str = "alex.morgan@example.com") -> dict[str, object]:
+    client.activate()  # type: ignore[attr-defined]
     return client.post(
         "/api/v1/people",
         json={"first_name": "Alex", "last_name": "Morgan", "email": email},
     ).json()
+
+
+def _grant_project_access(owner: TestClient, project_id: object, user_id: str) -> None:
+    owner.activate()  # type: ignore[attr-defined]
+    response = owner.post(
+        f"/api/v1/projects/{project_id}/access-grants", json={"user_id": user_id}
+    )
+    assert response.status_code == 201, response.text
+
+
+def _revoke_project_access(owner: TestClient, project_id: object, user_id: str) -> None:
+    owner.activate()  # type: ignore[attr-defined]
+    response = owner.delete(f"/api/v1/projects/{project_id}/access-grants/{user_id}")
+    assert response.status_code == 204, response.text
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +216,123 @@ def test_member_cannot_delete_a_risk(client_as: Callable[[UserRole], TestClient]
 
     member = client_as(UserRole.MEMBER)
     response = member.delete(f"/api/v1/projects/{project['id']}/risks/{created['id']}")
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 instance-level ProjectAccessGrant enforcement (Phase 16 audit:
+# Risk already used require_project_access for writes since Phase 13 — see
+# app/api/v1/projects.py — but, unlike its sibling Stakeholder (Phase 14),
+# never got the dedicated Manager-without-grant/with-grant regression
+# coverage proving it. This section closes that test-coverage gap; it is
+# not a behavior change. Mirrors tests/api/test_stakeholders.py exactly.
+# ---------------------------------------------------------------------------
+
+
+def test_owner_and_admin_bypass_instance_scoping_for_risks(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project = _create_project(owner)
+    admin = client_as(UserRole.ADMIN)
+
+    admin.activate()  # type: ignore[attr-defined]
+    response = admin.post(
+        f"/api/v1/projects/{project['id']}/risks", json={"description": "Vendor delay"}
+    )
+    assert response.status_code == 201
+
+
+def test_manager_without_grant_cannot_create_risk(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project = _create_project(owner)
+    manager = client_as(UserRole.MANAGER)
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project['id']}/risks", json={"description": "Vendor delay"}
+    )
+    assert response.status_code == 403
+
+
+def test_manager_without_grant_cannot_update_or_delete_risk(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project = _create_project(owner)
+    created = owner.post(
+        f"/api/v1/projects/{project['id']}/risks", json={"description": "Vendor delay"}
+    ).json()
+    manager = client_as(UserRole.MANAGER)
+
+    manager.activate()  # type: ignore[attr-defined]
+    assert (
+        manager.patch(
+            f"/api/v1/projects/{project['id']}/risks/{created['id']}",
+            json={"status": "mitigating"},
+        ).status_code
+        == 403
+    )
+    assert (
+        manager.delete(f"/api/v1/projects/{project['id']}/risks/{created['id']}").status_code
+        == 403
+    )
+
+
+def test_manager_can_create_risk_once_granted(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project = _create_project(owner)
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project['id']}/risks", json={"description": "Vendor delay"}
+    )
+    assert response.status_code == 201
+
+
+def test_manager_granted_project_a_still_denied_risk_on_project_b(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project_a = _create_project(owner, "Project A")
+    project_b = _create_project(owner, "Project B")
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project_a["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project_b['id']}/risks", json={"description": "Vendor delay"}
+    )
+    assert response.status_code == 403
+
+
+def test_manager_mutation_fails_immediately_after_risk_grant_revoked(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    project = _create_project(owner)
+    manager = client_as(UserRole.MANAGER)
+    manager_id = user_id_of(manager)
+    _grant_project_access(owner, project["id"], manager_id)
+
+    manager.activate()  # type: ignore[attr-defined]
+    created = manager.post(
+        f"/api/v1/projects/{project['id']}/risks", json={"description": "Vendor delay"}
+    ).json()
+
+    _revoke_project_access(owner, project["id"], manager_id)
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.patch(
+        f"/api/v1/projects/{project['id']}/risks/{created['id']}",
+        json={"status": "mitigating"},
+    )
     assert response.status_code == 403
 
 

@@ -21,6 +21,15 @@ class OrganizationMembershipService:
     the same reason Phase 10's UserService.change_role took acting_user —
     the check IS the business rule (who may grant/revoke an Owner/Admin
     role), not audit logging.
+
+    Phase 15: the last-owner invariant itself is now enforced by an atomic
+    guarded UPDATE (OrganizationMembershipRepository.change_role_if_safe/
+    revoke_if_safe), not a separate read-then-write — see those methods'
+    docstrings and docs/adr/0015-last-owner-invariant.md for the
+    concurrency race this closes. The escalation check below (who may
+    touch an Owner/Admin role) stays a plain read against
+    acting_membership, which is resolved fresh per-request by
+    get_current_membership and carries no race of its own.
     """
 
     def __init__(
@@ -73,33 +82,21 @@ class OrganizationMembershipService:
         ) and acting_membership.role != UserRole.OWNER:
             raise ForbiddenError("Only an Owner can grant or change an Owner/Admin role.")
 
-        if (
-            membership.role == UserRole.OWNER
-            and new_role != UserRole.OWNER
-            and self.repository.count_active_owners(organization_id) <= 1
-        ):
+        if not self.repository.change_role_if_safe(organization_id, user_id, new_role):
             raise DomainValidationError(
                 "Cannot demote the last remaining Owner of this organization."
             )
-
-        membership.role = new_role
-        self.repository.session.flush()
+        self.repository.session.refresh(membership)
         return membership
 
     def revoke(self, organization_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMembership:
         membership = self._get_owned(organization_id, user_id)
 
-        if (
-            membership.role == UserRole.OWNER
-            and membership.status == MembershipStatus.ACTIVE
-            and self.repository.count_active_owners(organization_id) <= 1
-        ):
+        if not self.repository.revoke_if_safe(organization_id, user_id):
             raise DomainValidationError(
                 "Cannot revoke the last remaining Owner of this organization."
             )
-
-        membership.status = MembershipStatus.REVOKED
-        self.repository.session.flush()
+        self.repository.session.refresh(membership)
         return membership
 
     def reactivate(self, organization_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMembership:

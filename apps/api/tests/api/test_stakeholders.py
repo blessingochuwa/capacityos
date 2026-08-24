@@ -415,6 +415,28 @@ def test_manager_can_create_stakeholder_once_granted(
     assert response.status_code == 201
 
 
+def test_manager_granted_project_a_still_denied_stakeholder_on_project_b(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    """Phase 16 audit addition, mirroring
+    tests/api/test_risks.py::test_manager_granted_project_a_still_denied_risk_on_project_b
+    and the underlying Project-level precedent in
+    tests/api/test_project_access_scope.py — a grant on one Project must
+    never leak into another."""
+    owner = client_as(UserRole.OWNER)
+    project_a = _create_project(owner, "Project A")
+    project_b = _create_project(owner, "Project B")
+    manager = client_as(UserRole.MANAGER)
+    _grant_project_access(owner, project_a["id"], user_id_of(manager))
+
+    manager.activate()  # type: ignore[attr-defined]
+    response = manager.post(
+        f"/api/v1/projects/{project_b['id']}/stakeholders",
+        json={"name": "Jordan Client", "role": "Sponsor"},
+    )
+    assert response.status_code == 403
+
+
 def test_manager_mutation_fails_immediately_after_grant_revoked(
     client_as: Callable[[UserRole], TestClient],
 ) -> None:

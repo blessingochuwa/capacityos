@@ -2,9 +2,11 @@ import uuid
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from tests.factories import make_organization, make_person, make_project, make_team
 
 START = "2026-08-17"  # Monday
 END = "2026-08-21"  # Friday — 5 weekdays, matches a Mon-Fri 8h schedule exactly
@@ -175,6 +177,37 @@ def test_get_person_signals_404_for_unknown_person(client: TestClient) -> None:
         params={"start_date": START, "end_date": END},
     )
     assert response.status_code == 404
+
+
+def test_get_signals_404_for_person_team_project_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Phase 16 audit addition: InsightService was one of the four highest
+    cross-tenant-leak-risk areas ADR 0012 hardened (its shared
+    load_people_facts helper gained organization_id, threaded into every
+    fact-type query) — this proves a genuinely EXISTING person/team/project
+    in another organization is denied exactly like a nonexistent id, not
+    merely that a random uuid 404s."""
+    org_b = make_organization(db_session, slug="org-b-insights")
+    person_b = make_person(db_session, organization=org_b, email="org-b-insights@example.com")
+    team_b = make_team(db_session, organization=org_b, name="Org B Team")
+    project_b = make_project(db_session, organization=org_b, name="Org B Project")
+
+    params = {"start_date": START, "end_date": END}
+    assert (
+        client.get(f"/api/v1/insights/people/{person_b.id}/signals", params=params).status_code
+        == 404
+    )
+    assert (
+        client.get(f"/api/v1/insights/teams/{team_b.id}/signals", params=params).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/insights/projects/{project_b.id}/signals", params=params
+        ).status_code
+        == 404
+    )
 
 
 # ---------------------------------------------------------------------------
