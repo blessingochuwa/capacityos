@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ScenarioWorkspacePage } from './ScenarioWorkspacePage'
@@ -18,6 +19,9 @@ import {
 import { usePeople, usePeopleLookup } from '@/hooks/usePeople'
 import { useProjects, useProjectsLookup } from '@/hooks/useProjects'
 import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
+import { useFrameworks } from '@/features/prioritization/hooks/useFrameworks'
+import { useScenarioPriorityComparison } from '../hooks/useScenarioPriorityComparison'
+import { useScenarioPriorityOverrides } from '../hooks/useScenarioPriorityOverrides'
 import {
   mockQueryError,
   mockQueryPending,
@@ -25,10 +29,13 @@ import {
 } from '@/test/mockQueryResult'
 import {
   makePerson,
+  makePrioritizationFramework,
   makeProject,
   makeScenario,
   makeScenarioComparison,
   makeScenarioOperation,
+  makeScenarioPriorityComparison,
+  makeScenarioPriorityOverride,
   makeSignal,
 } from '@/test/fixtures'
 
@@ -38,9 +45,12 @@ vi.mock('../hooks/useScenarioComparison')
 vi.mock('../hooks/useCalculateScenario')
 vi.mock('../hooks/useScenarioMutations')
 vi.mock('../hooks/useScenarioOperationMutations')
+vi.mock('../hooks/useScenarioPriorityComparison')
+vi.mock('../hooks/useScenarioPriorityOverrides')
 vi.mock('@/hooks/usePeople')
 vi.mock('@/hooks/useProjects')
 vi.mock('@/features/insights/hooks/useScenarioSignals')
+vi.mock('@/features/prioritization/hooks/useFrameworks')
 
 const mockedUseScenario = vi.mocked(useScenario)
 const mockedUseScenarioOperations = vi.mocked(useScenarioOperations)
@@ -55,6 +65,9 @@ const mockedUsePeopleLookup = vi.mocked(usePeopleLookup)
 const mockedUseProjects = vi.mocked(useProjects)
 const mockedUseProjectsLookup = vi.mocked(useProjectsLookup)
 const mockedUseScenarioSignals = vi.mocked(useScenarioSignals)
+const mockedUseFrameworks = vi.mocked(useFrameworks)
+const mockedUseScenarioPriorityOverrides = vi.mocked(useScenarioPriorityOverrides)
+const mockedUseScenarioPriorityComparison = vi.mocked(useScenarioPriorityComparison)
 
 function mockCommonHooks() {
   mockedUseUpdateScenario.mockReturnValue({
@@ -87,6 +100,11 @@ function mockCommonHooks() {
     new Map([['project-1', makeProject({ id: 'project-1' })]]),
   )
   mockedUseScenarioSignals.mockReturnValue(mockQueryPending())
+  mockedUseFrameworks.mockReturnValue(
+    mockQuerySuccess({ items: [makePrioritizationFramework()], total: 1 }),
+  )
+  mockedUseScenarioPriorityOverrides.mockReturnValue(mockQuerySuccess([]))
+  mockedUseScenarioPriorityComparison.mockReturnValue(mockQueryPending())
 }
 
 function renderPage() {
@@ -201,5 +219,57 @@ describe('ScenarioWorkspacePage', () => {
     expect(
       screen.getByText(/Jane Doe is allocated 6.00h more/),
     ).toBeInTheDocument()
+  })
+
+  it('renders the priority overrides section with its empty state', () => {
+    mockCommonHooks()
+    mockedUseScenario.mockReturnValue(mockQuerySuccess(makeScenario()))
+    mockedUseScenarioOperations.mockReturnValue(
+      mockQuerySuccess({ items: [], total: 0 }),
+    )
+    mockedUseScenarioComparison.mockReturnValue(mockQueryPending())
+    mockedUseCalculateScenario.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCalculateScenario>)
+
+    renderPage()
+
+    expect(screen.getByText('Priority overrides')).toBeInTheDocument()
+    expect(
+      screen.getByText(/No hypothetical prioritization values recorded/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Priority comparison')).toBeInTheDocument()
+    expect(
+      screen.getByText('Select a framework above to see the comparison.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the baseline-vs-scenario comparison once a framework is selected', async () => {
+    mockCommonHooks()
+    mockedUseScenario.mockReturnValue(mockQuerySuccess(makeScenario()))
+    mockedUseScenarioOperations.mockReturnValue(
+      mockQuerySuccess({ items: [], total: 0 }),
+    )
+    mockedUseScenarioComparison.mockReturnValue(mockQueryPending())
+    mockedUseCalculateScenario.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCalculateScenario>)
+    mockedUseScenarioPriorityOverrides.mockReturnValue(
+      mockQuerySuccess([makeScenarioPriorityOverride()]),
+    )
+    mockedUseScenarioPriorityComparison.mockReturnValue(
+      mockQuerySuccess(makeScenarioPriorityComparison()),
+    )
+
+    renderPage()
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByLabelText('Comparison framework'), 'framework-1')
+
+    expect(
+      screen.getByText('This scenario changes prioritization under this framework.'),
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('Website Redesign').length).toBeGreaterThan(0)
   })
 })

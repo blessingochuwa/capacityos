@@ -19,6 +19,11 @@ import type {
   ScenarioOperationPayload,
 } from '@/features/scenarios/types/scenario'
 import type {
+  ScenarioPriorityComparison,
+  ScenarioPriorityOverride,
+  ScenarioPriorityProjectComparison,
+} from '@/features/scenarios/types/scenarioPriority'
+import type {
   InsightsSummary,
   Signal,
 } from '@/features/insights/types/insights'
@@ -347,6 +352,61 @@ export function makeScenarioComparison(
     projects: [],
     risks: [],
     impact: makeImpact(),
+    ...overrides,
+  }
+}
+
+export function makeScenarioPriorityOverride(
+  overrides: Partial<ScenarioPriorityOverride> = {},
+): ScenarioPriorityOverride {
+  return {
+    id: 'override-1',
+    scenario_id: 'scenario-1',
+    project_id: 'project-1',
+    project_name: 'Website Redesign',
+    framework_id: 'framework-1',
+    framework_name: 'Feature RICE',
+    framework_type: 'rice',
+    values: { reach: '5000' },
+    category: null,
+    created_at: '2026-08-24T00:00:00Z',
+    updated_at: '2026-08-24T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeScenarioPriorityProjectComparison(
+  overrides: Partial<ScenarioPriorityProjectComparison> = {},
+): ScenarioPriorityProjectComparison {
+  return {
+    project_id: 'project-1',
+    project_name: 'Website Redesign',
+    has_override: true,
+    baseline_score: '400.00',
+    baseline_rank: 2,
+    baseline_category: null,
+    baseline_missing_criteria: [],
+    baseline_breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
+    scenario_score: '2000.00',
+    scenario_rank: 1,
+    scenario_category: null,
+    scenario_missing_criteria: [],
+    scenario_breakdown: { reach: '5000', impact: '2', confidence: '0.8', effort: '4' },
+    changed: true,
+    ...overrides,
+  }
+}
+
+export function makeScenarioPriorityComparison(
+  overrides: Partial<ScenarioPriorityComparison> = {},
+): ScenarioPriorityComparison {
+  return {
+    scenario_id: 'scenario-1',
+    framework_id: 'framework-1',
+    framework_name: 'Feature RICE',
+    framework_type: 'rice',
+    has_changes: true,
+    items: [makeScenarioPriorityProjectComparison()],
     ...overrides,
   }
 }

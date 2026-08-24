@@ -12,11 +12,15 @@ import { formatDateRange } from '@/features/capacity/utils/presentation'
 import { SignalList } from '@/features/insights/components/SignalList'
 import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
 import { ExplainScenarioButton } from '@/features/ai/components/ExplainScenarioButton'
+import { useFrameworks } from '@/features/prioritization/hooks/useFrameworks'
 import { AddChangeForm } from '../components/AddChangeForm'
 import { ChangeList } from '../components/ChangeList'
 import { ComparisonTable } from '../components/ComparisonTable'
 import { ImpactSummary } from '../components/ImpactSummary'
 import { PeopleComparisonTable } from '../components/PeopleComparisonTable'
+import { PriorityComparisonTable } from '../components/PriorityComparisonTable'
+import { PriorityOverrideForm } from '../components/PriorityOverrideForm'
+import { PriorityOverrideList } from '../components/PriorityOverrideList'
 import { RiskList } from '../components/RiskList'
 import { ScenarioBanner } from '../components/ScenarioBanner'
 import { ScenarioStatusBadge } from '../components/ScenarioStatusBadge'
@@ -29,6 +33,8 @@ import {
 } from '../hooks/useScenarioMutations'
 import { useDeleteScenarioOperation } from '../hooks/useScenarioOperationMutations'
 import { useScenarioOperations } from '../hooks/useScenarioOperations'
+import { useScenarioPriorityComparison } from '../hooks/useScenarioPriorityComparison'
+import { useScenarioPriorityOverrides } from '../hooks/useScenarioPriorityOverrides'
 import type { ScenarioStatus } from '../types/scenario'
 
 const STATUS_OPTIONS: { value: ScenarioStatus; label: string }[] = [
@@ -89,6 +95,14 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
   const scenarioSignalsQuery = useScenarioSignals(
     scenarioId,
     hasCalculatedOnce && pageActive,
+  )
+
+  const [priorityFrameworkId, setPriorityFrameworkId] = useState<string | undefined>(undefined)
+  const frameworksQuery = useFrameworks(true)
+  const priorityOverridesQuery = useScenarioPriorityOverrides(pageActive ? scenarioId : undefined)
+  const priorityComparisonQuery = useScenarioPriorityComparison(
+    pageActive ? scenarioId : undefined,
+    priorityFrameworkId,
   )
 
   // Tracks hasCalculatedOnce/calculatedAt off calculate.isSuccess itself
@@ -386,6 +400,76 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
                 </CardBody>
               </Card>
             ) : null}
+
+            <Card className="mt-6">
+              <CardHeader
+                title="Priority overrides"
+                description="What if this project's prioritization inputs were different, in this scenario only? Never changes the project's real, persisted score."
+              />
+              <CardBody className="space-y-4">
+                <PriorityOverrideForm scenarioId={scenarioId} />
+                <QueryBoundary
+                  query={priorityOverridesQuery}
+                  loadingLabel="Loading overrides…"
+                >
+                  {(overrides) => (
+                    <PriorityOverrideList scenarioId={scenarioId} overrides={overrides} />
+                  )}
+                </QueryBoundary>
+              </CardBody>
+            </Card>
+
+            <Card className="mt-6">
+              <CardHeader
+                title="Priority comparison"
+                description="Baseline vs. scenario ranking under one framework, given the overrides above."
+              />
+              <CardBody className="space-y-4">
+                <div className="w-72">
+                  <Select
+                    label="Comparison framework"
+                    value={priorityFrameworkId ?? ''}
+                    placeholder="Select a framework"
+                    options={(frameworksQuery.data?.items ?? []).map((f) => ({
+                      value: f.id,
+                      label: `${f.name} (${f.framework_type.toUpperCase()})`,
+                    }))}
+                    onChange={(event) => setPriorityFrameworkId(event.target.value || undefined)}
+                  />
+                </div>
+                {!priorityFrameworkId ? (
+                  <p className="text-sm text-slate-400">
+                    Select a framework above to see the comparison.
+                  </p>
+                ) : (
+                  <QueryBoundary
+                    query={priorityComparisonQuery}
+                    loadingLabel="Loading comparison…"
+                  >
+                    {(comparison) =>
+                      comparison.items.length === 0 ? (
+                        <p className="text-sm text-slate-400">
+                          No projects are scored under this framework yet.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {comparison.has_changes ? (
+                            <p className="text-xs text-amber-200">
+                              This scenario changes prioritization under this framework.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-400">
+                              No prioritization change under this framework.
+                            </p>
+                          )}
+                          <PriorityComparisonTable items={comparison.items} />
+                        </div>
+                      )
+                    }
+                  </QueryBoundary>
+                )}
+              </CardBody>
+            </Card>
 
             {hasCalculatedOnce ? (
               <div className="mt-6">

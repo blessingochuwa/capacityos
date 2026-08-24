@@ -393,6 +393,8 @@ class AuditAction(StrEnum):
     SCENARIO_OPERATION_CREATE = "scenario_operation.create"
     SCENARIO_OPERATION_UPDATE = "scenario_operation.update"
     SCENARIO_OPERATION_DELETE = "scenario_operation.delete"
+    SCENARIO_PRIORITY_OVERRIDE_CREATE = "scenario_priority_override.create"
+    SCENARIO_PRIORITY_OVERRIDE_DELETE = "scenario_priority_override.delete"
 
     IMPORT_APPLY = "import.apply"
     EXPORT_USE = "export.use"

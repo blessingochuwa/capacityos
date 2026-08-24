@@ -300,12 +300,12 @@ def rank_portfolio(
             project_id=project.id,
             project_name=project.name,
             score=result.score,
-            rank=rank if result.score is not None else None,
+            rank=rank,
             missing_criteria=list(result.missing_criteria),
             breakdown=result.breakdown,
             category=result.category,
         )
-        for rank, (project, _score, result) in enumerate(ranked, start=1)
+        for project, _score, result, rank in ranked
     ]
     return PortfolioRankingRead(
         framework_id=framework.id,

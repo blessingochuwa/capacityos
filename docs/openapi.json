@@ -4636,6 +4636,204 @@
         }
       }
     },
+    "/api/v1/scenarios/{scenario_id}/priority-overrides": {
+      "post": {
+        "tags": [
+          "scenarios"
+        ],
+        "summary": "Set Scenario Priority Override",
+        "description": "Create-or-replace \u2014 see ScenarioPriorityOverrideSet's docstring.",
+        "operationId": "set_scenario_priority_override_api_v1_scenarios__scenario_id__priority_overrides_post",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scenario Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioPriorityOverrideSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioPriorityOverrideRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "scenarios"
+        ],
+        "summary": "List Scenario Priority Overrides",
+        "operationId": "list_scenario_priority_overrides_api_v1_scenarios__scenario_id__priority_overrides_get",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scenario Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScenarioPriorityOverrideRead"
+                  },
+                  "title": "Response List Scenario Priority Overrides Api V1 Scenarios  Scenario Id  Priority Overrides Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scenarios/{scenario_id}/priority-overrides/{override_id}": {
+      "delete": {
+        "tags": [
+          "scenarios"
+        ],
+        "summary": "Delete Scenario Priority Override",
+        "operationId": "delete_scenario_priority_override_api_v1_scenarios__scenario_id__priority_overrides__override_id__delete",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scenario Id"
+            }
+          },
+          {
+            "name": "override_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Override Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scenarios/{scenario_id}/priority-comparison": {
+      "get": {
+        "tags": [
+          "scenarios"
+        ],
+        "summary": "Get Scenario Priority Comparison",
+        "operationId": "get_scenario_priority_comparison_api_v1_scenarios__scenario_id__priority_comparison_get",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scenario Id"
+            }
+          },
+          {
+            "name": "framework_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Framework Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioPriorityComparisonRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/insights/people/{person_id}/signals": {
       "get": {
         "tags": [
@@ -11881,6 +12079,329 @@
         ],
         "title": "ScenarioOperationType",
         "description": "Controlled vocabulary for ScenarioOperation.operation_type (Phase 4).\n\nSee docs/adr/0004-phase-4-scenario-planning.md for why these 8 types\nwere chosen over the prompt's original 6 categories (in particular, why\nthere is no standalone \"change project demand\" type: Project has no\nstored demand field \u2014 demand is derived from Allocation rows \u2014 so demand\nchanges are expressed as add_allocation/adjust_allocation instead of an\ninvented distribution rule)."
+      },
+      "ScenarioPriorityComparisonRead": {
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scenario Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "has_changes": {
+            "type": "boolean",
+            "title": "Has Changes"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioPriorityProjectComparisonRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "has_changes",
+          "items"
+        ],
+        "title": "ScenarioPriorityComparisonRead",
+        "description": "has_changes is true iff at least one project's `changed` is true \u2014\ncomputed the same way, never guessed, so a scenario with no\nprioritization overrides (or overrides that don't actually move\nanything) explicitly reports \"no prioritization change\" rather than\nsilently omitting the field."
+      },
+      "ScenarioPriorityOverrideCriterionInput": {
+        "properties": {
+          "criterion_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Criterion Key"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion_key",
+          "value"
+        ],
+        "title": "ScenarioPriorityOverrideCriterionInput"
+      },
+      "ScenarioPriorityOverrideRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scenario Id"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Values"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scenario_id",
+          "project_id",
+          "project_name",
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "values",
+          "category",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScenarioPriorityOverrideRead"
+      },
+      "ScenarioPriorityOverrideSet": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioPriorityOverrideCriterionInput"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "framework_id"
+        ],
+        "title": "ScenarioPriorityOverrideSet",
+        "description": "The request body for POST .../priority-overrides \u2014 an upsert: a\nsecond call for the same (project_id, framework_id) pair within this\nscenario replaces the first rather than requiring a separate PATCH\nendpoint (see the ADR's \"smallest slice\" reasoning). `values` is a\nfull replacement of this override's own criterion set (not a merge\nagainst a PRIOR override), but is itself only ever merged against the\nproject's persisted BASELINE values at comparison time \u2014 a criterion\nthis override doesn't mention still shows the project's real,\nunmodified baseline value in the scenario column, never blank."
+      },
+      "ScenarioPriorityProjectComparisonRead": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "has_override": {
+            "type": "boolean",
+            "title": "Has Override"
+          },
+          "baseline_score": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Score"
+          },
+          "baseline_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Rank"
+          },
+          "baseline_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baseline_missing_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline Missing Criteria"
+          },
+          "baseline_breakdown": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Baseline Breakdown"
+          },
+          "scenario_score": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Score"
+          },
+          "scenario_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Rank"
+          },
+          "scenario_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scenario_missing_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scenario Missing Criteria"
+          },
+          "scenario_breakdown": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Scenario Breakdown"
+          },
+          "changed": {
+            "type": "boolean",
+            "title": "Changed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "has_override",
+          "baseline_score",
+          "baseline_rank",
+          "baseline_category",
+          "baseline_missing_criteria",
+          "baseline_breakdown",
+          "scenario_score",
+          "scenario_rank",
+          "scenario_category",
+          "scenario_missing_criteria",
+          "scenario_breakdown",
+          "changed"
+        ],
+        "title": "ScenarioPriorityProjectComparisonRead",
+        "description": "One project's baseline-vs-scenario prioritization comparison.\n`changed` is computed purely from the two computed results\n(score/category/rank) \u2014 never inferred from whether an override\nrow exists, so a no-op override (one whose values happen to match\nthe baseline exactly) correctly reports changed=False rather than\ninventing a change that didn't actually happen."
       },
       "ScenarioRead": {
         "properties": {

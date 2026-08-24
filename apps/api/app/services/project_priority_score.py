@@ -2,8 +2,14 @@ import uuid
 from decimal import Decimal
 
 from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
-from app.domain.prioritization import CriterionWeight, PriorityScoreResult, calculate_priority_score
-from app.models.enums import MoscowCategory, PrioritizationFrameworkType
+from app.domain.prioritization import (
+    CriterionWeight,
+    PriorityScoreResult,
+    calculate_priority_score,
+    rank_priority_results,
+    validate_category_for_framework_type,
+)
+from app.models.enums import MoscowCategory
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
 from app.models.project_priority_criterion_value import ProjectPriorityCriterionValue
@@ -17,7 +23,7 @@ from app.schemas.prioritization import (
     ProjectPriorityScoreUpdate,
 )
 
-RankedEntry = tuple[Project, ProjectPriorityScore, PriorityScoreResult]
+RankedEntry = tuple[Project, ProjectPriorityScore, PriorityScoreResult, int | None]
 
 
 class ProjectPriorityScoreService:
@@ -59,7 +65,7 @@ class ProjectPriorityScoreService:
                 "update it instead of creating a second one."
             )
 
-        self._validate_category(framework, data.category)
+        validate_category_for_framework_type(framework.framework_type, data.category)
         score = self.repository.add(
             ProjectPriorityScore(
                 organization_id=organization_id,
@@ -99,7 +105,7 @@ class ProjectPriorityScoreService:
 
         updates = data.model_dump(exclude_unset=True, exclude={"values"})
         if "category" in updates:
-            self._validate_category(framework, updates["category"])
+            validate_category_for_framework_type(framework.framework_type, updates["category"])
         for field, value in updates.items():
             setattr(score, field, value)
         if data.values is not None:
@@ -120,12 +126,17 @@ class ProjectPriorityScoreService:
         """Every project currently scored under this framework, ordered by
         computed score descending — a project with a still-incomplete
         score (missing_criteria non-empty) is listed last, unranked,
-        never sorted as if a missing input were zero."""
+        never sorted as if a missing input were zero. Ranking itself is
+        delegated to rank_priority_results (Phase 20) — the same function
+        the scenario-vs-baseline comparison uses, so a project's rank can
+        never disagree between the two views."""
         framework = self._require_framework(organization_id, framework_id)
         scores = self.repository.list_for_framework(framework_id, organization_id)
-        computed = [(score.project, score, self._compute(framework, score)) for score in scores]
-        computed.sort(key=lambda entry: (entry[2].score is None, -(entry[2].score or Decimal(0))))
-        return framework, computed
+        computed = [(score, self._compute(framework, score)) for score in scores]
+        ranked = rank_priority_results(computed)
+        return framework, [
+            (score.project, score, result, rank) for score, result, rank in ranked
+        ]
 
     def _apply_values(
         self,
@@ -153,35 +164,46 @@ class ProjectPriorityScoreService:
                     ProjectPriorityCriterionValue(criterion_id=criterion.id, value=item.value)
                 )
 
-    def _compute(
-        self, framework: PrioritizationFramework, score: ProjectPriorityScore
+    def compute_result(
+        self,
+        framework: PrioritizationFramework,
+        values: dict[str, Decimal],
+        category: MoscowCategory | None = None,
     ) -> PriorityScoreResult:
-        criteria_by_id = {c.id: c for c in framework.criteria}
+        """The single place a PriorityScoreResult is produced from raw
+        (framework, values, category) inputs. Used both for a persisted
+        ProjectPriorityScore's own values (_compute below) and, since
+        Phase 20, for a scenario's hypothetical baseline-plus-override
+        values (app/services/scenario_priority.py) — reusing this exact
+        method rather than a second scoring engine, per
+        docs/adr/0020-scenario-priority-comparison.md."""
         weights = [
             CriterionWeight(key=c.key, weight=c.weight if c.weight is not None else Decimal(0))
             for c in framework.criteria
         ]
+        return calculate_priority_score(
+            framework.framework_type, weights, values, category=category
+        )
+
+    def values_dict(
+        self, framework: PrioritizationFramework, score: ProjectPriorityScore
+    ) -> dict[str, Decimal]:
+        """A persisted score's criterion values, keyed by criterion key —
+        the same shape compute_result expects, and the shape Phase 20's
+        scenario comparison starts from before merging in a scenario's
+        overrides."""
+        criteria_by_id = {c.id: c for c in framework.criteria}
         values: dict[str, Decimal] = {}
         for criterion_value in score.values:
             criterion = criteria_by_id.get(criterion_value.criterion_id)
             if criterion is not None:
                 values[criterion.key] = criterion_value.value
-        return calculate_priority_score(
-            framework.framework_type, weights, values, category=score.category
-        )
+        return values
 
-    def _validate_category(
-        self, framework: PrioritizationFramework, category: MoscowCategory | None
-    ) -> None:
-        """`category` is only ever meaningful for a MOSCOW framework — see
-        ProjectPriorityScore.category's model docstring. Supplying it
-        against any other framework_type is rejected rather than silently
-        ignored, since a caller who set it clearly expected it to matter."""
-        if category is not None and framework.framework_type != PrioritizationFrameworkType.MOSCOW:
-            raise DomainValidationError(
-                f"'category' is only meaningful for a MOSCOW framework, not "
-                f"{framework.framework_type.value.upper()}."
-            )
+    def _compute(
+        self, framework: PrioritizationFramework, score: ProjectPriorityScore
+    ) -> PriorityScoreResult:
+        return self.compute_result(framework, self.values_dict(framework, score), score.category)
 
     def _require_framework(
         self, organization_id: uuid.UUID, framework_id: uuid.UUID

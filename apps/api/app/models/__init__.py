@@ -22,6 +22,7 @@ from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
 from app.models.scenario import Scenario, ScenarioOperation
+from app.models.scenario_priority_override import ScenarioPriorityOverride
 from app.models.session import UserSession
 from app.models.skill import Skill
 from app.models.stakeholder import Stakeholder
@@ -50,6 +51,7 @@ __all__ = [
     "Risk",
     "Scenario",
     "ScenarioOperation",
+    "ScenarioPriorityOverride",
     "Skill",
     "Stakeholder",
     "Team",

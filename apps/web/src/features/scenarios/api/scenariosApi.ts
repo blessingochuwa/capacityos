@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/api/client'
 import type { Page } from '@/types/entities'
+import type { MoscowCategory } from '@/features/prioritization/types/prioritization'
 import type {
   Scenario,
   ScenarioComparison,
@@ -8,6 +9,10 @@ import type {
   ScenarioResults,
   ScenarioStatus,
 } from '../types/scenario'
+import type {
+  ScenarioPriorityComparison,
+  ScenarioPriorityOverride,
+} from '../types/scenarioPriority'
 
 /** Typed wrappers over apps/api's scenario endpoints
  * (apps/api/app/api/v1/scenarios.py). Unlike features/capacity/api, this
@@ -31,6 +36,18 @@ export interface ScenarioUpdateInput {
   status?: ScenarioStatus
   baseline_start_date?: string
   baseline_end_date?: string
+}
+
+export interface ScenarioPriorityOverrideCriterionInput {
+  criterion_key: string
+  value: string
+}
+
+export interface ScenarioPriorityOverrideSetInput {
+  project_id: string
+  framework_id: string
+  values?: ScenarioPriorityOverrideCriterionInput[]
+  category?: MoscowCategory | null
 }
 
 export const scenariosApi = {
@@ -89,4 +106,26 @@ export const scenariosApi = {
 
   getComparison: (scenarioId: string) =>
     apiGet<ScenarioComparison>(`/api/v1/scenarios/${scenarioId}/comparison`),
+
+  listPriorityOverrides: (scenarioId: string) =>
+    apiGet<ScenarioPriorityOverride[]>(
+      `/api/v1/scenarios/${scenarioId}/priority-overrides`,
+    ),
+
+  setPriorityOverride: (scenarioId: string, data: ScenarioPriorityOverrideSetInput) =>
+    apiPost<ScenarioPriorityOverride>(
+      `/api/v1/scenarios/${scenarioId}/priority-overrides`,
+      data,
+    ),
+
+  deletePriorityOverride: (scenarioId: string, overrideId: string) =>
+    apiDelete<void>(
+      `/api/v1/scenarios/${scenarioId}/priority-overrides/${overrideId}`,
+    ),
+
+  getPriorityComparison: (scenarioId: string, frameworkId: string) =>
+    apiGet<ScenarioPriorityComparison>(
+      `/api/v1/scenarios/${scenarioId}/priority-comparison`,
+      { framework_id: frameworkId },
+    ),
 }

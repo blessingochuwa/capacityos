@@ -18,6 +18,13 @@ second, unrelated pure-function concern that happens to live in this
 module because docs/PRD-phase-17-prioritization.md §7 scoped the
 dependency graph as part of the Prioritization feature area, not because
 it shares any formula logic with scoring.
+
+Phase 20 adds rank_priority_results — the single ranking rule every
+portfolio/comparison view in this codebase must use (extracted from
+ProjectPriorityScoreService.rank_portfolio, which now calls this
+function instead of sorting inline), so a project's rank can never
+disagree between the live portfolio board and the new scenario-vs-
+baseline comparison (docs/adr/0020-scenario-priority-comparison.md).
 """
 
 from dataclasses import dataclass
@@ -253,6 +260,44 @@ def detects_cycle(
     return False
 
 
+def validate_category_for_framework_type(
+    framework_type: PrioritizationFrameworkType, category: MoscowCategory | None
+) -> None:
+    """`category` is only ever meaningful for a MOSCOW framework — see
+    calculate_moscow_result's docstring. Supplying it against any other
+    framework_type is rejected rather than silently ignored, since a
+    caller who set it clearly expected it to matter. Shared by
+    ProjectPriorityScoreService (a persisted score's category) and, since
+    Phase 20, ScenarioPriorityService (a scenario override's hypothetical
+    category) — the same rule, not a second copy of it."""
+    if category is not None and framework_type != PrioritizationFrameworkType.MOSCOW:
+        raise DomainValidationError(
+            f"'category' is only meaningful for a MOSCOW framework, not "
+            f"{framework_type.value.upper()}."
+        )
+
+
+def rank_priority_results[K](
+    entries: list[tuple[K, PriorityScoreResult]],
+) -> list[tuple[K, PriorityScoreResult, int | None]]:
+    """Sorts by score descending — a result with no score (missing
+    criteria, OR a MOSCOW result, which never has one at all — see
+    calculate_moscow_result's docstring) is ranked last, unranked
+    (rank=None), never sorted as if a missing/categorical input were the
+    lowest possible number. `entries` may carry any caller-chosen key
+    (a project id, or a (project id, "baseline"/"scenario") pair) — this
+    function only ever looks at the PriorityScoreResult half of each
+    entry, so it is exactly as valid for ranking a scenario's hypothetical
+    results as it is for the live portfolio board."""
+    ordered = sorted(
+        entries, key=lambda entry: (entry[1].score is None, -(entry[1].score or Decimal(0)))
+    )
+    return [
+        (key, result, rank if result.score is not None else None)
+        for rank, (key, result) in enumerate(ordered, start=1)
+    ]
+
+
 __all__ = [
     "FIXED_CRITERION_KEYS",
     "ICE_CRITERION_KEYS",
@@ -267,4 +312,6 @@ __all__ = [
     "calculate_weighted_score",
     "calculate_wsjf_score",
     "detects_cycle",
+    "rank_priority_results",
+    "validate_category_for_framework_type",
 ]

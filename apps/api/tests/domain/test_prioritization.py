@@ -10,6 +10,7 @@ import pytest
 from app.core.exceptions import DomainValidationError
 from app.domain.prioritization import (
     CriterionWeight,
+    PriorityScoreResult,
     calculate_ice_score,
     calculate_moscow_result,
     calculate_priority_score,
@@ -17,6 +18,8 @@ from app.domain.prioritization import (
     calculate_weighted_score,
     calculate_wsjf_score,
     detects_cycle,
+    rank_priority_results,
+    validate_category_for_framework_type,
 )
 from app.models.enums import MoscowCategory, PrioritizationFrameworkType
 
@@ -308,3 +311,66 @@ def test_detects_cycle_false_for_a_reverse_edge_with_no_existing_edges() -> None
 def test_detects_cycle_true_for_immediate_reverse_edge() -> None:
     # a -> b already exists; adding b -> a is a 2-node cycle.
     assert detects_cycle([("a", "b")], ("b", "a")) is True
+
+
+# ---------------------------------------------------------------------------
+# rank_priority_results (Phase 20)
+# ---------------------------------------------------------------------------
+
+
+def _result(score: Decimal | None, category: MoscowCategory | None = None) -> PriorityScoreResult:
+    return PriorityScoreResult(score=score, missing_criteria=(), breakdown={}, category=category)
+
+
+def test_rank_priority_results_orders_by_score_descending() -> None:
+    entries = [("low", _result(Decimal(10))), ("high", _result(Decimal(1000)))]
+    ranked = rank_priority_results(entries)
+    assert [key for key, _, _ in ranked] == ["high", "low"]
+    assert [rank for _, _, rank in ranked] == [1, 2]
+
+
+def test_rank_priority_results_puts_missing_score_last_and_unranked() -> None:
+    entries = [
+        ("complete", _result(Decimal(1))),
+        ("incomplete", _result(None)),
+    ]
+    ranked = rank_priority_results(entries)
+    assert [key for key, _, _ in ranked] == ["complete", "incomplete"]
+    incomplete_rank = next(rank for key, _, rank in ranked if key == "incomplete")
+    assert incomplete_rank is None
+
+
+def test_rank_priority_results_ranks_a_moscow_result_last_and_unranked() -> None:
+    """A MOSCOW result's score is always None (categorical, never
+    numeric) — it must be ranked exactly like an incomplete numeric
+    score, never sorted as if None meant zero."""
+    entries = [
+        ("numeric", _result(Decimal(5))),
+        ("moscow", _result(None, category=MoscowCategory.MUST)),
+    ]
+    ranked = rank_priority_results(entries)
+    assert [key for key, _, _ in ranked] == ["numeric", "moscow"]
+    moscow_rank = next(rank for key, _, rank in ranked if key == "moscow")
+    assert moscow_rank is None
+
+
+def test_rank_priority_results_empty_input() -> None:
+    assert rank_priority_results([]) == []
+
+
+# ---------------------------------------------------------------------------
+# validate_category_for_framework_type (Phase 20 extraction)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_category_allows_moscow_with_category() -> None:
+    validate_category_for_framework_type(PrioritizationFrameworkType.MOSCOW, MoscowCategory.MUST)
+
+
+def test_validate_category_allows_none_for_any_framework() -> None:
+    validate_category_for_framework_type(PrioritizationFrameworkType.RICE, None)
+
+
+def test_validate_category_rejects_category_for_non_moscow_framework() -> None:
+    with pytest.raises(DomainValidationError):
+        validate_category_for_framework_type(PrioritizationFrameworkType.RICE, MoscowCategory.MUST)

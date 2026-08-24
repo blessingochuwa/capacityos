@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–19) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat anything below "Completed phases" as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–19 were each confirmed as they happened.
+This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–20) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat anything below "Completed phases" as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–20 were each confirmed as they happened.
 
 ## Status legend
 
@@ -11,7 +11,7 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 🔜 Proposed next | Named by name in this doc's most recent revision as the next thing to build |
 | 📋 Proposed, unscheduled | A real, named gap — not yet ordered or confirmed |
 
-## Completed phases (0–19)
+## Completed phases (0–20)
 
 | Phase | Name | Key deliverable | ADR |
 |---|---|---|---|
@@ -34,23 +34,24 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 16 | Instance-authorization completion | Audited every remaining Phase 11 deferral (Team→Project inheritance, Person-keyed scoping, Scenario scoping) and deliberately retained each; closed a real cross-org test-coverage gap instead | [0016](adr/0016-instance-authorization-completion.md) |
 | 17 🚧 | Prioritization engine (v1 slice) | RICE + Weighted Scoring rank a portfolio against an organization-chosen framework; a score is always derived at read time, never stored. First phase preceded by a [PRD](PRD-phase-17-prioritization.md), confirmed with the user before implementation. | [0017](adr/0017-prioritization-engine.md) |
 | 18 🚧 | Prioritization frameworks & dependencies (Phase 17b slice) | ICE/WSJF/MoSCoW formulas complete the framework set; a Weighted Scoring framework's criteria can be edited after creation; `ProjectDependency` (blocks/related/enables) with cycle detection, plus a Dependency Graph view. | [0018](adr/0018-prioritization-frameworks-and-dependencies.md) |
-| 19 🚧 | AI priority explanation | A fifth Phase 8 AI capability (`explain-priority`), reusing `AIContextBuilder`/`AIService`/grounding unchanged — explains an existing `ProjectPriorityScore` without ever recalculating it. See "Proposed next" below for the still-named remainder. | [0019](adr/0019-ai-priority-explanation.md) |
+| 19 🚧 | AI priority explanation | A fifth Phase 8 AI capability (`explain-priority`), reusing `AIContextBuilder`/`AIService`/grounding unchanged — explains an existing `ProjectPriorityScore` without ever recalculating it. | [0019](adr/0019-ai-priority-explanation.md) |
+| 20 🚧 | Scenario-vs-baseline prioritization comparison | Resolves the Phase 19-flagged product decision: a Scenario can declare explicit, hypothetical criterion overrides (never auto-derived from capacity data); baseline and scenario rankings are both computed through the unchanged Phase 17/18 scoring engine and diffed. See "Proposed next" below for the still-named remainder. | [0020](adr/0020-scenario-priority-comparison.md) |
 
-**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–19 landed after the tag).
+**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–20 landed after the tag).
 
 ## Proposed future phases
 
-None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–19 each were.
+None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–20 each were.
 
 ### 🔜 Proposed next: the rest of Prioritization
 
-Phases 17, 18, and 19 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
+Phases 17-20 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
 
 - `PortfolioSnapshot` — an explicit, point-in-time saved ranking for historical trend tracking, distinct from the always-fresh live ranking.
-- Scenario-vs-baseline ranking comparison ("if we accept this project, how does portfolio priority change?") — audited during Phase 19 and found to require a genuine product decision first: Scenario operations don't currently touch a project's prioritization criterion values at all, so this needs a defined answer to "what does accepting a scenario change about a project's RICE/ICE/WSJF/Weighted/MoSCoW inputs?" before it can be built, not just an implementation.
-- The Scenario Comparison frontend view and the five Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
+- The five Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
+- An AI interpretation of the Phase 20 scenario-vs-baseline comparison — Phase 20's own brief was explicit that AI may only interpret an established deterministic comparison, never be its source, and left this for a future phase to consider deliberately rather than bundling it in speculatively.
 
-See [ADR 0019](adr/0019-ai-priority-explanation.md)'s Consequences for the authoritative list.
+See [ADR 0020](adr/0020-scenario-priority-comparison.md)'s Consequences for the authoritative list.
 
 ### 📋 Proposed, unscheduled
 

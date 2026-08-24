@@ -1241,10 +1241,42 @@ only gate) — reuses the existing organization-scoped
 `ProjectPriorityScoreService.get` for tenancy, exactly like every other
 prioritization route. See docs/adr/0019-ai-priority-explanation.md.
 
+### Phase 20
+Scenario-vs-baseline prioritization comparison (§18/§19) — the one item
+Phase 19 explicitly flagged as requiring a genuine product decision before
+implementation, since no ScenarioOperationType can touch a project's
+prioritization criterion values and no criterion is derived from
+allocation/capacity data anywhere in the codebase. Per the phase brief's
+explicit instruction, the repository was audited first and the resulting
+options were put to the user via a blocking question rather than guessed;
+the user chose **explicit, scenario-scoped criterion overrides** — a
+Scenario can declare "in this hypothetical, Project X's Effort is 6
+instead of 4" (or a different MoSCoW category), a human-declared value
+never auto-derived from capacity data. Built as a new, standalone
+`ScenarioPriorityOverride` table (deliberately not a ninth
+ScenarioOperationType — it has no ordering/replay semantics and never
+touches capacity, so extending PlanningState would have been the wrong
+shape) that is read alongside the real, persisted ProjectPriorityScore at
+comparison time and never written back to it — baseline and scenario
+results are both computed through the exact same
+ProjectPriorityScoreService.compute_result/calculate_priority_score path
+Phases 17/18 already built (RICE/ICE/WSJF/Weighted/MoSCoW all covered),
+never a second scoring engine. Ranking itself was extracted to one shared
+pure function (`rank_priority_results`) so the live portfolio board and
+this comparison can never disagree about a project's rank. Gated entirely
+by the existing SCENARIO_READ/WRITE/DELETE permissions (role-only, no
+ProjectAccessGrant) — a deliberate choice, since the action being
+authorized is "editing a hypothetical scenario," not "editing a real
+score." 1 new table, 0 new permissions, 0 changes to any existing
+permission's grant set. No AI in this phase — establishing the
+deterministic comparison was the whole scope; an AI explanation of it is
+left for a future phase to consider deliberately. See
+docs/adr/0020-scenario-priority-comparison.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-19 that a future phase should
+Deferred items accumulated across Phases 11-20 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1266,19 +1298,19 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); a membership- or user-management UI — no such page exists
 anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response; portfolio snapshots and scenario-vs-
-baseline ranking comparison (ICE/WSJF/MoSCoW formulas, project dependency
-tracking/cycle detection, and criteria editing are resolved as of Phase
-18, docs/adr/0018-prioritization-frameworks-and-dependencies.md; AI
-priority explanation is resolved as of Phase 19,
-docs/adr/0019-ai-priority-explanation.md — scenario-vs-baseline comparison
-was specifically audited during Phase 19 and found to require a genuine
-product decision about what a Scenario actually changes about a project's
-prioritization inputs, which don't exist as a link today — see ADR 0019's
-Consequences for the remaining named boundaries); the Priority Explanation
-Panel is resolved as of Phase 19 (ExplainPriorityButton); the Scenario
-Comparison frontend view and the five remaining Recharts visualizations
-remain unbuilt;
+through beyond the raw 422 response; portfolio snapshots and the five
+remaining Recharts prioritization visualizations (ICE/WSJF/MoSCoW
+formulas, project dependency tracking/cycle detection, and criteria
+editing are resolved as of Phase 18,
+docs/adr/0018-prioritization-frameworks-and-dependencies.md; AI priority
+explanation and the Priority Explanation Panel are resolved as of Phase
+19, docs/adr/0019-ai-priority-explanation.md; scenario-vs-baseline
+prioritization comparison, including its frontend view, is resolved as of
+Phase 20, docs/adr/0020-scenario-priority-comparison.md, via explicit
+scenario-scoped criterion overrides — an AI interpretation of this
+comparison was deliberately left for a future phase, per Phase 20's own
+brief, and remains unbuilt; see ADR 0020's Consequences for the remaining
+named boundaries);
 Prioritization and Project Dependency Import/Export registration
 (matching Risk/Stakeholder's own precedent, not specified). None of these
 are scheduled — do not build any of them without an explicit request, per
