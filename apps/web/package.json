@@ -11,7 +11,9 @@
     "format:write": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -21,6 +23,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@storybook/react-vite": "^10.5.10",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
@@ -33,6 +36,7 @@
     "jsdom": "^30.0.1",
     "oxlint": "^1.75.0",
     "prettier": "^3.9.6",
+    "storybook": "^10.5.10",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
