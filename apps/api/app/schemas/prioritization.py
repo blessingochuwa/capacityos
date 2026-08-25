@@ -2,12 +2,13 @@ import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.prioritization import PriorityScoreResult
 from app.models.enums import MoscowCategory, PrioritizationFrameworkType, ProjectDependencyType
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project_dependency import ProjectDependency
 from app.models.project_priority_score import ProjectPriorityScore
@@ -287,3 +288,60 @@ class DependencyGraphRead(BaseModel):
 
     nodes: list[DependencyGraphNodeRead]
     edges: list[ProjectDependencyRead]
+
+
+class PortfolioSnapshotCreate(BaseModel):
+    framework_id: uuid.UUID
+
+
+class PortfolioSnapshotEntryRead(BaseModel):
+    """One project's frozen position in a snapshot's ranking — the exact
+    same shape as PortfolioRankingEntryRead above, since a snapshot is
+    nothing more than that live shape copied out at a point in time."""
+
+    project_id: uuid.UUID
+    project_name: str
+    score: Decimal | None
+    rank: int | None
+    missing_criteria: list[str]
+    breakdown: dict[str, Decimal]
+    category: MoscowCategory | None = None
+
+
+class PortfolioSnapshotRead(BaseModel):
+    """framework_name/framework_type are the FROZEN values recorded at
+    capture time (PortfolioSnapshot.framework_name/framework_type), never
+    a live join back to prioritization_frameworks — see the model's
+    docstring for why. `taken_at` is the row's created_at (TimestampMixin);
+    this entity is immutable, so created_at and "when this ranking was
+    computed" are the same moment."""
+
+    id: uuid.UUID
+    framework_id: uuid.UUID
+    framework_name: str
+    framework_type: PrioritizationFrameworkType
+    taken_at: datetime
+    entries: list[PortfolioSnapshotEntryRead]
+
+
+def portfolio_snapshot_to_read(snapshot: PortfolioSnapshot) -> PortfolioSnapshotRead:
+    return PortfolioSnapshotRead(
+        id=snapshot.id,
+        framework_id=snapshot.framework_id,
+        framework_name=snapshot.framework_name,
+        framework_type=snapshot.framework_type,
+        taken_at=snapshot.created_at,
+        entries=[_snapshot_entry_to_read(entry) for entry in snapshot.entries],
+    )
+
+
+def _snapshot_entry_to_read(entry: dict[str, Any]) -> PortfolioSnapshotEntryRead:
+    return PortfolioSnapshotEntryRead(
+        project_id=uuid.UUID(entry["project_id"]),
+        project_name=entry["project_name"],
+        score=Decimal(entry["score"]) if entry["score"] is not None else None,
+        rank=entry["rank"],
+        missing_criteria=list(entry["missing_criteria"]),
+        breakdown={key: Decimal(value) for key, value in entry["breakdown"].items()},
+        category=MoscowCategory(entry["category"]) if entry["category"] is not None else None,
+    )

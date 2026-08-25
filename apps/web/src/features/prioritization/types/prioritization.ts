@@ -91,3 +91,25 @@ export interface DependencyGraph {
   nodes: DependencyGraphNode[]
   edges: ProjectDependency[]
 }
+
+export interface PortfolioSnapshotEntry {
+  project_id: string
+  project_name: string
+  score: string | null
+  rank: number | null
+  missing_criteria: string[]
+  breakdown: Record<string, string>
+  category: MoscowCategory | null
+}
+
+export interface PortfolioSnapshot {
+  id: string
+  framework_id: string
+  /** Frozen at capture time — NOT the framework's current (possibly
+   * since-renamed) name. See app/models/portfolio_snapshot.py's
+   * docstring for why a snapshot must never drift with a later edit. */
+  framework_name: string
+  framework_type: PrioritizationFrameworkType
+  taken_at: string
+  entries: PortfolioSnapshotEntry[]
+}

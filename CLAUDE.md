@@ -1273,10 +1273,40 @@ deterministic comparison was the whole scope; an AI explanation of it is
 left for a future phase to consider deliberately. See
 docs/adr/0020-scenario-priority-comparison.md.
 
+### Phase 21
+Portfolio snapshots (§18/§38) — the other item Phases 19-20 named as
+requiring a genuine audit-first decision before implementation, unlike
+Phase 20's flagged item this one required no new product decision: the
+original Phase 17 PRD's own §8 had already specified `PortfolioSnapshot`
+precisely ("an explicit, user-triggered 'save today's computed
+ranking' record... stored as a genuine historical record (like
+`AuditEvent`), never read back as an input to a live computation").
+Per the phase brief's audit-first instruction, the repository was
+audited against every remaining named Phase 17-20 remainder — Portfolio
+Snapshots, an AI explanation of the Phase 20 comparison, and the five
+Recharts visualizations — and the resulting candidates put to the user
+as a blocking product decision rather than guessed; Portfolio Snapshots
+was chosen as the most self-contained slice, depending on nothing
+unfinished. `PortfolioSnapshotService.create` calls
+`ProjectPriorityScoreService.rank_portfolio` verbatim — never a second
+ranking computation — then freezes every value a later read would need
+(`framework_name`, `framework_type`, and each entry's `project_name`/
+`score`/`rank`/`missing_criteria`/`breakdown`/`category`) directly into
+the row, so a later project rename, re-score, deletion, or framework
+rename can never retroactively change an already-taken snapshot —
+verified live against a real file-backed SQLite database. No PATCH/
+DELETE route — immutable and append-only, matching `AuditEvent`'s own
+shape. Creating one is gated by the existing `Permission.
+PRIORITIZATION_MANAGE` (Admin/Owner, reused unchanged) rather than the
+project-instance-scoped `PRIORITIZATION_SCORE`, since a snapshot spans
+every project scored under a framework at once, not a single project a
+Manager might hold a grant on. 1 new table, 1 migration, 0 new
+permissions. See docs/adr/0021-portfolio-snapshots.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-20 that a future phase should
+Deferred items accumulated across Phases 11-21 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1298,23 +1328,27 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); a membership- or user-management UI — no such page exists
 anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response; portfolio snapshots and the five
-remaining Recharts prioritization visualizations (ICE/WSJF/MoSCoW
-formulas, project dependency tracking/cycle detection, and criteria
-editing are resolved as of Phase 18,
-docs/adr/0018-prioritization-frameworks-and-dependencies.md; AI priority
-explanation and the Priority Explanation Panel are resolved as of Phase
-19, docs/adr/0019-ai-priority-explanation.md; scenario-vs-baseline
-prioritization comparison, including its frontend view, is resolved as of
-Phase 20, docs/adr/0020-scenario-priority-comparison.md, via explicit
+through beyond the raw 422 response; the five remaining Recharts
+prioritization visualizations (ICE/WSJF/MoSCoW formulas, project
+dependency tracking/cycle detection, and criteria editing are resolved as
+of Phase 18, docs/adr/0018-prioritization-frameworks-and-dependencies.md;
+AI priority explanation and the Priority Explanation Panel are resolved
+as of Phase 19, docs/adr/0019-ai-priority-explanation.md;
+scenario-vs-baseline prioritization comparison, including its frontend
+view, is resolved as of Phase 20,
+docs/adr/0020-scenario-priority-comparison.md, via explicit
 scenario-scoped criterion overrides — an AI interpretation of this
 comparison was deliberately left for a future phase, per Phase 20's own
-brief, and remains unbuilt; see ADR 0020's Consequences for the remaining
-named boundaries);
-Prioritization and Project Dependency Import/Export registration
-(matching Risk/Stakeholder's own precedent, not specified). None of these
-are scheduled — do not build any of them without an explicit request, per
-§32.
+brief, and remains unbuilt; portfolio snapshots are resolved as of Phase
+21, docs/adr/0021-portfolio-snapshots.md — a diffing/trend UI comparing
+two snapshots, and a snapshot of a scenario's hypothetical ranking, were
+deliberately left unbuilt as outside that phase's own bounded scope; see
+ADR 0020's and ADR 0021's Consequences for the remaining named
+boundaries);
+Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
+registration (matching Risk/Stakeholder's own precedent, not specified).
+None of these are scheduled — do not build any of them without an
+explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.
 

@@ -37,6 +37,7 @@ from app.models.organization import Organization
 from app.models.organization_membership import OrganizationMembership
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.prioritization_criterion import PrioritizationCriterion
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
@@ -542,6 +543,31 @@ def make_project_priority_criterion_value(
     session.add(criterion_value)
     session.flush()
     return criterion_value
+
+
+def make_portfolio_snapshot(
+    session: Session,
+    *,
+    organization: Organization,
+    framework: PrioritizationFramework,
+    entries: list[dict[str, object]] | None = None,
+) -> PortfolioSnapshot:
+    """Added Phase 21. Directly constructs a frozen row rather than going
+    through PortfolioSnapshotService.create — used only where a test needs
+    a snapshot to already exist in a DIFFERENT organization than the one
+    the test's `client` acts in (see
+    tests/api/test_portfolio_snapshots.py's cross-organization tests),
+    matching make_project_priority_score's own role for the same reason."""
+    snapshot = PortfolioSnapshot(
+        organization_id=organization.id,
+        framework_id=framework.id,
+        framework_name=framework.name,
+        framework_type=framework.framework_type,
+        entries=entries if entries is not None else [],
+    )
+    session.add(snapshot)
+    session.flush()
+    return snapshot
 
 
 def make_project_dependency(

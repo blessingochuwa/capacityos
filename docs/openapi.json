@@ -6546,6 +6546,118 @@
         }
       }
     },
+    "/api/v1/prioritization/snapshots": {
+      "post": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Create Portfolio Snapshot",
+        "operationId": "create_portfolio_snapshot_api_v1_prioritization_snapshots_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortfolioSnapshotCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSnapshotRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "List Portfolio Snapshots",
+        "operationId": "list_portfolio_snapshots_api_v1_prioritization_snapshots_get",
+        "parameters": [
+          {
+            "name": "framework_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PortfolioSnapshotRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/status": {
       "get": {
         "tags": [
@@ -9728,6 +9840,27 @@
         ],
         "title": "Page[PersonRead]"
       },
+      "Page_PortfolioSnapshotRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioSnapshotRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "Page[PortfolioSnapshotRead]"
+      },
       "Page_PrioritizationFrameworkRead_": {
         "properties": {
           "items": {
@@ -10555,6 +10688,136 @@
           "items"
         ],
         "title": "PortfolioRankingRead"
+      },
+      "PortfolioSnapshotCreate": {
+        "properties": {
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "framework_id"
+        ],
+        "title": "PortfolioSnapshotCreate"
+      },
+      "PortfolioSnapshotEntryRead": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "missing_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Criteria"
+          },
+          "breakdown": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "object",
+            "title": "Breakdown"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "score",
+          "rank",
+          "missing_criteria",
+          "breakdown"
+        ],
+        "title": "PortfolioSnapshotEntryRead",
+        "description": "One project's frozen position in a snapshot's ranking \u2014 the exact\nsame shape as PortfolioRankingEntryRead above, since a snapshot is\nnothing more than that live shape copied out at a point in time."
+      },
+      "PortfolioSnapshotRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioSnapshotEntryRead"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "taken_at",
+          "entries"
+        ],
+        "title": "PortfolioSnapshotRead",
+        "description": "framework_name/framework_type are the FROZEN values recorded at\ncapture time (PortfolioSnapshot.framework_name/framework_type), never\na live join back to prioritization_frameworks \u2014 see the model's\ndocstring for why. `taken_at` is the row's created_at (TimestampMixin);\nthis entity is immutable, so created_at and \"when this ranking was\ncomputed\" are the same moment."
       },
       "PrioritizationFrameworkCreate": {
         "properties": {

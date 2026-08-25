@@ -4,6 +4,7 @@ import type {
   DependencyGraph,
   MoscowCategory,
   PortfolioRanking,
+  PortfolioSnapshot,
   PrioritizationCriterion,
   PrioritizationFramework,
   PrioritizationFrameworkType,
@@ -107,4 +108,13 @@ export const prioritizationApi = {
     apiDelete(`/api/v1/projects/${projectId}/dependencies/${dependencyId}`),
   getDependencyGraph: () =>
     apiGet<DependencyGraph>('/api/v1/prioritization/dependency-graph'),
+
+  listSnapshots: (frameworkId?: string) =>
+    apiGet<Page<PortfolioSnapshot>>('/api/v1/prioritization/snapshots', {
+      framework_id: frameworkId,
+    }),
+  createSnapshot: (frameworkId: string) =>
+    apiPost<PortfolioSnapshot>('/api/v1/prioritization/snapshots', {
+      framework_id: frameworkId,
+    }),
 }

@@ -42,6 +42,7 @@ import type { Risk as RiskEntity } from '@/features/risks/types/risks'
 import type {
   DependencyGraph,
   PortfolioRankingEntry,
+  PortfolioSnapshot,
   PrioritizationCriterion,
   PrioritizationFramework,
   ProjectDependency,
@@ -725,6 +726,20 @@ export function makePortfolioRankingEntry(
     missing_criteria: [],
     breakdown: { reach: '1000', impact: '2', confidence: '0.8', effort: '4' },
     category: null,
+    ...overrides,
+  }
+}
+
+export function makePortfolioSnapshot(
+  overrides: Partial<PortfolioSnapshot> = {},
+): PortfolioSnapshot {
+  return {
+    id: 'snapshot-1',
+    framework_id: 'framework-1',
+    framework_name: 'Feature RICE',
+    framework_type: 'rice',
+    taken_at: '2026-08-25T00:00:00Z',
+    entries: [makePortfolioRankingEntry()],
     ...overrides,
   }
 }

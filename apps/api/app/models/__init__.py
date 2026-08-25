@@ -12,6 +12,7 @@ from app.models.organization import Organization
 from app.models.organization_membership import OrganizationMembership
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.prioritization_criterion import PrioritizationCriterion
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
@@ -40,6 +41,7 @@ __all__ = [
     "OrganizationMembership",
     "Person",
     "PersonSkill",
+    "PortfolioSnapshot",
     "PrioritizationCriterion",
     "PrioritizationFramework",
     "Project",

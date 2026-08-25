@@ -437,3 +437,5 @@ class AuditAction(StrEnum):
     PRIORITIZATION_CRITERION_DELETE = "prioritization_criterion.delete"
     PROJECT_DEPENDENCY_CREATE = "project_dependency.create"
     PROJECT_DEPENDENCY_DELETE = "project_dependency.delete"
+
+    PORTFOLIO_SNAPSHOT_CREATE = "portfolio_snapshot.create"

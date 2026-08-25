@@ -16,6 +16,7 @@ from app.domain.authorization import Permission
 from app.models.enums import AuditAction, AuditOutcome
 from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
+from app.repositories.portfolio_snapshot import PortfolioSnapshotRepository
 from app.repositories.prioritization_criterion import PrioritizationCriterionRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
@@ -30,6 +31,8 @@ from app.schemas.prioritization import (
     DependencyGraphRead,
     PortfolioRankingEntryRead,
     PortfolioRankingRead,
+    PortfolioSnapshotCreate,
+    PortfolioSnapshotRead,
     PrioritizationFrameworkCreate,
     PrioritizationFrameworkRead,
     PrioritizationFrameworkUpdate,
@@ -39,10 +42,12 @@ from app.schemas.prioritization import (
     ProjectPriorityScoreRead,
     ProjectPriorityScoreUpdate,
     framework_to_read,
+    portfolio_snapshot_to_read,
     project_dependency_to_read,
     project_priority_score_to_read,
 )
 from app.services.audit import AuditService
+from app.services.portfolio_snapshot import PortfolioSnapshotService
 from app.services.prioritization_framework import PrioritizationFrameworkService
 from app.services.project_dependency import ProjectDependencyService
 from app.services.project_priority_score import ProjectPriorityScoreService
@@ -66,6 +71,17 @@ def get_score_service(db: Session = Depends(get_db)) -> ProjectPriorityScoreServ
 
 def get_dependency_service(db: Session = Depends(get_db)) -> ProjectDependencyService:
     return ProjectDependencyService(ProjectDependencyRepository(db), ProjectRepository(db))
+
+
+def get_snapshot_service(db: Session = Depends(get_db)) -> PortfolioSnapshotService:
+    return PortfolioSnapshotService(
+        PortfolioSnapshotRepository(db),
+        ProjectPriorityScoreService(
+            ProjectPriorityScoreRepository(db),
+            ProjectRepository(db),
+            PrioritizationFrameworkRepository(db),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -546,4 +562,63 @@ def get_dependency_graph(
     return DependencyGraphRead(
         nodes=list(nodes_by_id.values()),
         edges=[project_dependency_to_read(edge) for edge in edges],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Portfolio snapshots (Phase 21) — organization-wide, like frameworks above.
+# PRIORITIZATION_MANAGE (Admin/Owner only) gates creation: a snapshot spans
+# every scored project under a framework, not one project a Manager might
+# hold a grant on, matching framework CRUD's own "org-wide configuration
+# surface" reasoning. Reads use PRIORITIZATION_READ, same as every other
+# read in this router. No PATCH/DELETE route — immutable, append-only,
+# matching AuditEvent's own shape.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/api/v1/prioritization/snapshots",
+    response_model=PortfolioSnapshotRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf)],
+)
+def create_portfolio_snapshot(
+    data: PortfolioSnapshotCreate,
+    current_user: User = Depends(require_permission(Permission.PRIORITIZATION_MANAGE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PortfolioSnapshotService = Depends(get_snapshot_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> PortfolioSnapshotRead:
+    snapshot = service.create(membership.organization_id, data.framework_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.PORTFOLIO_SNAPSHOT_CREATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="portfolio_snapshot",
+        resource_id=str(snapshot.id),
+        request_id=request_id_var.get(),
+        organization_id=membership.organization_id,
+        metadata={
+            "framework_id": str(snapshot.framework_id),
+            "entry_count": len(snapshot.entries),
+        },
+    )
+    return portfolio_snapshot_to_read(snapshot)
+
+
+@router.get("/api/v1/prioritization/snapshots", response_model=Page[PortfolioSnapshotRead])
+def list_portfolio_snapshots(
+    framework_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: User = Depends(require_permission(Permission.PRIORITIZATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PortfolioSnapshotService = Depends(get_snapshot_service),
+) -> Page[PortfolioSnapshotRead]:
+    items, total = service.list(
+        membership.organization_id, framework_id=framework_id, limit=limit, offset=offset
+    )
+    return Page[PortfolioSnapshotRead](
+        items=[portfolio_snapshot_to_read(item) for item in items], total=total
     )

@@ -35,27 +35,28 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 17 🚧 | Prioritization engine (v1 slice) | RICE + Weighted Scoring rank a portfolio against an organization-chosen framework; a score is always derived at read time, never stored. First phase preceded by a [PRD](PRD-phase-17-prioritization.md), confirmed with the user before implementation. | [0017](adr/0017-prioritization-engine.md) |
 | 18 🚧 | Prioritization frameworks & dependencies (Phase 17b slice) | ICE/WSJF/MoSCoW formulas complete the framework set; a Weighted Scoring framework's criteria can be edited after creation; `ProjectDependency` (blocks/related/enables) with cycle detection, plus a Dependency Graph view. | [0018](adr/0018-prioritization-frameworks-and-dependencies.md) |
 | 19 🚧 | AI priority explanation | A fifth Phase 8 AI capability (`explain-priority`), reusing `AIContextBuilder`/`AIService`/grounding unchanged — explains an existing `ProjectPriorityScore` without ever recalculating it. | [0019](adr/0019-ai-priority-explanation.md) |
-| 20 🚧 | Scenario-vs-baseline prioritization comparison | Resolves the Phase 19-flagged product decision: a Scenario can declare explicit, hypothetical criterion overrides (never auto-derived from capacity data); baseline and scenario rankings are both computed through the unchanged Phase 17/18 scoring engine and diffed. See "Proposed next" below for the still-named remainder. | [0020](adr/0020-scenario-priority-comparison.md) |
+| 20 🚧 | Scenario-vs-baseline prioritization comparison | Resolves the Phase 19-flagged product decision: a Scenario can declare explicit, hypothetical criterion overrides (never auto-derived from capacity data); baseline and scenario rankings are both computed through the unchanged Phase 17/18 scoring engine and diffed. | [0020](adr/0020-scenario-priority-comparison.md) |
+| 21 | Portfolio snapshots | An explicit, user-triggered, immutable point-in-time saved ranking (the PRD's own original §8 proposal). `PortfolioSnapshotService.create` freezes `ProjectPriorityScoreService.rank_portfolio`'s result verbatim — framework name/type and every entry's project name/score/rank/breakdown — so a later rename, re-score, or deletion never retroactively changes an already-taken snapshot. No PATCH/DELETE — immutable and append-only, matching `AuditEvent`. See "Proposed next" below for the still-named remainder. | [0021](adr/0021-portfolio-snapshots.md) |
 
-**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–20 landed after the tag).
+**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–21 landed after the tag).
 
 ## Proposed future phases
 
-None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–20 each were.
+None of these have a confirmed number, order, or ADR yet — each should be confirmed (with the user, per this project's established practice) before work starts, exactly as Phases 13–21 each were.
 
 ### 🔜 Proposed next: the rest of Prioritization
 
-Phases 17-20 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
+Phases 17-21 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
 
-- `PortfolioSnapshot` — an explicit, point-in-time saved ranking for historical trend tracking, distinct from the always-fresh live ranking.
 - The five Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
 - An AI interpretation of the Phase 20 scenario-vs-baseline comparison — Phase 20's own brief was explicit that AI may only interpret an established deterministic comparison, never be its source, and left this for a future phase to consider deliberately rather than bundling it in speculatively.
+- A diffing/trend UI comparing two Phase 21 snapshots, and a snapshot of a scenario's hypothetical (rather than baseline) ranking — both within a `PortfolioSnapshot`'s conceptual reach but not asked for in Phase 21's own bounded scope.
 
-See [ADR 0020](adr/0020-scenario-priority-comparison.md)'s Consequences for the authoritative list.
+See [ADR 0020](adr/0020-scenario-priority-comparison.md)'s and [ADR 0021](adr/0021-portfolio-snapshots.md)'s Consequences for the authoritative list.
 
 ### 📋 Proposed, unscheduled
 
-- **Risk, Stakeholder & Project Dependency Import/Export registration** — Phase 13 and Phase 14 explicitly deferred registering their entity into the Phase 6 Import/Export system (ADR 0013/0014 Consequences); Prioritization joined this same deferred list in Phase 17, and `ProjectDependency` in Phase 18 (ADR 0017/0018 Consequences).
+- **Risk, Stakeholder, Prioritization & Project Dependency Import/Export registration** — Phase 13 and Phase 14 explicitly deferred registering their entity into the Phase 6 Import/Export system (ADR 0013/0014 Consequences); Prioritization joined this same deferred list in Phase 17, `ProjectDependency` in Phase 18 (ADR 0017/0018 Consequences), and `PortfolioSnapshot` in Phase 21 (ADR 0021 Consequences).
 - **Org-wide cross-project Risk and Stakeholder registers** — both entities are currently nested under one Project only; a register spanning every project in an organization was named but not built (ADR 0013/0014 Consequences).
 - **Membership- / user-management UI** — every backend route for adding/removing members, changing roles, and disabling accounts (Phases 10/12/15) has existed API-only since Phase 12; no frontend page lists or manages them yet (ADR 0015/0016 Consequences).
 - **External integrations foundation** (CLAUDE.md §22) — Slack, Jira, Linear, Asana, ClickUp, Google Calendar, via an isolated adapter layer (`External System → Integration Adapter → CapacityOS Internal Model → Domain Engine`) so vendor-specific logic never spreads into the domain layer. Deliberately not started in any phase through 17.

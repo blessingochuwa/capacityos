@@ -14,12 +14,15 @@ import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
 import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
 import { FrameworkForm } from '../components/FrameworkForm'
+import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
 import { PortfolioTable } from '../components/PortfolioTable'
 import { ScoreForm } from '../components/ScoreForm'
 import { useDependencyGraph } from '../hooks/useDependencyGraph'
 import { useFrameworks } from '../hooks/useFrameworks'
 import { usePortfolio } from '../hooks/usePortfolio'
+import { usePortfolioSnapshots } from '../hooks/usePortfolioSnapshots'
 import { useProjectPriorityScores } from '../hooks/useProjectPriorityScores'
+import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
 
 /**
  * "Given limited people, time and capacity, what should this organization
@@ -29,9 +32,15 @@ import { useProjectPriorityScores } from '../hooks/useProjectPriorityScores'
  * Scoring), lets a Weighted Scoring framework's criteria be edited after
  * creation, and adds the project dependency graph. Phase 19 adds an AI
  * explanation for an existing score (ExplainPriorityButton), reusing the
- * Phase 8 AI infrastructure verbatim. PortfolioSnapshot and scenario-vs-
- * baseline comparison remain deferred (see
- * docs/PRD-phase-17-prioritization.md, docs/adr/0018, and docs/adr/0019).
+ * Phase 8 AI infrastructure verbatim. Phase 20 adds scenario-vs-baseline
+ * comparison (see features/scenarios/views/ScenarioWorkspacePage.tsx, not
+ * this page — the comparison lives inside the Scenario workspace it
+ * extends). Phase 21 adds portfolio snapshots — an explicit, immutable,
+ * point-in-time saved ranking for trend/history, distinct from the
+ * always-fresh live board above. The five remaining Recharts
+ * visualizations and an AI explanation of the Phase 20 comparison remain
+ * deferred (see docs/PRD-phase-17-prioritization.md, docs/adr/0019,
+ * docs/adr/0020, and docs/adr/0021).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -43,11 +52,14 @@ export function PrioritizationOverviewPage() {
   const [showFrameworkForm, setShowFrameworkForm] = useState(false)
   const [scoringProjectId, setScoringProjectId] = useState<string | undefined>(undefined)
   const [dependencyProjectId, setDependencyProjectId] = useState<string | undefined>(undefined)
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | undefined>(undefined)
 
   const frameworksQuery = useFrameworks(true)
   const portfolioQuery = usePortfolio(frameworkId)
   const scoresQuery = useProjectPriorityScores(scoringProjectId)
   const dependencyGraphQuery = useDependencyGraph()
+  const snapshotsQuery = usePortfolioSnapshots(frameworkId)
+  const createSnapshot = useCreateSnapshot()
   const selectedFramework = frameworksQuery.data?.items.find((f) => f.id === frameworkId)
 
   return (
@@ -144,6 +156,55 @@ export function PrioritizationOverviewPage() {
           )}
         </CardBody>
       </Card>
+
+      {frameworkId ? (
+        <Card>
+          <CardHeader
+            title="Portfolio snapshots"
+            description="An explicit, point-in-time saved ranking — for trend/history, distinct from the always-fresh board above."
+            action={
+              canManageFrameworks ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => createSnapshot.mutate(frameworkId)}
+                  disabled={createSnapshot.isPending}
+                >
+                  {createSnapshot.isPending ? 'Taking snapshot…' : 'Take snapshot'}
+                </Button>
+              ) : null
+            }
+          />
+          <CardBody className="space-y-4">
+            <QueryBoundary query={snapshotsQuery} loadingLabel="Loading snapshots…">
+              {(snapshots) =>
+                snapshots.items.length === 0 ? (
+                  <EmptyState
+                    title="No snapshots taken yet."
+                    description={
+                      canManageFrameworks
+                        ? 'Take a snapshot to save this framework’s current ranking for later comparison.'
+                        : 'An Owner or Admin can take one to save this ranking for later comparison.'
+                    }
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    <PortfolioSnapshotList
+                      snapshots={snapshots.items}
+                      selectedId={selectedSnapshotId}
+                      onSelect={setSelectedSnapshotId}
+                    />
+                    {(() => {
+                      const selected = snapshots.items.find((s) => s.id === selectedSnapshotId)
+                      return selected ? <PortfolioTable items={selected.entries} /> : null
+                    })()}
+                  </div>
+                )
+              }
+            </QueryBoundary>
+          </CardBody>
+        </Card>
+      ) : null}
 
       {frameworkId ? (
         <Card>
