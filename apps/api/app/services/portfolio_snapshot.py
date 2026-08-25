@@ -1,5 +1,6 @@
 """Phase 21 — portfolio snapshots
-(docs/adr/0021-portfolio-snapshots.md).
+(docs/adr/0021-portfolio-snapshots.md). Phase 22 adds snapshot-vs-snapshot
+comparison (docs/adr/0022-portfolio-snapshot-comparison.md).
 
 Deliberately its own service, not a method bolted onto
 ProjectPriorityScoreService: it reuses that service's rank_portfolio
@@ -11,6 +12,8 @@ app/services/scenario_priority.py already established for Phase 20.
 
 import uuid
 
+from app.core.exceptions import DomainValidationError, NotFoundError
+from app.domain.portfolio_snapshot import SnapshotComparisonItem, compare_snapshot_entries
 from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.repositories.portfolio_snapshot import PortfolioSnapshotRepository
 from app.services.project_priority_score import ProjectPriorityScoreService
@@ -75,3 +78,30 @@ class PortfolioSnapshotService:
         return self.repository.list_(
             organization_id, framework_id=framework_id, limit=limit, offset=offset
         )
+
+    def compare(
+        self, organization_id: uuid.UUID, from_snapshot_id: uuid.UUID, to_snapshot_id: uuid.UUID
+    ) -> tuple[PortfolioSnapshot, PortfolioSnapshot, list[SnapshotComparisonItem]]:
+        """Diffs two already-taken, immutable snapshots — never recomputes
+        or mutates either one (see PortfolioSnapshot's model docstring).
+        Both must belong to this organization (each independently resolved
+        through the org-scoped repository, 404 otherwise) and to the SAME
+        framework — a RICE score and a WSJF score aren't comparable
+        numbers, so comparing across frameworks is rejected rather than
+        silently producing a meaningless diff."""
+        from_snapshot = self._get_owned(organization_id, from_snapshot_id)
+        to_snapshot = self._get_owned(organization_id, to_snapshot_id)
+        if from_snapshot.framework_id != to_snapshot.framework_id:
+            raise DomainValidationError(
+                "Snapshots can only be compared within the same framework — "
+                f"'{from_snapshot.framework_name}' and '{to_snapshot.framework_name}' "
+                "are different frameworks."
+            )
+        items = compare_snapshot_entries(from_snapshot.entries, to_snapshot.entries)
+        return from_snapshot, to_snapshot, items
+
+    def _get_owned(self, organization_id: uuid.UUID, snapshot_id: uuid.UUID) -> PortfolioSnapshot:
+        snapshot = self.repository.get(snapshot_id, organization_id)
+        if snapshot is None:
+            raise NotFoundError("PortfolioSnapshot", snapshot_id)
+        return snapshot

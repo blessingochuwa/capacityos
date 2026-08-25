@@ -5,6 +5,7 @@ import type {
   MoscowCategory,
   PortfolioRanking,
   PortfolioSnapshot,
+  PortfolioSnapshotComparison,
   PrioritizationCriterion,
   PrioritizationFramework,
   PrioritizationFrameworkType,
@@ -116,5 +117,10 @@ export const prioritizationApi = {
   createSnapshot: (frameworkId: string) =>
     apiPost<PortfolioSnapshot>('/api/v1/prioritization/snapshots', {
       framework_id: frameworkId,
+    }),
+  compareSnapshots: (fromSnapshotId: string, toSnapshotId: string) =>
+    apiGet<PortfolioSnapshotComparison>('/api/v1/prioritization/snapshots/compare', {
+      from_snapshot_id: fromSnapshotId,
+      to_snapshot_id: toSnapshotId,
     }),
 }

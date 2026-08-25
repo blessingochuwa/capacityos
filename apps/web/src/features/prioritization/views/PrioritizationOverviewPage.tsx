@@ -14,6 +14,7 @@ import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
 import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
 import { FrameworkForm } from '../components/FrameworkForm'
+import { PortfolioSnapshotComparisonTable } from '../components/PortfolioSnapshotComparisonTable'
 import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
 import { PortfolioTable } from '../components/PortfolioTable'
 import { ScoreForm } from '../components/ScoreForm'
@@ -22,6 +23,7 @@ import { useFrameworks } from '../hooks/useFrameworks'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { usePortfolioSnapshots } from '../hooks/usePortfolioSnapshots'
 import { useProjectPriorityScores } from '../hooks/useProjectPriorityScores'
+import { useSnapshotComparison } from '../hooks/useSnapshotComparison'
 import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
 
 /**
@@ -37,10 +39,12 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * this page — the comparison lives inside the Scenario workspace it
  * extends). Phase 21 adds portfolio snapshots — an explicit, immutable,
  * point-in-time saved ranking for trend/history, distinct from the
- * always-fresh live board above. The five remaining Recharts
+ * always-fresh live board above. Phase 22 adds snapshot-vs-snapshot
+ * comparison — entered/left/changed/unchanged, computed fresh from two
+ * already-frozen snapshots, never persisted. The five remaining Recharts
  * visualizations and an AI explanation of the Phase 20 comparison remain
  * deferred (see docs/PRD-phase-17-prioritization.md, docs/adr/0019,
- * docs/adr/0020, and docs/adr/0021).
+ * docs/adr/0020, docs/adr/0021, and docs/adr/0022).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -53,6 +57,8 @@ export function PrioritizationOverviewPage() {
   const [scoringProjectId, setScoringProjectId] = useState<string | undefined>(undefined)
   const [dependencyProjectId, setDependencyProjectId] = useState<string | undefined>(undefined)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | undefined>(undefined)
+  const [compareFromId, setCompareFromId] = useState<string | undefined>(undefined)
+  const [compareToId, setCompareToId] = useState<string | undefined>(undefined)
 
   const frameworksQuery = useFrameworks(true)
   const portfolioQuery = usePortfolio(frameworkId)
@@ -60,6 +66,7 @@ export function PrioritizationOverviewPage() {
   const dependencyGraphQuery = useDependencyGraph()
   const snapshotsQuery = usePortfolioSnapshots(frameworkId)
   const createSnapshot = useCreateSnapshot()
+  const comparisonQuery = useSnapshotComparison(compareFromId, compareToId)
   const selectedFramework = frameworksQuery.data?.items.find((f) => f.id === frameworkId)
 
   return (
@@ -188,7 +195,7 @@ export function PrioritizationOverviewPage() {
                     }
                   />
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <PortfolioSnapshotList
                       snapshots={snapshots.items}
                       selectedId={selectedSnapshotId}
@@ -198,6 +205,56 @@ export function PrioritizationOverviewPage() {
                       const selected = snapshots.items.find((s) => s.id === selectedSnapshotId)
                       return selected ? <PortfolioTable items={selected.entries} /> : null
                     })()}
+
+                    {snapshots.items.length < 2 ? null : (
+                      <div className="space-y-4 border-t border-slate-800 pt-4">
+                        <h3 className="text-sm font-medium text-slate-200">
+                          Compare two snapshots
+                        </h3>
+                        <div className="flex flex-wrap gap-4">
+                          <div className="w-64">
+                            <Select
+                              label="From"
+                              value={compareFromId ?? ''}
+                              placeholder="Select a snapshot"
+                              options={snapshots.items.map((snapshot) => ({
+                                value: snapshot.id,
+                                label: new Date(snapshot.taken_at).toLocaleString(),
+                              }))}
+                              onChange={(event) =>
+                                setCompareFromId(event.target.value || undefined)
+                              }
+                            />
+                          </div>
+                          <div className="w-64">
+                            <Select
+                              label="To"
+                              value={compareToId ?? ''}
+                              placeholder="Select a snapshot"
+                              options={snapshots.items.map((snapshot) => ({
+                                value: snapshot.id,
+                                label: new Date(snapshot.taken_at).toLocaleString(),
+                              }))}
+                              onChange={(event) =>
+                                setCompareToId(event.target.value || undefined)
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        {compareFromId && compareToId ? (
+                          <QueryBoundary
+                            query={comparisonQuery}
+                            loadingLabel="Comparing snapshots…"
+                            errorTitle="Could not compare these snapshots"
+                          >
+                            {(comparison) => (
+                              <PortfolioSnapshotComparisonTable items={comparison.items} />
+                            )}
+                          </QueryBoundary>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 )
               }

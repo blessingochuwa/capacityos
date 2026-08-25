@@ -113,3 +113,28 @@ export interface PortfolioSnapshot {
   taken_at: string
   entries: PortfolioSnapshotEntry[]
 }
+
+/** Phase 22 — never persisted, computed fresh on every comparison read.
+ * Mirrors app/domain/portfolio_snapshot.py::SnapshotComparisonStatus. */
+export type SnapshotComparisonStatus = 'entered' | 'left' | 'changed' | 'unchanged'
+
+export interface SnapshotComparisonItem {
+  project_id: string
+  project_name: string
+  status: SnapshotComparisonStatus
+  rank_from: number | null
+  rank_to: number | null
+  score_from: string | null
+  score_to: string | null
+  category_from: MoscowCategory | null
+  category_to: MoscowCategory | null
+}
+
+export interface PortfolioSnapshotComparison {
+  from_snapshot_id: string
+  to_snapshot_id: string
+  framework_id: string
+  framework_name: string
+  framework_type: PrioritizationFrameworkType
+  items: SnapshotComparisonItem[]
+}

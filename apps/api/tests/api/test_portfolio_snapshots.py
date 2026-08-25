@@ -3,7 +3,10 @@ snapshot creation freezes the live ranking, immutability (a later re-score
 does not change an already-taken snapshot), RBAC (PRIORITIZATION_MANAGE
 gates creation, Admin/Owner only — matching framework CRUD's precedent;
 PRIORITIZATION_READ gates listing), audit, and the explicit
-multi-tenancy/IDOR tests every new resource requires. Mirrors
+multi-tenancy/IDOR tests every new resource requires. Phase 22 adds
+snapshot-vs-snapshot comparison (docs/adr/0022-portfolio-snapshot-comparison.md):
+entered/left/changed/unchanged detection, same-framework-only enforcement,
+and its own multi-tenancy/IDOR tests. Mirrors
 tests/api/test_prioritization.py's and tests/api/test_scenario_priority.py's
 conventions.
 """
@@ -310,3 +313,131 @@ def test_list_snapshots_never_includes_another_organizations_snapshots(
 
     items = client.get("/api/v1/prioritization/snapshots").json()["items"]
     assert items == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 22 — snapshot-vs-snapshot comparison
+# ---------------------------------------------------------------------------
+
+
+def _compare(client: TestClient, from_id: object, to_id: object) -> Any:
+    return client.get(
+        "/api/v1/prioritization/snapshots/compare",
+        params={"from_snapshot_id": from_id, "to_snapshot_id": to_id},
+    )
+
+
+def test_compare_detects_entered_left_changed_and_unchanged(client: TestClient) -> None:
+    framework = _create_rice_framework(client)
+    stable_project = _create_project(client, name="Stable Project")
+    leaving_project = _create_project(client, name="Leaving Project")
+    # stable_project's reach is deliberately far above the leaving/entering
+    # projects' — its rank (1) and score must stay identical across both
+    # snapshots regardless of who else enters or leaves, proving
+    # "unchanged" is a genuine rank+score+category comparison, not just
+    # "still present in both".
+    _score_project(client, stable_project["id"], framework["id"], reach="1000000")
+    leaving_score = _score_project(client, leaving_project["id"], framework["id"], reach="500")
+
+    from_snapshot = _take_snapshot(client, framework["id"])
+
+    client.delete(f"/api/v1/projects/{leaving_project['id']}/priority-scores/{leaving_score['id']}")
+    entering_project = _create_project(client, name="Entering Project")
+    _score_project(client, entering_project["id"], framework["id"], reach="2000")
+
+    to_snapshot = _take_snapshot(client, framework["id"])
+
+    response = _compare(client, from_snapshot["id"], to_snapshot["id"])
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["from_snapshot_id"] == from_snapshot["id"]
+    assert body["to_snapshot_id"] == to_snapshot["id"]
+    items_by_project_id = {item["project_id"]: item for item in body["items"]}
+
+    assert items_by_project_id[stable_project["id"]]["status"] == "unchanged"
+    assert items_by_project_id[stable_project["id"]]["rank_from"] == 1
+    assert items_by_project_id[stable_project["id"]]["rank_to"] == 1
+    assert items_by_project_id[leaving_project["id"]]["status"] == "left"
+    assert items_by_project_id[leaving_project["id"]]["rank_to"] is None
+    assert items_by_project_id[entering_project["id"]]["status"] == "entered"
+    assert items_by_project_id[entering_project["id"]]["rank_from"] is None
+
+
+def test_compare_detects_a_rank_change_from_a_new_higher_scoring_entrant(
+    client: TestClient,
+) -> None:
+    framework = _create_rice_framework(client)
+    project = _create_project(client, name="Originally First")
+    _score_project(client, project["id"], framework["id"], reach="1000")
+    from_snapshot = _take_snapshot(client, framework["id"])
+
+    rival = _create_project(client, name="New Higher Priority")
+    _score_project(client, rival["id"], framework["id"], reach="9000")
+    to_snapshot = _take_snapshot(client, framework["id"])
+
+    body = _compare(client, from_snapshot["id"], to_snapshot["id"]).json()
+    items_by_project_id = {item["project_id"]: item for item in body["items"]}
+    original = items_by_project_id[project["id"]]
+    assert original["status"] == "changed"
+    assert original["rank_from"] == 1
+    assert original["rank_to"] == 2
+
+
+def test_compare_across_different_frameworks_returns_422(client: TestClient) -> None:
+    rice = _create_rice_framework(client, name="Feature RICE")
+    moscow = _create_moscow_framework(client, name="Release MoSCoW")
+    from_snapshot = _take_snapshot(client, rice["id"])
+    to_snapshot = _take_snapshot(client, moscow["id"])
+
+    response = _compare(client, from_snapshot["id"], to_snapshot["id"])
+    assert response.status_code == 422
+
+
+def test_compare_never_mutates_either_snapshot(client: TestClient) -> None:
+    framework = _create_rice_framework(client)
+    project = _create_project(client)
+    _score_project(client, project["id"], framework["id"], reach="1000")
+    from_snapshot = _take_snapshot(client, framework["id"])
+    to_snapshot = _take_snapshot(client, framework["id"])
+
+    _compare(client, from_snapshot["id"], to_snapshot["id"])
+
+    snapshots = client.get(
+        "/api/v1/prioritization/snapshots", params={"framework_id": framework["id"]}
+    ).json()["items"]
+    refetched_from = next(s for s in snapshots if s["id"] == from_snapshot["id"])
+    assert refetched_from["entries"] == from_snapshot["entries"]
+
+
+def test_viewer_can_compare_snapshots(client_as: Callable[[UserRole], TestClient]) -> None:
+    owner = client_as(UserRole.OWNER)
+    framework = _create_rice_framework(owner)
+    from_snapshot = _take_snapshot(owner, framework["id"])
+    to_snapshot = _take_snapshot(owner, framework["id"])
+
+    viewer = client_as(UserRole.VIEWER)
+    viewer.activate()  # type: ignore[attr-defined]
+    response = _compare(viewer, from_snapshot["id"], to_snapshot["id"])
+    assert response.status_code == 200, response.text
+
+
+def test_compare_with_unknown_snapshot_id_returns_404(client: TestClient) -> None:
+    framework = _create_rice_framework(client)
+    snapshot = _take_snapshot(client, framework["id"])
+
+    response = _compare(client, "00000000-0000-0000-0000-000000000000", snapshot["id"])
+    assert response.status_code == 404
+
+
+def test_compare_with_a_snapshot_from_another_organization_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    framework = _create_rice_framework(client)
+    own_snapshot = _take_snapshot(client, framework["id"])
+
+    org_b = make_organization(db_session, slug="org-b-portfolio-snapshot-compare")
+    framework_b = make_prioritization_framework(db_session, organization=org_b, name="Org B RICE")
+    other_snapshot = make_portfolio_snapshot(db_session, organization=org_b, framework=framework_b)
+
+    response = _compare(client, own_snapshot["id"], str(other_snapshot.id))
+    assert response.status_code == 404

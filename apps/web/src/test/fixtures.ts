@@ -43,10 +43,12 @@ import type {
   DependencyGraph,
   PortfolioRankingEntry,
   PortfolioSnapshot,
+  PortfolioSnapshotComparison,
   PrioritizationCriterion,
   PrioritizationFramework,
   ProjectDependency,
   ProjectPriorityScore,
+  SnapshotComparisonItem,
 } from '@/features/prioritization/types/prioritization'
 import type { Stakeholder } from '@/features/stakeholders/types/stakeholders'
 import type {
@@ -755,6 +757,37 @@ export function makeProjectDependency(
     to_project_name: 'Mobile App',
     dependency_type: 'blocks',
     created_at: '2026-08-24T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeSnapshotComparisonItem(
+  overrides: Partial<SnapshotComparisonItem> = {},
+): SnapshotComparisonItem {
+  return {
+    project_id: 'project-1',
+    project_name: 'Website Redesign',
+    status: 'unchanged',
+    rank_from: 1,
+    rank_to: 1,
+    score_from: '400.00',
+    score_to: '400.00',
+    category_from: null,
+    category_to: null,
+    ...overrides,
+  }
+}
+
+export function makePortfolioSnapshotComparison(
+  overrides: Partial<PortfolioSnapshotComparison> = {},
+): PortfolioSnapshotComparison {
+  return {
+    from_snapshot_id: 'snapshot-1',
+    to_snapshot_id: 'snapshot-2',
+    framework_id: 'framework-1',
+    framework_name: 'Feature RICE',
+    framework_type: 'rice',
+    items: [makeSnapshotComparisonItem()],
     ...overrides,
   }
 }

@@ -6658,6 +6658,60 @@
         }
       }
     },
+    "/api/v1/prioritization/snapshots/compare": {
+      "get": {
+        "tags": [
+          "prioritization"
+        ],
+        "summary": "Compare Portfolio Snapshots",
+        "description": "Read-only, never persisted (Phase 22) \u2014 computed fresh from two\nalready-frozen snapshots on every request, the same \"derive, never\ncache\" discipline every prioritization read in this router follows.\nNot audited \u2014 matches every other GET route in this router.",
+        "operationId": "compare_portfolio_snapshots_api_v1_prioritization_snapshots_compare_get",
+        "parameters": [
+          {
+            "name": "from_snapshot_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "From Snapshot Id"
+            }
+          },
+          {
+            "name": "to_snapshot_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "To Snapshot Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSnapshotComparisonRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/status": {
       "get": {
         "tags": [
@@ -10689,6 +10743,49 @@
         ],
         "title": "PortfolioRankingRead"
       },
+      "PortfolioSnapshotComparisonRead": {
+        "properties": {
+          "from_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Snapshot Id"
+          },
+          "to_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Snapshot Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          },
+          "framework_name": {
+            "type": "string",
+            "title": "Framework Name"
+          },
+          "framework_type": {
+            "$ref": "#/components/schemas/PrioritizationFrameworkType"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotComparisonItemRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_snapshot_id",
+          "to_snapshot_id",
+          "framework_id",
+          "framework_name",
+          "framework_type",
+          "items"
+        ],
+        "title": "PortfolioSnapshotComparisonRead"
+      },
       "PortfolioSnapshotCreate": {
         "properties": {
           "framework_id": {
@@ -13703,6 +13800,113 @@
         },
         "type": "object",
         "title": "SkillUpdate"
+      },
+      "SnapshotComparisonItemRead": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SnapshotComparisonStatus"
+          },
+          "rank_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank From"
+          },
+          "rank_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank To"
+          },
+          "score_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score From"
+          },
+          "score_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score To"
+          },
+          "category_from": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoscowCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "status",
+          "rank_from",
+          "rank_to",
+          "score_from",
+          "score_to",
+          "category_from",
+          "category_to"
+        ],
+        "title": "SnapshotComparisonItemRead",
+        "description": "Mirrors app/domain/portfolio_snapshot.py::SnapshotComparisonItem\nexactly \u2014 see its docstring for what ENTERED/LEFT/CHANGED/UNCHANGED\nmean and why `project_name` prefers the `to` side."
+      },
+      "SnapshotComparisonStatus": {
+        "type": "string",
+        "enum": [
+          "entered",
+          "left",
+          "changed",
+          "unchanged"
+        ],
+        "title": "SnapshotComparisonStatus",
+        "description": "Never persisted \u2014 computed fresh on every comparison read, the same\n\"derive, never cache\" discipline every Phase 17-21 result follows."
       },
       "StakeholderCreate": {
         "properties": {

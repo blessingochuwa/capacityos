@@ -1303,10 +1303,41 @@ every project scored under a framework at once, not a single project a
 Manager might hold a grant on. 1 new table, 1 migration, 0 new
 permissions. See docs/adr/0021-portfolio-snapshots.md.
 
+### Phase 22
+Portfolio snapshot diff/trend (§18/§38) — the item Phase 21 itself named
+as the still-open remainder. Per the phase brief's audit-first
+instruction, the repository was audited against every remaining named
+candidate — snapshot diff/trend, scenario snapshots, an AI explanation of
+the Phase 20 comparison, the five Recharts visualizations,
+Risk/Stakeholder import/export, and a membership/user-management UI
+(this audit newly inspected the organization/membership API and the
+Phase 6 import/export code, neither examined in depth by any prior
+phase's audit) — and two candidates (scenario snapshots;
+Risk/Stakeholder import/export) were found to each carry a genuine open
+sub-question needing its own decision before being buildable, not
+selectable as-is. The resulting candidates were put to the user as a
+blocking product decision; snapshot diff/trend was chosen as the only
+one with no open sub-question, building directly on the now-stable Phase
+21 foundation. `app/domain/portfolio_snapshot.py::compare_snapshot_entries`
+is pure and DB-free, diffing two already-frozen `PortfolioSnapshot.entries`
+payloads — never imports the scoring engine, since a snapshot's entries
+are historical facts already computed once at capture time. Four
+statuses (entered/left/changed/unchanged), tuple-compared
+(rank, score, category) so a project whose rank moved only because a new
+project entered the ranking is correctly `changed`, not `unchanged`.
+Comparing snapshots from different frameworks is rejected (422) — a
+RICE score and a WSJF score aren't comparable numbers. Never persisted —
+computed fresh on every read, verified live to leave both compared
+snapshots byte-identical afterward. Gated by the existing
+`Permission.PRIORITIZATION_READ` (every role, reused unchanged) — no new
+permission, no audit event (matches every other read in this router). 0
+new tables, 0 migrations, 0 new permissions. See
+docs/adr/0022-portfolio-snapshot-comparison.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
-Deferred items accumulated across Phases 11-21 that a future phase should
+Deferred items accumulated across Phases 11-22 that a future phase should
 pick up deliberately, not assume: SSO/OAuth, billing, organization
 hierarchies, cross-organization data sharing, and per-organization feature
 flags (see ADR 0012's Consequences — its other listed gap, the
@@ -1340,15 +1371,24 @@ docs/adr/0020-scenario-priority-comparison.md, via explicit
 scenario-scoped criterion overrides — an AI interpretation of this
 comparison was deliberately left for a future phase, per Phase 20's own
 brief, and remains unbuilt; portfolio snapshots are resolved as of Phase
-21, docs/adr/0021-portfolio-snapshots.md — a diffing/trend UI comparing
-two snapshots, and a snapshot of a scenario's hypothetical ranking, were
-deliberately left unbuilt as outside that phase's own bounded scope; see
-ADR 0020's and ADR 0021's Consequences for the remaining named
-boundaries);
+21, docs/adr/0021-portfolio-snapshots.md, and snapshot diff/trend is
+resolved as of Phase 22, docs/adr/0022-portfolio-snapshot-comparison.md —
+a snapshot of a scenario's hypothetical ranking remains unbuilt, genuinely
+blocked on a product decision about `Scenario`'s hard-delete lifecycle
+(unlike `PrioritizationFramework`, `Scenario` supports a real delete),
+and an AI explanation of a snapshot comparison and a multi-snapshot trend
+chart beyond a two-point diff were deliberately left unbuilt as outside
+Phase 22's own bounded scope; see ADR 0020's, ADR 0021's, and ADR 0022's
+Consequences for the remaining named boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
-registration (matching Risk/Stakeholder's own precedent, not specified).
-None of these are scheduled — do not build any of them without an
-explicit request, per §32.
+registration (matching Risk/Stakeholder's own precedent, not specified —
+a Phase 22 audit of the actual import/export code confirmed neither Risk
+nor Stakeholder has a natural identity key for CSV upsert-matching, a
+further open question any future phase attempting this would need to
+resolve first); a membership/user-management UI (re-confirmed
+fully backend-ready with zero frontend surface by the Phase 22 audit, but
+not selected for that phase). None of these are scheduled — do not build
+any of them without an explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.
 

@@ -6,6 +6,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.domain.portfolio_snapshot import SnapshotComparisonItem, SnapshotComparisonStatus
 from app.domain.prioritization import PriorityScoreResult
 from app.models.enums import MoscowCategory, PrioritizationFrameworkType, ProjectDependencyType
 from app.models.portfolio_snapshot import PortfolioSnapshot
@@ -344,4 +345,57 @@ def _snapshot_entry_to_read(entry: dict[str, Any]) -> PortfolioSnapshotEntryRead
         missing_criteria=list(entry["missing_criteria"]),
         breakdown={key: Decimal(value) for key, value in entry["breakdown"].items()},
         category=MoscowCategory(entry["category"]) if entry["category"] is not None else None,
+    )
+
+
+class SnapshotComparisonItemRead(BaseModel):
+    """Mirrors app/domain/portfolio_snapshot.py::SnapshotComparisonItem
+    exactly — see its docstring for what ENTERED/LEFT/CHANGED/UNCHANGED
+    mean and why `project_name` prefers the `to` side."""
+
+    project_id: uuid.UUID
+    project_name: str
+    status: SnapshotComparisonStatus
+    rank_from: int | None
+    rank_to: int | None
+    score_from: Decimal | None
+    score_to: Decimal | None
+    category_from: MoscowCategory | None
+    category_to: MoscowCategory | None
+
+
+class PortfolioSnapshotComparisonRead(BaseModel):
+    from_snapshot_id: uuid.UUID
+    to_snapshot_id: uuid.UUID
+    framework_id: uuid.UUID
+    framework_name: str
+    framework_type: PrioritizationFrameworkType
+    items: list[SnapshotComparisonItemRead]
+
+
+def portfolio_snapshot_comparison_to_read(
+    from_snapshot: PortfolioSnapshot,
+    to_snapshot: PortfolioSnapshot,
+    items: list[SnapshotComparisonItem],
+) -> PortfolioSnapshotComparisonRead:
+    return PortfolioSnapshotComparisonRead(
+        from_snapshot_id=from_snapshot.id,
+        to_snapshot_id=to_snapshot.id,
+        framework_id=to_snapshot.framework_id,
+        framework_name=to_snapshot.framework_name,
+        framework_type=to_snapshot.framework_type,
+        items=[
+            SnapshotComparisonItemRead(
+                project_id=uuid.UUID(item.project_id),
+                project_name=item.project_name,
+                status=item.status,
+                rank_from=item.rank_from,
+                rank_to=item.rank_to,
+                score_from=item.score_from,
+                score_to=item.score_to,
+                category_from=item.category_from,
+                category_to=item.category_to,
+            )
+            for item in items
+        ],
     )

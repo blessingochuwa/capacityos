@@ -31,6 +31,7 @@ from app.schemas.prioritization import (
     DependencyGraphRead,
     PortfolioRankingEntryRead,
     PortfolioRankingRead,
+    PortfolioSnapshotComparisonRead,
     PortfolioSnapshotCreate,
     PortfolioSnapshotRead,
     PrioritizationFrameworkCreate,
@@ -42,6 +43,7 @@ from app.schemas.prioritization import (
     ProjectPriorityScoreRead,
     ProjectPriorityScoreUpdate,
     framework_to_read,
+    portfolio_snapshot_comparison_to_read,
     portfolio_snapshot_to_read,
     project_dependency_to_read,
     project_priority_score_to_read,
@@ -622,3 +624,23 @@ def list_portfolio_snapshots(
     return Page[PortfolioSnapshotRead](
         items=[portfolio_snapshot_to_read(item) for item in items], total=total
     )
+
+
+@router.get(
+    "/api/v1/prioritization/snapshots/compare", response_model=PortfolioSnapshotComparisonRead
+)
+def compare_portfolio_snapshots(
+    from_snapshot_id: uuid.UUID = Query(),
+    to_snapshot_id: uuid.UUID = Query(),
+    _: User = Depends(require_permission(Permission.PRIORITIZATION_READ)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: PortfolioSnapshotService = Depends(get_snapshot_service),
+) -> PortfolioSnapshotComparisonRead:
+    """Read-only, never persisted (Phase 22) — computed fresh from two
+    already-frozen snapshots on every request, the same "derive, never
+    cache" discipline every prioritization read in this router follows.
+    Not audited — matches every other GET route in this router."""
+    from_snapshot, to_snapshot, items = service.compare(
+        membership.organization_id, from_snapshot_id, to_snapshot_id
+    )
+    return portfolio_snapshot_comparison_to_read(from_snapshot, to_snapshot, items)
