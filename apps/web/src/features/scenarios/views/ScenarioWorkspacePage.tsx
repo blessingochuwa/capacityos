@@ -12,6 +12,7 @@ import { formatDateRange } from '@/features/capacity/utils/presentation'
 import { SignalList } from '@/features/insights/components/SignalList'
 import { useScenarioSignals } from '@/features/insights/hooks/useScenarioSignals'
 import { ExplainScenarioButton } from '@/features/ai/components/ExplainScenarioButton'
+import { ExplainScenarioPriorityComparisonButton } from '@/features/ai/components/ExplainScenarioPriorityComparisonButton'
 import { useFrameworks } from '@/features/prioritization/hooks/useFrameworks'
 import { AddChangeForm } from '../components/AddChangeForm'
 import { ChangeList } from '../components/ChangeList'
@@ -463,6 +464,10 @@ function ScenarioWorkspaceContent({ scenarioId }: { scenarioId: string }) {
                             </p>
                           )}
                           <PriorityComparisonTable items={comparison.items} />
+                          <ExplainScenarioPriorityComparisonButton
+                            scenarioId={scenarioId}
+                            frameworkId={priorityFrameworkId}
+                          />
                         </div>
                       )
                     }

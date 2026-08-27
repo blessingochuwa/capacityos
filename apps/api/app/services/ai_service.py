@@ -168,6 +168,30 @@ def serialize_context(context: AIInsightContext) -> str:
                 f"(source_reference: type=snapshot_comparison, entity_id={item.project_id})"
             )
 
+    if context.scenario_priority_comparison is not None:
+        spc = context.scenario_priority_comparison
+        lines.append(
+            f'scenario prioritization comparison "{spc.scenario_label}" under framework '
+            f'"{spc.framework_name}" ({spc.framework_type}): has_changes={spc.has_changes}'
+        )
+        for item in spc.items:
+            baseline = item.baseline_score if item.baseline_score is not None else "n/a"
+            scenario_value = item.scenario_score if item.scenario_score is not None else "n/a"
+            category = (
+                f" baseline_category={item.baseline_category} "
+                f"scenario_category={item.scenario_category}"
+                if item.baseline_category is not None or item.scenario_category is not None
+                else ""
+            )
+            lines.append(
+                f"  - project={item.project_name} has_override={item.has_override} "
+                f"changed={item.changed} baseline_rank={item.baseline_rank} "
+                f"scenario_rank={item.scenario_rank} baseline_score={baseline} "
+                f"scenario_score={scenario_value}{category} "
+                f"(source_reference: type=scenario_priority_comparison, "
+                f"entity_id={item.project_id})"
+            )
+
     return "\n".join(lines)
 
 
@@ -337,6 +361,27 @@ class AIService:
             "which projects entered, left, or changed rank/score/category, and which stayed "
             "unchanged. Do not recalculate, re-rank, or re-score anything yourself — only "
             "interpret the comparison already given."
+        )
+        return self._generate(context, question)
+
+    def explain_scenario_priority_comparison(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID, framework_id: uuid.UUID
+    ) -> AIResponseEnvelope:
+        """Phase 26 — explains an EXISTING Phase 20 baseline-vs-scenario
+        prioritization comparison. Never recomputes a score, rank, or
+        category itself (CLAUDE.md §4/§21) — the question below is
+        deliberately framed as interpretation only, mirroring
+        explain_snapshot_comparison's/explain_priority's own "do not
+        recalculate" framing."""
+        context = self.context_builder.build_for_scenario_priority_comparison(
+            organization_id, scenario_id, framework_id
+        )
+        question = (
+            "Explain how this scenario changes the portfolio's prioritization under this "
+            "framework, compared to the real baseline: which projects have an explicit "
+            "override, which projects' rank/score/category actually changed as a result, and "
+            "which stayed the same. Do not recalculate, re-rank, or re-score anything "
+            "yourself — only interpret the comparison already given."
         )
         return self._generate(context, question)
 

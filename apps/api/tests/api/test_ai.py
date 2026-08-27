@@ -22,6 +22,7 @@ from tests.factories import (
     make_prioritization_framework,
     make_project,
     make_project_priority_score,
+    make_scenario,
 )
 
 START = "2026-08-17"  # Monday
@@ -663,6 +664,148 @@ def test_explain_snapshot_comparison_401_when_unauthenticated(
     response = unauthenticated_client.post(
         "/api/v1/ai/explain-snapshot-comparison",
         json={"from_snapshot_id": str(uuid.uuid4()), "to_snapshot_id": str(uuid.uuid4())},
+    )
+    assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Explain scenario priority comparison (Phase 26)
+# ---------------------------------------------------------------------------
+
+
+def _create_scenario_with_override(
+    client: TestClient,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """Returns (scenario, framework, project) — a RICE-scored project
+    with a scenario override that genuinely changes its score, matching
+    tests/api/test_scenario_priority.py's own comparison-test fixtures."""
+    project, score = _create_rice_score(client, project_name="Scenario AI Project")
+    scenario = _create_scenario(client, name="Q3 hiring plan")
+    override_response = client.post(
+        f"/api/v1/scenarios/{scenario['id']}/priority-overrides",
+        json={
+            "project_id": project["id"],
+            "framework_id": score["framework_id"],
+            "values": [{"criterion_key": "reach", "value": "9000"}],
+        },
+    )
+    assert override_response.status_code == 201, override_response.text
+    return scenario, {"id": score["framework_id"]}, project
+
+
+def test_explain_scenario_priority_comparison_is_unavailable_by_default_but_still_returns_200(
+    client: TestClient,
+) -> None:
+    scenario, framework, _project = _create_scenario_with_override(client)
+    response = client.post(
+        "/api/v1/ai/explain-scenario-priority-comparison",
+        json={"scenario_id": scenario["id"], "framework_id": framework["id"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "unavailable"
+    assert body["response"] is None
+
+
+def test_explain_scenario_priority_comparison_succeeds(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        scenario, framework, _project = _create_scenario_with_override(client)
+        response = client.post(
+            "/api/v1/ai/explain-scenario-priority-comparison",
+            json={"scenario_id": scenario["id"], "framework_id": framework["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["response"]["summary"]
+
+
+def test_explain_scenario_priority_comparison_404_for_unknown_scenario(
+    client: TestClient,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        _scenario, framework, _project = _create_scenario_with_override(client)
+        response = client.post(
+            "/api/v1/ai/explain-scenario-priority-comparison",
+            json={"scenario_id": str(uuid.uuid4()), "framework_id": framework["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_scenario_priority_comparison_404_for_scenario_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Same Phase 16-style proof as the other explain-* 404 regressions:
+    AIContextBuilder.build_for_scenario_priority_comparison goes through
+    ScenarioPriorityService.compare, the same org-scoped repository path
+    GET .../priority-comparison (Phase 20) already uses — for a
+    genuinely-existing cross-organization scenario, not just a random
+    uuid."""
+    _scenario, framework, _project = _create_scenario_with_override(client)
+
+    org_b = make_organization(db_session, slug="org-b-ai-scenario-priority")
+    scenario_b = make_scenario(db_session, organization=org_b, name="Org B scenario")
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/explain-scenario-priority-comparison",
+            json={"scenario_id": str(scenario_b.id), "framework_id": framework["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_scenario_priority_comparison_404_for_framework_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    scenario, _framework, _project = _create_scenario_with_override(client)
+
+    org_b = make_organization(db_session, slug="org-b-ai-scenario-priority-framework")
+    framework_b = make_prioritization_framework(db_session, organization=org_b, name="Org B RICE")
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/explain-scenario-priority-comparison",
+            json={"scenario_id": scenario["id"], "framework_id": str(framework_b.id)},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_scenario_priority_comparison_never_mutates_the_real_score(
+    client: TestClient,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        scenario, framework, project = _create_scenario_with_override(client)
+        before = client.get(
+            f"/api/v1/projects/{project['id']}/priority-scores"
+        ).json()
+        client.post(
+            "/api/v1/ai/explain-scenario-priority-comparison",
+            json={"scenario_id": scenario["id"], "framework_id": framework["id"]},
+        )
+        after = client.get(f"/api/v1/projects/{project['id']}/priority-scores").json()
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert before == after
+
+
+def test_explain_scenario_priority_comparison_401_when_unauthenticated(
+    unauthenticated_client: TestClient,
+) -> None:
+    response = unauthenticated_client.post(
+        "/api/v1/ai/explain-scenario-priority-comparison",
+        json={"scenario_id": str(uuid.uuid4()), "framework_id": str(uuid.uuid4())},
     )
     assert response.status_code == 401
 

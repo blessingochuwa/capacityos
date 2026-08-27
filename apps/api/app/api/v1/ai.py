@@ -22,6 +22,8 @@ from app.repositories.prioritization_framework import PrioritizationFrameworkRep
 from app.repositories.project import ProjectRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.scenario import ScenarioRepository
+from app.repositories.scenario_priority_override import ScenarioPriorityOverrideRepository
 from app.repositories.skill import SkillRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
@@ -29,6 +31,7 @@ from app.repositories.working_schedule import WorkingScheduleRepository
 from app.schemas.ai import (
     AIAskRequest,
     AIExplainPriorityRequest,
+    AIExplainScenarioPriorityComparisonRequest,
     AIExplainScenarioRequest,
     AIExplainSignalRequest,
     AIExplainSnapshotComparisonRequest,
@@ -40,6 +43,7 @@ from app.services.ai_context import AIContextBuilder
 from app.services.ai_service import AIService
 from app.services.portfolio_snapshot import PortfolioSnapshotService
 from app.services.project_priority_score import ProjectPriorityScoreService
+from app.services.scenario_priority import ScenarioPriorityService
 from app.services.skill_capacity import SkillCapacityService
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
@@ -92,6 +96,18 @@ def get_ai_service(
         ),
         portfolio_snapshot_service=PortfolioSnapshotService(
             PortfolioSnapshotRepository(db),
+            ProjectPriorityScoreService(
+                ProjectPriorityScoreRepository(db),
+                ProjectRepository(db),
+                PrioritizationFrameworkRepository(db),
+            ),
+        ),
+        scenario_priority_service=ScenarioPriorityService(
+            ScenarioPriorityOverrideRepository(db),
+            ScenarioRepository(db),
+            ProjectRepository(db),
+            PrioritizationFrameworkRepository(db),
+            ProjectPriorityScoreRepository(db),
             ProjectPriorityScoreService(
                 ProjectPriorityScoreRepository(db),
                 ProjectRepository(db),
@@ -184,6 +200,18 @@ def post_ai_explain_snapshot_comparison(
 ) -> AIResponseEnvelope:
     return service.explain_snapshot_comparison(
         membership.organization_id, data.from_snapshot_id, data.to_snapshot_id
+    )
+
+
+@router.post("/explain-scenario-priority-comparison", response_model=AIResponseEnvelope)
+def post_ai_explain_scenario_priority_comparison(
+    data: AIExplainScenarioPriorityComparisonRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: AIService = Depends(get_ai_service),
+) -> AIResponseEnvelope:
+    return service.explain_scenario_priority_comparison(
+        membership.organization_id, data.scenario_id, data.framework_id
     )
 
 

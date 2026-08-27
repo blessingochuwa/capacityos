@@ -1438,6 +1438,41 @@ WSJF score rather than plotting a fabricated zero. 0 new tables, 0
 migrations, 0 new permissions, 0 backend files changed. See
 docs/adr/0025-wsjf-breakdown-visualization.md.
 
+### Phase 26
+AI scenario-vs-baseline prioritization comparison explanation (§18/§21) —
+the item Phase 20's own brief explicitly named as intentionally deferred
+"for a future phase to consider deliberately." Per the phase brief's
+audit-first instruction, every item Phase 25 left deferred was
+re-verified directly against current code, not merely repeated from a
+prior ADR's claim: `ScenarioService.delete` still hard-deletes (Scenario
+snapshots still blocked), `ImportEntityType` still has the same 10
+members (import/export still blocked), `ProjectDependency` still has
+only `created_at` (dependency timeline still blocked). No capability
+named `explain_scenario_priority`/`explain-scenario-comparison` existed
+anywhere, and `ScenarioPriorityService.compare` already returns a
+complete, stable comparison shape via the unchanged Phase 20
+`GET .../priority-comparison` endpoint — the third instance of an
+already-proven pattern (`explain-priority`, Phase 19;
+`explain-snapshot-comparison`, Phase 23), so no blocking question was
+needed. Unlike Phase 25's WSJF chart, no source-material interpretation
+gap existed here: every field needed (baseline/scenario score, rank,
+category, `has_override`, `changed`) already exists verbatim in the
+Phase 20 response, and the AI-capability shape is fully determined by
+two already-shipped precedents.
+`AIContextBuilder.build_for_scenario_priority_comparison` calls
+`ScenarioPriorityService.compare` verbatim — no score, rank, or category
+is ever recomputed by the AI layer; an unknown or cross-organization
+scenario/framework id (404) is inherited from that unchanged service
+call, not re-implemented. A new `scenario_priority_comparison` grounding
+reference type adds one (type, project_id) pair per comparison item, the
+same "one reference per collection member" shape `snapshot_comparison`/
+`signal`/`skill_coverage` already established.
+`POST /api/v1/ai/explain-scenario-priority-comparison`, gated by the
+existing `Permission.AI_USE` only (every role) — no new permission, no
+CSRF requirement (matching every other AI route). 0 new tables, 0
+migrations, 0 new permissions. See
+docs/adr/0026-ai-scenario-priority-comparison-explanation.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1473,13 +1508,16 @@ scenario-vs-baseline prioritization comparison, including its frontend
 view, is resolved as of Phase 20,
 docs/adr/0020-scenario-priority-comparison.md, via explicit
 scenario-scoped criterion overrides — an AI interpretation of this
-comparison was deliberately left for a future phase, per Phase 20's own
-brief, and remains unbuilt; portfolio snapshots are resolved as of Phase
+comparison, deliberately left for a future phase per Phase 20's own
+brief, is resolved as of Phase 26,
+docs/adr/0026-ai-scenario-priority-comparison-explanation.md; portfolio snapshots are resolved as of Phase
 21, docs/adr/0021-portfolio-snapshots.md, and snapshot diff/trend is
 resolved as of Phase 22, docs/adr/0022-portfolio-snapshot-comparison.md —
 a snapshot of a scenario's hypothetical ranking remains unbuilt, genuinely
 blocked on a product decision about `Scenario`'s hard-delete lifecycle
-(unlike `PrioritizationFramework`, `Scenario` supports a real delete);
+(unlike `PrioritizationFramework`, `Scenario` supports a real delete —
+reconfirmed unresolved, directly against current code, by the Phase 26
+audit);
 an AI explanation of a snapshot comparison is resolved as of Phase 23,
 docs/adr/0023-ai-snapshot-comparison-explanation.md, and a multi-snapshot
 score-over-time trend chart is resolved as of Phase 24,
@@ -1493,18 +1531,20 @@ feature, zero backend changes) — the remaining four PRD visualizations
 quadrant, dependency timeline) remain unbuilt, three of them genuinely
 blocked on unspecified cross-domain semantics per that same ADR's
 Evaluation; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's, ADR
-0024's, and ADR 0025's Consequences for the remaining named boundaries);
+0024's, ADR 0025's, and ADR 0026's Consequences for the remaining named
+boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
 registration (matching Risk/Stakeholder's own precedent, not specified —
 a Phase 22 audit of the actual import/export code confirmed neither Risk
 nor Stakeholder has a natural identity key for CSV upsert-matching, a
 further open question any future phase attempting this would need to
-resolve first, reconfirmed still open by the Phase 25 audit); a
-membership/user-management UI (re-confirmed fully backend-ready with
-zero frontend surface by the Phase 22 and Phase 25 audits, not selected
-for either phase — a materially larger vertical slice than the chart
-Phase 25 selected instead). None of these are scheduled — do not build
-any of them without an explicit request, per §32.
+resolve first, reconfirmed still open by the Phase 25 and Phase 26
+audits); a membership/user-management UI (re-confirmed fully
+backend-ready with zero frontend surface by the Phase 22, Phase 25, and
+Phase 26 audits, not selected for any of them — a materially larger
+vertical slice than the single-capability slices selected instead).
+None of these are scheduled — do not build any of them without an
+explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.
 

@@ -34,6 +34,8 @@ from app.services.ai_context import (
     AIEntityContext,
     AIInsightContext,
     AIPriorityFact,
+    AIScenarioPriorityComparisonFact,
+    AIScenarioPriorityComparisonItemFact,
     AISnapshotComparisonFact,
     AISnapshotComparisonItemFact,
 )
@@ -93,6 +95,11 @@ class _FakeContextBuilder(AIContextBuilder):
         organization_id: uuid.UUID,
         from_snapshot_id: uuid.UUID,
         to_snapshot_id: uuid.UUID,
+    ) -> AIInsightContext:
+        return self._context
+
+    def build_for_scenario_priority_comparison(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID, framework_id: uuid.UUID
     ) -> AIInsightContext:
         return self._context
 
@@ -411,6 +418,87 @@ def test_known_references_includes_snapshot_comparison_project_ids() -> None:
     assert ("snapshot_comparison", str(project_id)) in context.known_references()
 
 
+def test_serialize_context_renders_scenario_priority_comparison_fact_with_source_reference() -> (
+    None
+):
+    scenario_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("scenario_priority_comparison", scenario_id, "Q3 hiring plan"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        scenario_priority_comparison=AIScenarioPriorityComparisonFact(
+            scenario_id=scenario_id,
+            scenario_label="Q3 hiring plan",
+            framework_name="Feature RICE",
+            framework_type="rice",
+            has_changes=True,
+            items=(
+                AIScenarioPriorityComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    has_override=True,
+                    baseline_score=Decimal("400.00"),
+                    baseline_rank=2,
+                    baseline_category=None,
+                    scenario_score=Decimal("3600.00"),
+                    scenario_rank=1,
+                    scenario_category=None,
+                    changed=True,
+                ),
+            ),
+        ),
+    )
+    serialized = serialize_context(context)
+    assert "Feature RICE" in serialized
+    assert "has_changes=True" in serialized
+    assert "has_override=True" in serialized
+    assert "baseline_score=400.00" in serialized
+    assert "scenario_score=3600.00" in serialized
+    assert f"type=scenario_priority_comparison, entity_id={project_id}" in serialized
+
+
+def test_known_references_includes_scenario_priority_comparison_project_ids() -> None:
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext(
+            "scenario_priority_comparison", uuid.uuid4(), "Q3 hiring plan"
+        ),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        scenario_priority_comparison=AIScenarioPriorityComparisonFact(
+            scenario_id=uuid.uuid4(),
+            scenario_label="Q3 hiring plan",
+            framework_name="Feature RICE",
+            framework_type="rice",
+            has_changes=False,
+            items=(
+                AIScenarioPriorityComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    has_override=False,
+                    baseline_score=Decimal("400.00"),
+                    baseline_rank=1,
+                    baseline_category=None,
+                    scenario_score=Decimal("400.00"),
+                    scenario_rank=1,
+                    scenario_category=None,
+                    changed=False,
+                ),
+            ),
+        ),
+    )
+    assert ("scenario_priority_comparison", str(project_id)) in context.known_references()
+
+
 def test_known_references_includes_priority_score_when_present() -> None:
     score_id = uuid.uuid4()
     context = AIInsightContext(
@@ -631,6 +719,72 @@ def test_explain_snapshot_comparison_returns_unavailable_when_no_provider() -> N
 def test_explain_snapshot_comparison_returns_error_status_on_timeout() -> None:
     service = _service(_RaisingProvider(AIProviderTimeoutError("boom")))
     envelope = service.explain_snapshot_comparison(ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4())
+    assert envelope.status == AIResponseStatus.ERROR
+    assert envelope.response is None
+
+
+def test_explain_scenario_priority_comparison_ok_response_grounds_from_comparison_context() -> (
+    None
+):
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("scenario_priority_comparison", uuid.uuid4(), "Q3 hiring plan"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        scenario_priority_comparison=AIScenarioPriorityComparisonFact(
+            scenario_id=uuid.uuid4(),
+            scenario_label="Q3 hiring plan",
+            framework_name="Feature RICE",
+            framework_type="rice",
+            has_changes=True,
+            items=(
+                AIScenarioPriorityComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    has_override=True,
+                    baseline_score=Decimal("400.00"),
+                    baseline_rank=2,
+                    baseline_category=None,
+                    scenario_score=Decimal("3600.00"),
+                    scenario_rank=1,
+                    scenario_category=None,
+                    changed=True,
+                ),
+            ),
+        ),
+    )
+    service = AIService(
+        context_builder=_FakeContextBuilder(context),
+        provider=MockAIProvider(),
+        provider_name="mock",
+        model_name="test-model",
+        max_output_tokens=1024,
+    )
+    envelope = service.explain_scenario_priority_comparison(
+        ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4()
+    )
+    assert envelope.status == AIResponseStatus.OK
+    assert envelope.response is not None
+
+
+def test_explain_scenario_priority_comparison_returns_unavailable_when_no_provider() -> None:
+    service = _service(None)
+    envelope = service.explain_scenario_priority_comparison(
+        ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4()
+    )
+    assert envelope.status == AIResponseStatus.UNAVAILABLE
+    assert envelope.response is None
+
+
+def test_explain_scenario_priority_comparison_returns_error_status_on_timeout() -> None:
+    service = _service(_RaisingProvider(AIProviderTimeoutError("boom")))
+    envelope = service.explain_scenario_priority_comparison(
+        ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4()
+    )
     assert envelope.status == AIResponseStatus.ERROR
     assert envelope.response is None
 

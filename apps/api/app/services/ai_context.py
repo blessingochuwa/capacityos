@@ -26,6 +26,7 @@ from app.services.insight_service import InsightService
 from app.services.portfolio_snapshot import PortfolioSnapshotService
 from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.scenario_calculation import ScenarioCalculationService
+from app.services.scenario_priority import ScenarioPriorityService
 from app.services.skill_capacity import SkillCapacityService
 
 
@@ -142,6 +143,43 @@ class AISnapshotComparisonFact:
 
 
 @dataclass(frozen=True)
+class AIScenarioPriorityComparisonItemFact:
+    """One project's row in the Phase 20 comparison — every field is
+    copied verbatim from ScenarioPriorityComparisonItem
+    (app/services/scenario_priority.py), never recomputed here."""
+
+    project_id: uuid.UUID
+    project_name: str
+    has_override: bool
+    baseline_score: Decimal | None
+    baseline_rank: int | None
+    baseline_category: str | None
+    scenario_score: Decimal | None
+    scenario_rank: int | None
+    scenario_category: str | None
+    changed: bool
+
+
+@dataclass(frozen=True)
+class AIScenarioPriorityComparisonFact:
+    """Phase 26 — the same (scenario, framework, items) triple
+    ScenarioPriorityService.compare already returns and
+    scenario_priority_comparison_to_read (app/api/v1/scenarios.py) already
+    renders to the API, reshaped into this module's DB-free fact
+    vocabulary. No score, rank, or category is ever recomputed by this
+    module — a comparison item's baseline/scenario results are already
+    computed once by the Phase 17/18 deterministic engine before this
+    module ever sees them."""
+
+    scenario_id: uuid.UUID
+    scenario_label: str
+    framework_name: str
+    framework_type: str
+    has_changes: bool
+    items: tuple[AIScenarioPriorityComparisonItemFact, ...]
+
+
+@dataclass(frozen=True)
 class AIInsightContext:
     scope: AIEntityContext
     start_date: date | None
@@ -152,6 +190,7 @@ class AIInsightContext:
     scenario: AIScenarioFact | None
     priority: AIPriorityFact | None = None
     snapshot_comparison: AISnapshotComparisonFact | None = None
+    scenario_priority_comparison: AIScenarioPriorityComparisonFact | None = None
 
     def known_references(self) -> frozenset[tuple[str, str]]:
         """(reference_type, id-as-str) pairs actually present in this
@@ -170,6 +209,9 @@ class AIInsightContext:
         if self.snapshot_comparison is not None:
             for item in self.snapshot_comparison.items:
                 refs.add(("snapshot_comparison", str(item.project_id)))
+        if self.scenario_priority_comparison is not None:
+            for item in self.scenario_priority_comparison.items:
+                refs.add(("scenario_priority_comparison", str(item.project_id)))
         return frozenset(refs)
 
 
@@ -207,6 +249,7 @@ class AIContextBuilder:
         skill_capacity_service: SkillCapacityService,
         priority_score_service: ProjectPriorityScoreService,
         portfolio_snapshot_service: PortfolioSnapshotService,
+        scenario_priority_service: ScenarioPriorityService,
         person_repository: PersonRepository,
         team_repository: TeamRepository,
         project_repository: ProjectRepository,
@@ -217,6 +260,7 @@ class AIContextBuilder:
         self.skill_capacity_service = skill_capacity_service
         self.priority_score_service = priority_score_service
         self.portfolio_snapshot_service = portfolio_snapshot_service
+        self.scenario_priority_service = scenario_priority_service
         self.person_repository = person_repository
         self.team_repository = team_repository
         self.project_repository = project_repository
@@ -396,6 +440,61 @@ class AIContextBuilder:
             skill_coverage=(),
             scenario=None,
             snapshot_comparison=comparison_fact,
+        )
+
+    def build_for_scenario_priority_comparison(
+        self, organization_id: uuid.UUID, scenario_id: uuid.UUID, framework_id: uuid.UUID
+    ) -> AIInsightContext:
+        """Phase 26. Reuses ScenarioPriorityService.compare verbatim — the
+        exact same (scenario, framework, items) triple
+        scenario_priority_comparison_to_read already builds the API
+        response from — rather than recomputing anything itself, matching
+        build_for_snapshot_comparison's own "call the existing
+        deterministic service, never recalculate" discipline. An unknown
+        or cross-organization scenario/framework id (404) propagates from
+        ScenarioPriorityService.compare unchanged."""
+        scenario, framework, items = self.scenario_priority_service.compare(
+            organization_id, scenario_id, framework_id
+        )
+        comparison_fact = AIScenarioPriorityComparisonFact(
+            scenario_id=scenario.id,
+            scenario_label=scenario.name,
+            framework_name=framework.name,
+            framework_type=framework.framework_type.value,
+            has_changes=any(item.changed for item in items),
+            items=tuple(
+                AIScenarioPriorityComparisonItemFact(
+                    project_id=item.project.id,
+                    project_name=item.project.name,
+                    has_override=item.has_override,
+                    baseline_score=item.baseline_result.score,
+                    baseline_rank=item.baseline_rank,
+                    baseline_category=(
+                        item.baseline_result.category.value
+                        if item.baseline_result.category is not None
+                        else None
+                    ),
+                    scenario_score=item.scenario_result.score,
+                    scenario_rank=item.scenario_rank,
+                    scenario_category=(
+                        item.scenario_result.category.value
+                        if item.scenario_result.category is not None
+                        else None
+                    ),
+                    changed=item.changed,
+                )
+                for item in items
+            ),
+        )
+        return AIInsightContext(
+            scope=AIEntityContext("scenario_priority_comparison", scenario.id, scenario.name),
+            start_date=None,
+            end_date=None,
+            capacity=None,
+            signals=(),
+            skill_coverage=(),
+            scenario=None,
+            scenario_priority_comparison=comparison_fact,
         )
 
     def _team_skill_coverage(

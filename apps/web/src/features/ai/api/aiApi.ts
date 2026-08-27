@@ -2,6 +2,7 @@ import { apiGet, apiPost } from '@/api/client'
 import type {
   AIAskRequest,
   AIExplainPriorityRequest,
+  AIExplainScenarioPriorityComparisonRequest,
   AIExplainScenarioRequest,
   AIExplainSignalRequest,
   AIExplainSnapshotComparisonRequest,
@@ -33,6 +34,9 @@ export const aiApi = {
 
   explainSnapshotComparison: (data: AIExplainSnapshotComparisonRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/explain-snapshot-comparison', data),
+
+  explainScenarioPriorityComparison: (data: AIExplainScenarioPriorityComparisonRequest) =>
+    apiPost<AIResponseEnvelope>('/api/v1/ai/explain-scenario-priority-comparison', data),
 
   ask: (data: AIAskRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/ask', data),
