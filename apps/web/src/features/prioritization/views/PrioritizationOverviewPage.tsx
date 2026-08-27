@@ -17,6 +17,7 @@ import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
 import { FrameworkForm } from '../components/FrameworkForm'
 import { PortfolioSnapshotComparisonTable } from '../components/PortfolioSnapshotComparisonTable'
 import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
+import { PortfolioSnapshotTrendChart } from '../components/PortfolioSnapshotTrendChart'
 import { PortfolioTable } from '../components/PortfolioTable'
 import { ScoreForm } from '../components/ScoreForm'
 import { useDependencyGraph } from '../hooks/useDependencyGraph'
@@ -49,6 +50,9 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * explanation of the Phase 22 snapshot comparison above
  * (ExplainSnapshotComparisonButton) — reusing the Phase 8 AI
  * infrastructure verbatim, exactly like ExplainPriorityButton (Phase 19).
+ * Phase 24 adds a multi-snapshot score trend (PortfolioSnapshotTrendChart)
+ * — built entirely from the same snapshot list already fetched here, no
+ * new backend endpoint; see utils/snapshotTrend.ts.
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -263,6 +267,13 @@ export function PrioritizationOverviewPage() {
                             )}
                           </QueryBoundary>
                         ) : null}
+
+                        <div className="space-y-4 border-t border-slate-800 pt-4">
+                          <h3 className="text-sm font-medium text-slate-200">
+                            Trend across snapshots
+                          </h3>
+                          <PortfolioSnapshotTrendChart snapshots={snapshots.items} />
+                        </div>
                       </div>
                     )}
                   </div>

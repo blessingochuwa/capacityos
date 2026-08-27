@@ -1358,6 +1358,41 @@ requirement (matching every other AI route, none of which mutate data).
 0 new tables, 0 migrations, 0 new permissions. See
 docs/adr/0023-ai-snapshot-comparison-explanation.md.
 
+### Phase 24
+Multi-snapshot portfolio trend visualization (§18/§38) — the "multi-
+snapshot trend chart beyond a two-point diff" named across ADRs 0021-0023
+as deferred but never actually specified anywhere, including the original
+Phase 17 PRD (whose §15 names five different Recharts visualizations —
+Priority-vs-Effort scatter, Capacity-vs-Priority matrix, Risk-vs-Value
+quadrant, WSJF breakdown, dependency timeline — none of them this chart).
+Per the phase brief's audit-first instruction, the repository was audited
+and found one genuine open product decision — what the Y-axis plots,
+since `app/domain/prioritization.py::calculate_moscow_result`/
+`rank_priority_results` confirm a MoSCoW score and rank are each always
+null, making "score over time," "rank over time," and "both" three
+materially different features, not a styling choice — and a rank trend
+specifically risks conflating a project's own change with a sibling
+project entering/leaving the ranking (a confound ADR 0022 already flagged
+for the two-point diff). This was presented to the user as a blocking
+question with three concrete options before any code was written; the
+user chose **score over time**. Built as a frontend-only feature with
+**zero backend changes** — `GET /api/v1/prioritization/snapshots` (Phase
+21, unchanged) already returns every selected snapshot's frozen `entries`
+with `score`, sufficient to build a per-project time series with no new
+endpoint, matching the phase brief's own "extend the API only if it
+cannot already provide the data" instruction.
+`app/domain/portfolio_snapshot.py` was not touched; the new
+`features/prioritization/utils/snapshotTrend.ts::buildSnapshotTrend` is a
+pure, unit-tested frontend function mirroring `compare_snapshot_entries`'s
+own discipline (never recomputes a score, never fabricates a value for a
+project absent from a snapshot — represented as a gap, not interpolated;
+deduplicates a repeated snapshot selection; never mutates its input).
+`PortfolioSnapshotTrendChart` pairs the Recharts line chart with an
+accessible data table, matching `ProjectDemandTimeline`'s existing
+precedent — colour is never the only signal. 0 new tables, 0 migrations,
+0 new permissions, 0 backend files changed. See
+docs/adr/0024-portfolio-snapshot-trend.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1401,11 +1436,13 @@ a snapshot of a scenario's hypothetical ranking remains unbuilt, genuinely
 blocked on a product decision about `Scenario`'s hard-delete lifecycle
 (unlike `PrioritizationFramework`, `Scenario` supports a real delete);
 an AI explanation of a snapshot comparison is resolved as of Phase 23,
-docs/adr/0023-ai-snapshot-comparison-explanation.md — a multi-snapshot
-trend chart beyond a two-point diff remains unbuilt, deliberately left
-outside both Phase 22's and Phase 23's own bounded scope; see ADR 0020's,
-ADR 0021's, ADR 0022's, and ADR 0023's Consequences for the remaining
-named boundaries);
+docs/adr/0023-ai-snapshot-comparison-explanation.md, and a multi-snapshot
+score-over-time trend chart is resolved as of Phase 24,
+docs/adr/0024-portfolio-snapshot-trend.md (a frontend-only feature, zero
+backend changes — a rank-over-time or toggleable variant was audited and
+explicitly not selected, per that ADR's Decision); see ADR 0020's, ADR
+0021's, ADR 0022's, ADR 0023's, and ADR 0024's Consequences for the
+remaining named boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
 registration (matching Risk/Stakeholder's own precedent, not specified —
 a Phase 22 audit of the actual import/export code confirmed neither Risk
