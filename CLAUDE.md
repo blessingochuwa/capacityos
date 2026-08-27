@@ -1393,6 +1393,51 @@ precedent — colour is never the only signal. 0 new tables, 0 migrations,
 0 new permissions, 0 backend files changed. See
 docs/adr/0024-portfolio-snapshot-trend.md.
 
+### Phase 25
+WSJF breakdown visualization (§18/§38) — one of the five Recharts
+visualizations the Phase 17 PRD's own §15 actually names (Priority-vs-
+Effort scatter, Capacity-vs-Priority matrix, Risk-vs-Value quadrant, WSJF
+breakdown, dependency timeline). Per the phase brief's audit-first
+instruction, the repository was audited against every named candidate
+(the five PRD visualizations, Scenario snapshots, Risk/Stakeholder/
+Prioritization/`ProjectDependency`/`PortfolioSnapshot` import/export, a
+membership/user-management UI) and confirmed directly against current
+code — not merely repeated from a prior ADR's claim — that Scenario
+snapshots and import/export registration are both still genuinely
+blocked on the same unresolved product decisions ADR 0022 first flagged
+(`ScenarioService.delete` still hard-deletes; `ImportEntityType` still
+has the same 10 members). Of the five PRD visualizations, three carry
+real cross-domain ambiguity not specified anywhere (Capacity-vs-Priority:
+whose capacity, over what period; Risk-vs-Value: which of a project's
+several risks; dependency timeline: `ProjectDependency` still has no
+date/duration data, per ADR 0021's own unchanged finding) — WSJF
+breakdown alone has zero ambiguity, since its "four inputs" are
+`app/domain/prioritization.py::WSJF_CRITERION_KEYS` verbatim, already
+returned in full by the unchanged Phase 17 `GET .../portfolio` response.
+A membership/user-management UI was re-confirmed fully backend-ready but
+not selected — a materially larger multi-flow vertical slice than one
+chart. Because WSJF breakdown was already-specified, zero-backend-risk,
+and carried no open product decision, no blocking question was needed
+for the selection itself (per the phase brief's own "do not ask merely
+for confirmation when the repository already specifies the answer").
+One execution-level interpretation was made within the selected scope,
+not a product decision: the PRD's "stacked bar of the four inputs" would
+be misleading if all four were literally stacked together, since
+`job_size` is WSJF's divisor, not a fourth additive term alongside
+`business_value`/`time_criticality`/`risk_reduction_opportunity_enablement`
+(whose sum genuinely is SAFe's own "Cost of Delay") — those three are
+stacked, `job_size` renders as its own adjacent bar in the same chart, so
+all four values are still shown together per project. Built with **zero
+backend changes**, matching Phase 24's own "reuse what already exists"
+precedent — `GET /api/v1/prioritization/portfolio` was already fetched by
+this exact page before this phase. `features/prioritization/utils/
+wsjfBreakdown.ts::buildWsjfBreakdown` is a pure, unit-tested frontend
+function that copies each criterion value verbatim from `breakdown`,
+never recomputing anything, and excludes any project without a complete
+WSJF score rather than plotting a fabricated zero. 0 new tables, 0
+migrations, 0 new permissions, 0 backend files changed. See
+docs/adr/0025-wsjf-breakdown-visualization.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1440,17 +1485,25 @@ docs/adr/0023-ai-snapshot-comparison-explanation.md, and a multi-snapshot
 score-over-time trend chart is resolved as of Phase 24,
 docs/adr/0024-portfolio-snapshot-trend.md (a frontend-only feature, zero
 backend changes — a rank-over-time or toggleable variant was audited and
-explicitly not selected, per that ADR's Decision); see ADR 0020's, ADR
-0021's, ADR 0022's, ADR 0023's, and ADR 0024's Consequences for the
-remaining named boundaries);
+explicitly not selected, per that ADR's Decision); the PRD's own §15 WSJF
+breakdown visualization is resolved as of Phase 25,
+docs/adr/0025-wsjf-breakdown-visualization.md (also a frontend-only
+feature, zero backend changes) — the remaining four PRD visualizations
+(Priority-vs-Effort scatter, Capacity-vs-Priority matrix, Risk-vs-Value
+quadrant, dependency timeline) remain unbuilt, three of them genuinely
+blocked on unspecified cross-domain semantics per that same ADR's
+Evaluation; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's, ADR
+0024's, and ADR 0025's Consequences for the remaining named boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
 registration (matching Risk/Stakeholder's own precedent, not specified —
 a Phase 22 audit of the actual import/export code confirmed neither Risk
 nor Stakeholder has a natural identity key for CSV upsert-matching, a
 further open question any future phase attempting this would need to
-resolve first); a membership/user-management UI (re-confirmed
-fully backend-ready with zero frontend surface by the Phase 22 audit, but
-not selected for that phase). None of these are scheduled — do not build
+resolve first, reconfirmed still open by the Phase 25 audit); a
+membership/user-management UI (re-confirmed fully backend-ready with
+zero frontend surface by the Phase 22 and Phase 25 audits, not selected
+for either phase — a materially larger vertical slice than the chart
+Phase 25 selected instead). None of these are scheduled — do not build
 any of them without an explicit request, per §32.
 
 Do not jump ahead while the underlying domain is unstable.

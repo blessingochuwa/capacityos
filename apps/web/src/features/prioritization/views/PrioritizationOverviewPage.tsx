@@ -19,6 +19,7 @@ import { PortfolioSnapshotComparisonTable } from '../components/PortfolioSnapsho
 import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
 import { PortfolioSnapshotTrendChart } from '../components/PortfolioSnapshotTrendChart'
 import { PortfolioTable } from '../components/PortfolioTable'
+import { WsjfBreakdownChart } from '../components/WsjfBreakdownChart'
 import { ScoreForm } from '../components/ScoreForm'
 import { useDependencyGraph } from '../hooks/useDependencyGraph'
 import { useFrameworks } from '../hooks/useFrameworks'
@@ -52,7 +53,13 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * infrastructure verbatim, exactly like ExplainPriorityButton (Phase 19).
  * Phase 24 adds a multi-snapshot score trend (PortfolioSnapshotTrendChart)
  * — built entirely from the same snapshot list already fetched here, no
- * new backend endpoint; see utils/snapshotTrend.ts.
+ * new backend endpoint; see utils/snapshotTrend.ts. Phase 25 adds the
+ * PRD's §15 WSJF breakdown visualization (WsjfBreakdownChart), shown only
+ * for a WSJF-typed framework, built entirely from the same portfolio
+ * ranking already fetched here — no new backend endpoint; see
+ * utils/wsjfBreakdown.ts. The four remaining PRD visualizations (Priority
+ * vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value
+ * quadrant, dependency timeline) remain deferred.
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -161,10 +168,20 @@ export function PrioritizationOverviewPage() {
                     description="Pick a project below to add its first score."
                   />
                 ) : (
-                  <PortfolioTable
-                    items={portfolio.items}
-                    onSelectProject={canScore ? setScoringProjectId : undefined}
-                  />
+                  <div className="space-y-6">
+                    <PortfolioTable
+                      items={portfolio.items}
+                      onSelectProject={canScore ? setScoringProjectId : undefined}
+                    />
+                    {selectedFramework?.framework_type === 'wsjf' ? (
+                      <div className="space-y-4 border-t border-slate-800 pt-4">
+                        <h3 className="text-sm font-medium text-slate-200">
+                          WSJF breakdown
+                        </h3>
+                        <WsjfBreakdownChart items={portfolio.items} />
+                      </div>
+                    ) : null}
+                  </div>
                 )
               }
             </QueryBoundary>
