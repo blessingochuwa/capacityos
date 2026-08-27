@@ -1473,6 +1473,44 @@ CSRF requirement (matching every other AI route). 0 new tables, 0
 migrations, 0 new permissions. See
 docs/adr/0026-ai-scenario-priority-comparison-explanation.md.
 
+### Phase 27
+Priority vs. Effort scatter visualization (§18/§38) — one of the five
+Recharts visualizations the Phase 17 PRD's own §15 actually names. Per
+the phase brief's audit-first instruction, every candidate Phase 26 left
+deferred was re-verified directly against current code, not merely
+repeated from a prior ADR's claim: `ScenarioService.delete` still
+hard-deletes (Scenario snapshots still blocked), `ImportEntityType`
+still has the same 10 members (import/export still blocked),
+`app/api/v1/organizations.py` still exposes the same 10 routes
+(membership UI still viable but oversized), `ProjectDependency` still
+has only `created_at` (dependency timeline still blocked). Of the four
+remaining PRD visualizations, Capacity-vs-Priority and Risk-vs-Value
+remain genuinely blocked (no specification exists for "a project's
+capacity" or for aggregating a project's several risks into one value);
+Priority-vs-Effort alone is buildable with no invented semantics —
+`app/domain/prioritization.py::RICE_CRITERION_KEYS` names its effort
+criterion literally `"effort"`, `WSJF_CRITERION_KEYS` names the
+structurally analogous denominator `"job_size"` (the PRD's own §5.1
+table already lists both formulas as value-divided-by-effort), and
+`calculate_ice_score` confirms ICE has no effort-like denominator at all
+(a plain average, never divided by anything) — so RICE/WSJF-only scoping
+is grounded in existing code, not guessed at. Because this required no
+open product decision, no blocking question was needed for the
+selection. Built with **zero backend changes**, matching Phase 25's own
+precedent — `GET /api/v1/prioritization/portfolio` was already fetched
+by this exact page before this phase.
+`features/prioritization/utils/priorityEffortScatter.ts::buildPriorityEffortScatter`
+is a pure, unit-tested frontend function that copies `score` and the
+resolved effort-criterion value verbatim, never recomputing anything,
+and excludes any project without a complete score rather than plotting
+a fabricated zero; a framework with no defined effort criterion (ICE,
+Weighted, MoSCoW) returns no points rather than guessing one. No
+quadrant lines or "quick win" threshold are drawn — no such boundary is
+defined anywhere in this codebase, and CLAUDE.md §17/§29 forbid inventing
+one for display. 0 new tables, 0 migrations, 0 new permissions, 0
+backend files changed. See
+docs/adr/0027-priority-effort-scatter-visualization.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1526,23 +1564,28 @@ backend changes — a rank-over-time or toggleable variant was audited and
 explicitly not selected, per that ADR's Decision); the PRD's own §15 WSJF
 breakdown visualization is resolved as of Phase 25,
 docs/adr/0025-wsjf-breakdown-visualization.md (also a frontend-only
-feature, zero backend changes) — the remaining four PRD visualizations
-(Priority-vs-Effort scatter, Capacity-vs-Priority matrix, Risk-vs-Value
-quadrant, dependency timeline) remain unbuilt, three of them genuinely
-blocked on unspecified cross-domain semantics per that same ADR's
-Evaluation; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's, ADR
-0024's, ADR 0025's, and ADR 0026's Consequences for the remaining named
-boundaries);
+feature, zero backend changes); the PRD's own §15 Priority-vs-Effort
+scatter is resolved as of Phase 27,
+docs/adr/0027-priority-effort-scatter-visualization.md (also a
+frontend-only feature, zero backend changes, scoped to RICE/WSJF only
+since ICE/Weighted have no defined effort criterion) — the remaining
+three PRD visualizations (Capacity-vs-Priority matrix, Risk-vs-Value
+quadrant, dependency timeline) remain unbuilt, all three genuinely
+blocked on unspecified cross-domain semantics, reconfirmed unchanged by
+the Phase 27 audit; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
+ADR 0024's, ADR 0025's, ADR 0026's, and ADR 0027's Consequences for the
+remaining named boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
 registration (matching Risk/Stakeholder's own precedent, not specified —
 a Phase 22 audit of the actual import/export code confirmed neither Risk
 nor Stakeholder has a natural identity key for CSV upsert-matching, a
 further open question any future phase attempting this would need to
-resolve first, reconfirmed still open by the Phase 25 and Phase 26
-audits); a membership/user-management UI (re-confirmed fully
-backend-ready with zero frontend surface by the Phase 22, Phase 25, and
-Phase 26 audits, not selected for any of them — a materially larger
-vertical slice than the single-capability slices selected instead).
+resolve first, reconfirmed still open by the Phase 25, Phase 26, and
+Phase 27 audits); a membership/user-management UI (re-confirmed fully
+backend-ready with zero frontend surface by the Phase 22, Phase 25,
+Phase 26, and Phase 27 audits, not selected for any of them — a
+materially larger vertical slice than the single-capability slices
+selected instead).
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 

@@ -19,6 +19,7 @@ import { PortfolioSnapshotComparisonTable } from '../components/PortfolioSnapsho
 import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
 import { PortfolioSnapshotTrendChart } from '../components/PortfolioSnapshotTrendChart'
 import { PortfolioTable } from '../components/PortfolioTable'
+import { PriorityEffortScatterChart } from '../components/PriorityEffortScatterChart'
 import { WsjfBreakdownChart } from '../components/WsjfBreakdownChart'
 import { ScoreForm } from '../components/ScoreForm'
 import { useDependencyGraph } from '../hooks/useDependencyGraph'
@@ -57,9 +58,13 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * PRD's §15 WSJF breakdown visualization (WsjfBreakdownChart), shown only
  * for a WSJF-typed framework, built entirely from the same portfolio
  * ranking already fetched here — no new backend endpoint; see
- * utils/wsjfBreakdown.ts. The four remaining PRD visualizations (Priority
- * vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value
- * quadrant, dependency timeline) remain deferred.
+ * utils/wsjfBreakdown.ts. Phase 27 adds the PRD's §15 Priority vs. Effort
+ * scatter (PriorityEffortScatterChart), shown for a RICE- or WSJF-typed
+ * framework (the only two with a defined effort-like criterion), also
+ * built entirely from the same portfolio ranking — no new backend
+ * endpoint; see utils/priorityEffortScatter.ts. The remaining three PRD
+ * visualizations (Capacity vs. Priority matrix, Risk vs. Value quadrant,
+ * dependency timeline) remain deferred.
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -173,6 +178,18 @@ export function PrioritizationOverviewPage() {
                       items={portfolio.items}
                       onSelectProject={canScore ? setScoringProjectId : undefined}
                     />
+                    {selectedFramework?.framework_type === 'rice' ||
+                    selectedFramework?.framework_type === 'wsjf' ? (
+                      <div className="space-y-4 border-t border-slate-800 pt-4">
+                        <h3 className="text-sm font-medium text-slate-200">
+                          Priority vs. effort
+                        </h3>
+                        <PriorityEffortScatterChart
+                          frameworkType={selectedFramework.framework_type}
+                          items={portfolio.items}
+                        />
+                      </div>
+                    ) : null}
                     {selectedFramework?.framework_type === 'wsjf' ? (
                       <div className="space-y-4 border-t border-slate-800 pt-4">
                         <h3 className="text-sm font-medium text-slate-200">
