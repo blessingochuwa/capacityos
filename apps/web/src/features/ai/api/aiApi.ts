@@ -4,6 +4,7 @@ import type {
   AIExplainPriorityRequest,
   AIExplainScenarioRequest,
   AIExplainSignalRequest,
+  AIExplainSnapshotComparisonRequest,
   AIResponseEnvelope,
   AIStatusRead,
   AISummaryRequest,
@@ -29,6 +30,9 @@ export const aiApi = {
 
   explainPriority: (data: AIExplainPriorityRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/explain-priority', data),
+
+  explainSnapshotComparison: (data: AIExplainSnapshotComparisonRequest) =>
+    apiPost<AIResponseEnvelope>('/api/v1/ai/explain-snapshot-comparison', data),
 
   ask: (data: AIAskRequest) =>
     apiPost<AIResponseEnvelope>('/api/v1/ai/ask', data),

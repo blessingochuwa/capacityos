@@ -1334,6 +1334,30 @@ permission, no audit event (matches every other read in this router). 0
 new tables, 0 migrations, 0 new permissions. See
 docs/adr/0022-portfolio-snapshot-comparison.md.
 
+### Phase 23
+AI snapshot comparison explanation (§18/§21) — the item Phase 22 itself
+named as its own still-open remainder, and this phase's brief confirmed
+directly rather than re-deriving from a candidate list: an AI capability
+explaining an already-computed Phase 22 snapshot comparison in plain
+language, never calculating, ranking, scoring, or reinterpreting the
+comparison itself. A sixth capability on the unchanged Phase 8 pipeline
+(`AIContextBuilder`/`AIService`/grounding/`AiTriggerButton`), alongside
+`summarize`/`explain-signal`/`explain-scenario`/`explain-priority`.
+`AIContextBuilder.build_for_snapshot_comparison` calls
+`PortfolioSnapshotService.compare` verbatim — no status
+(entered/left/changed/unchanged), rank, score, or category is ever
+recomputed by the AI layer; framework-mismatch (422) and
+cross-organization/unknown-snapshot (404) behavior is inherited from
+that unchanged Phase 22 service call, not re-implemented. A new
+`snapshot_comparison` grounding reference type adds one
+(type, project_id) pair per comparison item, the same "one reference per
+collection member" shape `signal`/`skill_coverage` already established.
+`POST /api/v1/ai/explain-snapshot-comparison`, gated by the existing
+`Permission.AI_USE` only (every role) — no new permission, no CSRF
+requirement (matching every other AI route, none of which mutate data).
+0 new tables, 0 migrations, 0 new permissions. See
+docs/adr/0023-ai-snapshot-comparison-explanation.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1375,11 +1399,13 @@ brief, and remains unbuilt; portfolio snapshots are resolved as of Phase
 resolved as of Phase 22, docs/adr/0022-portfolio-snapshot-comparison.md —
 a snapshot of a scenario's hypothetical ranking remains unbuilt, genuinely
 blocked on a product decision about `Scenario`'s hard-delete lifecycle
-(unlike `PrioritizationFramework`, `Scenario` supports a real delete),
-and an AI explanation of a snapshot comparison and a multi-snapshot trend
-chart beyond a two-point diff were deliberately left unbuilt as outside
-Phase 22's own bounded scope; see ADR 0020's, ADR 0021's, and ADR 0022's
-Consequences for the remaining named boundaries);
+(unlike `PrioritizationFramework`, `Scenario` supports a real delete);
+an AI explanation of a snapshot comparison is resolved as of Phase 23,
+docs/adr/0023-ai-snapshot-comparison-explanation.md — a multi-snapshot
+trend chart beyond a two-point diff remains unbuilt, deliberately left
+outside both Phase 22's and Phase 23's own bounded scope; see ADR 0020's,
+ADR 0021's, ADR 0022's, and ADR 0023's Consequences for the remaining
+named boundaries);
 Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
 registration (matching Risk/Stakeholder's own precedent, not specified —
 a Phase 22 audit of the actual import/export code confirmed neither Risk

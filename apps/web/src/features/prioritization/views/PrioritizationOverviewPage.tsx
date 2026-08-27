@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/context/AuthContext'
 import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { ProjectFilterPicker } from '@/features/insights/components/ProjectFilterPicker'
 import { ExplainPriorityButton } from '@/features/ai/components/ExplainPriorityButton'
+import { ExplainSnapshotComparisonButton } from '@/features/ai/components/ExplainSnapshotComparisonButton'
 import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
 import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
@@ -44,7 +45,10 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * already-frozen snapshots, never persisted. The five remaining Recharts
  * visualizations and an AI explanation of the Phase 20 comparison remain
  * deferred (see docs/PRD-phase-17-prioritization.md, docs/adr/0019,
- * docs/adr/0020, docs/adr/0021, and docs/adr/0022).
+ * docs/adr/0020, docs/adr/0021, and docs/adr/0022). Phase 23 adds an AI
+ * explanation of the Phase 22 snapshot comparison above
+ * (ExplainSnapshotComparisonButton) — reusing the Phase 8 AI
+ * infrastructure verbatim, exactly like ExplainPriorityButton (Phase 19).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -249,7 +253,13 @@ export function PrioritizationOverviewPage() {
                             errorTitle="Could not compare these snapshots"
                           >
                             {(comparison) => (
-                              <PortfolioSnapshotComparisonTable items={comparison.items} />
+                              <div className="space-y-4">
+                                <PortfolioSnapshotComparisonTable items={comparison.items} />
+                                <ExplainSnapshotComparisonButton
+                                  fromSnapshotId={compareFromId}
+                                  toSnapshotId={compareToId}
+                                />
+                              </div>
                             )}
                           </QueryBoundary>
                         ) : null}

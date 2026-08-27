@@ -6,7 +6,7 @@ building is covered by tests/api/test_ai.py.
 
 import logging
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -34,6 +34,8 @@ from app.services.ai_context import (
     AIEntityContext,
     AIInsightContext,
     AIPriorityFact,
+    AISnapshotComparisonFact,
+    AISnapshotComparisonItemFact,
 )
 from app.services.ai_service import AIService, frame_user_question, ground, serialize_context
 
@@ -83,6 +85,14 @@ class _FakeContextBuilder(AIContextBuilder):
 
     def build_for_priority_score(
         self, organization_id: uuid.UUID, project_id: uuid.UUID, score_id: uuid.UUID
+    ) -> AIInsightContext:
+        return self._context
+
+    def build_for_snapshot_comparison(
+        self,
+        organization_id: uuid.UUID,
+        from_snapshot_id: uuid.UUID,
+        to_snapshot_id: uuid.UUID,
     ) -> AIInsightContext:
         return self._context
 
@@ -322,6 +332,85 @@ def test_serialize_context_renders_missing_criteria_and_category() -> None:
     assert "missing criteria: effort" in serialized
 
 
+def test_serialize_context_renders_snapshot_comparison_fact_with_source_reference() -> None:
+    from_id = uuid.uuid4()
+    to_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext("portfolio_snapshot_comparison", to_id, "Feature RICE comparison"),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        snapshot_comparison=AISnapshotComparisonFact(
+            from_snapshot_id=from_id,
+            to_snapshot_id=to_id,
+            from_taken_at=datetime(2026, 8, 1, tzinfo=UTC),
+            to_taken_at=datetime(2026, 8, 15, tzinfo=UTC),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            items=(
+                AISnapshotComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    status="changed",
+                    rank_from=2,
+                    rank_to=1,
+                    score_from=Decimal("400.00"),
+                    score_to=Decimal("3600.00"),
+                    category_from=None,
+                    category_to=None,
+                ),
+            ),
+        ),
+    )
+    serialized = serialize_context(context)
+    assert "Feature RICE" in serialized
+    assert "status=changed" in serialized
+    assert "score_from=400.00" in serialized
+    assert "score_to=3600.00" in serialized
+    assert f"type=snapshot_comparison, entity_id={project_id}" in serialized
+
+
+def test_known_references_includes_snapshot_comparison_project_ids() -> None:
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext(
+            "portfolio_snapshot_comparison", uuid.uuid4(), "Feature RICE comparison"
+        ),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        snapshot_comparison=AISnapshotComparisonFact(
+            from_snapshot_id=uuid.uuid4(),
+            to_snapshot_id=uuid.uuid4(),
+            from_taken_at=datetime(2026, 8, 1, tzinfo=UTC),
+            to_taken_at=datetime(2026, 8, 15, tzinfo=UTC),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            items=(
+                AISnapshotComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    status="entered",
+                    rank_from=None,
+                    rank_to=1,
+                    score_from=None,
+                    score_to=Decimal("3600.00"),
+                    category_from=None,
+                    category_to=None,
+                ),
+            ),
+        ),
+    )
+    assert ("snapshot_comparison", str(project_id)) in context.known_references()
+
+
 def test_known_references_includes_priority_score_when_present() -> None:
     score_id = uuid.uuid4()
     context = AIInsightContext(
@@ -484,6 +573,66 @@ def test_explain_priority_ok_response_grounds_from_priority_context() -> None:
     envelope = service.explain_priority(ORGANIZATION_ID, uuid.uuid4(), score_id)
     assert envelope.status == AIResponseStatus.OK
     assert envelope.response is not None
+
+
+def test_explain_snapshot_comparison_ok_response_grounds_from_comparison_context() -> None:
+    project_id = uuid.uuid4()
+    context = AIInsightContext(
+        scope=AIEntityContext(
+            "portfolio_snapshot_comparison", uuid.uuid4(), "Feature RICE comparison"
+        ),
+        start_date=None,
+        end_date=None,
+        capacity=None,
+        signals=(),
+        skill_coverage=(),
+        scenario=None,
+        snapshot_comparison=AISnapshotComparisonFact(
+            from_snapshot_id=uuid.uuid4(),
+            to_snapshot_id=uuid.uuid4(),
+            from_taken_at=datetime(2026, 8, 1, tzinfo=UTC),
+            to_taken_at=datetime(2026, 8, 15, tzinfo=UTC),
+            framework_name="Feature RICE",
+            framework_type="rice",
+            items=(
+                AISnapshotComparisonItemFact(
+                    project_id=project_id,
+                    project_name="Website Redesign",
+                    status="changed",
+                    rank_from=2,
+                    rank_to=1,
+                    score_from=Decimal("400.00"),
+                    score_to=Decimal("3600.00"),
+                    category_from=None,
+                    category_to=None,
+                ),
+            ),
+        ),
+    )
+    service = AIService(
+        context_builder=_FakeContextBuilder(context),
+        provider=MockAIProvider(),
+        provider_name="mock",
+        model_name="test-model",
+        max_output_tokens=1024,
+    )
+    envelope = service.explain_snapshot_comparison(ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4())
+    assert envelope.status == AIResponseStatus.OK
+    assert envelope.response is not None
+
+
+def test_explain_snapshot_comparison_returns_unavailable_when_no_provider() -> None:
+    service = _service(None)
+    envelope = service.explain_snapshot_comparison(ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4())
+    assert envelope.status == AIResponseStatus.UNAVAILABLE
+    assert envelope.response is None
+
+
+def test_explain_snapshot_comparison_returns_error_status_on_timeout() -> None:
+    service = _service(_RaisingProvider(AIProviderTimeoutError("boom")))
+    envelope = service.explain_snapshot_comparison(ORGANIZATION_ID, uuid.uuid4(), uuid.uuid4())
+    assert envelope.status == AIResponseStatus.ERROR
+    assert envelope.response is None
 
 
 def test_status_reports_unavailable_with_no_model_when_no_provider() -> None:

@@ -21,6 +21,7 @@ class AISourceReferenceType(StrEnum):
     SCENARIO = "scenario"
     SKILL_COVERAGE = "skill_coverage"
     PRIORITY_SCORE = "priority_score"
+    SNAPSHOT_COMPARISON = "snapshot_comparison"
 
 
 class AISourceReference(BaseModel):
@@ -127,6 +128,17 @@ class AIExplainPriorityRequest(BaseModel):
 
     project_id: uuid.UUID
     score_id: uuid.UUID
+
+
+class AIExplainSnapshotComparisonRequest(BaseModel):
+    """Addressed by the same (from_snapshot_id, to_snapshot_id) pair
+    GET /api/v1/prioritization/snapshots/compare already takes (Phase 22)
+    — the comparison being explained is the one that pair identifies,
+    never a separately-stored comparison id (none exists; the comparison
+    itself is never persisted, see docs/adr/0022)."""
+
+    from_snapshot_id: uuid.UUID
+    to_snapshot_id: uuid.UUID
 
 
 class AIAskRequest(BaseModel):

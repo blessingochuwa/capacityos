@@ -146,6 +146,28 @@ def serialize_context(context: AIInsightContext) -> str:
         if p.missing_criteria:
             lines.append(f"  missing criteria: {', '.join(p.missing_criteria)}")
 
+    if context.snapshot_comparison is not None:
+        sc = context.snapshot_comparison
+        lines.append(
+            f'snapshot comparison for framework "{sc.framework_name}" ({sc.framework_type}): '
+            f"from={sc.from_taken_at} (id={sc.from_snapshot_id}) "
+            f"to={sc.to_taken_at} (id={sc.to_snapshot_id})"
+        )
+        for item in sc.items:
+            score_from = item.score_from if item.score_from is not None else "n/a"
+            score_to = item.score_to if item.score_to is not None else "n/a"
+            category = (
+                f" category_from={item.category_from} category_to={item.category_to}"
+                if item.category_from is not None or item.category_to is not None
+                else ""
+            )
+            lines.append(
+                f"  - project={item.project_name} status={item.status} "
+                f"rank_from={item.rank_from} rank_to={item.rank_to} "
+                f"score_from={score_from} score_to={score_to}{category} "
+                f"(source_reference: type=snapshot_comparison, entity_id={item.project_id})"
+            )
+
     return "\n".join(lines)
 
 
@@ -295,6 +317,26 @@ class AIService:
             "category means if one is set, and what a reviewer might want to check before "
             "trusting this ranking. Do not recalculate or suggest a different score "
             "yourself — only interpret the figures already given."
+        )
+        return self._generate(context, question)
+
+    def explain_snapshot_comparison(
+        self, organization_id: uuid.UUID, from_snapshot_id: uuid.UUID, to_snapshot_id: uuid.UUID
+    ) -> AIResponseEnvelope:
+        """Phase 23 — explains an EXISTING Phase 22 comparison between two
+        already-frozen Phase 21 snapshots. Never recomputes the diff, a
+        score, or a rank itself (CLAUDE.md §4/§21) — the question below is
+        deliberately framed as interpretation only, mirroring
+        explain_priority's/explain_scenario's own "do not recalculate"
+        framing."""
+        context = self.context_builder.build_for_snapshot_comparison(
+            organization_id, from_snapshot_id, to_snapshot_id
+        )
+        question = (
+            "Explain what changed in this portfolio's ranking between the two snapshots: "
+            "which projects entered, left, or changed rank/score/category, and which stayed "
+            "unchanged. Do not recalculate, re-rank, or re-score anything yourself — only "
+            "interpret the comparison already given."
         )
         return self._generate(context, question)
 

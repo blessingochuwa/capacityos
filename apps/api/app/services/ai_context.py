@@ -12,7 +12,7 @@ other contact information — data minimization, not just structure.
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from app.core.exceptions import NotFoundError
@@ -23,6 +23,7 @@ from app.repositories.team import TeamRepository
 from app.schemas.insights import SignalRead
 from app.services.capacity import CapacityService
 from app.services.insight_service import InsightService
+from app.services.portfolio_snapshot import PortfolioSnapshotService
 from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.scenario_calculation import ScenarioCalculationService
 from app.services.skill_capacity import SkillCapacityService
@@ -105,6 +106,42 @@ class AIPriorityFact:
 
 
 @dataclass(frozen=True)
+class AISnapshotComparisonItemFact:
+    """One project's row in the Phase 22 comparison — every field is
+    copied verbatim from SnapshotComparisonItem
+    (app/domain/portfolio_snapshot.py), never recomputed here."""
+
+    project_id: uuid.UUID
+    project_name: str
+    status: str
+    rank_from: int | None
+    rank_to: int | None
+    score_from: Decimal | None
+    score_to: Decimal | None
+    category_from: str | None
+    category_to: str | None
+
+
+@dataclass(frozen=True)
+class AISnapshotComparisonFact:
+    """Phase 23 — the same (from_snapshot, to_snapshot, items) triple
+    PortfolioSnapshotService.compare already returns and
+    portfolio_snapshot_comparison_to_read already renders to the API,
+    reshaped into this module's DB-free fact vocabulary. No status, rank,
+    score, or category is ever recomputed by this module — this is a
+    comparison of two already-frozen Phase 21 snapshots (Phase 22), and
+    this fact only copies that already-computed diff."""
+
+    from_snapshot_id: uuid.UUID
+    to_snapshot_id: uuid.UUID
+    from_taken_at: datetime
+    to_taken_at: datetime
+    framework_name: str
+    framework_type: str
+    items: tuple[AISnapshotComparisonItemFact, ...]
+
+
+@dataclass(frozen=True)
 class AIInsightContext:
     scope: AIEntityContext
     start_date: date | None
@@ -114,6 +151,7 @@ class AIInsightContext:
     skill_coverage: tuple[AISkillCoverageFact, ...]
     scenario: AIScenarioFact | None
     priority: AIPriorityFact | None = None
+    snapshot_comparison: AISnapshotComparisonFact | None = None
 
     def known_references(self) -> frozenset[tuple[str, str]]:
         """(reference_type, id-as-str) pairs actually present in this
@@ -129,6 +167,9 @@ class AIInsightContext:
             refs.add(("scenario", str(self.scenario.scenario_id)))
         if self.priority is not None:
             refs.add(("priority_score", str(self.priority.score_id)))
+        if self.snapshot_comparison is not None:
+            for item in self.snapshot_comparison.items:
+                refs.add(("snapshot_comparison", str(item.project_id)))
         return frozenset(refs)
 
 
@@ -165,6 +206,7 @@ class AIContextBuilder:
         scenario_calculation_service: ScenarioCalculationService,
         skill_capacity_service: SkillCapacityService,
         priority_score_service: ProjectPriorityScoreService,
+        portfolio_snapshot_service: PortfolioSnapshotService,
         person_repository: PersonRepository,
         team_repository: TeamRepository,
         project_repository: ProjectRepository,
@@ -174,6 +216,7 @@ class AIContextBuilder:
         self.scenario_calculation_service = scenario_calculation_service
         self.skill_capacity_service = skill_capacity_service
         self.priority_score_service = priority_score_service
+        self.portfolio_snapshot_service = portfolio_snapshot_service
         self.person_repository = person_repository
         self.team_repository = team_repository
         self.project_repository = project_repository
@@ -300,6 +343,59 @@ class AIContextBuilder:
             skill_coverage=(),
             scenario=None,
             priority=priority_fact,
+        )
+
+    def build_for_snapshot_comparison(
+        self,
+        organization_id: uuid.UUID,
+        from_snapshot_id: uuid.UUID,
+        to_snapshot_id: uuid.UUID,
+    ) -> AIInsightContext:
+        """Phase 23. Reuses PortfolioSnapshotService.compare verbatim — the
+        exact same (from_snapshot, to_snapshot, items) triple
+        portfolio_snapshot_comparison_to_read already builds the API
+        response from — rather than recomputing anything itself, matching
+        build_for_priority_score's own "call the existing deterministic
+        service, never recalculate" discipline. Framework-mismatch (422)
+        and an unknown or cross-organization snapshot id (404) propagate
+        from PortfolioSnapshotService.compare unchanged."""
+        from_snapshot, to_snapshot, items = self.portfolio_snapshot_service.compare(
+            organization_id, from_snapshot_id, to_snapshot_id
+        )
+        comparison_fact = AISnapshotComparisonFact(
+            from_snapshot_id=from_snapshot.id,
+            to_snapshot_id=to_snapshot.id,
+            from_taken_at=from_snapshot.created_at,
+            to_taken_at=to_snapshot.created_at,
+            framework_name=to_snapshot.framework_name,
+            framework_type=to_snapshot.framework_type.value,
+            items=tuple(
+                AISnapshotComparisonItemFact(
+                    project_id=uuid.UUID(item.project_id),
+                    project_name=item.project_name,
+                    status=item.status.value,
+                    rank_from=item.rank_from,
+                    rank_to=item.rank_to,
+                    score_from=item.score_from,
+                    score_to=item.score_to,
+                    category_from=(
+                        item.category_from.value if item.category_from is not None else None
+                    ),
+                    category_to=item.category_to.value if item.category_to is not None else None,
+                )
+                for item in items
+            ),
+        )
+        label = f"{to_snapshot.framework_name} snapshot comparison"
+        return AIInsightContext(
+            scope=AIEntityContext("portfolio_snapshot_comparison", to_snapshot.id, label),
+            start_date=None,
+            end_date=None,
+            capacity=None,
+            signals=(),
+            skill_coverage=(),
+            scenario=None,
+            snapshot_comparison=comparison_fact,
         )
 
     def _team_skill_coverage(

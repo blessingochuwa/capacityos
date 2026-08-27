@@ -17,6 +17,7 @@ from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.portfolio_snapshot import PortfolioSnapshotRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
@@ -30,12 +31,14 @@ from app.schemas.ai import (
     AIExplainPriorityRequest,
     AIExplainScenarioRequest,
     AIExplainSignalRequest,
+    AIExplainSnapshotComparisonRequest,
     AIResponseEnvelope,
     AIStatusRead,
     AISummaryRequest,
 )
 from app.services.ai_context import AIContextBuilder
 from app.services.ai_service import AIService
+from app.services.portfolio_snapshot import PortfolioSnapshotService
 from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.skill_capacity import SkillCapacityService
 
@@ -86,6 +89,14 @@ def get_ai_service(
             ProjectPriorityScoreRepository(db),
             ProjectRepository(db),
             PrioritizationFrameworkRepository(db),
+        ),
+        portfolio_snapshot_service=PortfolioSnapshotService(
+            PortfolioSnapshotRepository(db),
+            ProjectPriorityScoreService(
+                ProjectPriorityScoreRepository(db),
+                ProjectRepository(db),
+                PrioritizationFrameworkRepository(db),
+            ),
         ),
         person_repository=PersonRepository(db),
         team_repository=TeamRepository(db),
@@ -162,6 +173,18 @@ def post_ai_explain_priority(
     service: AIService = Depends(get_ai_service),
 ) -> AIResponseEnvelope:
     return service.explain_priority(membership.organization_id, data.project_id, data.score_id)
+
+
+@router.post("/explain-snapshot-comparison", response_model=AIResponseEnvelope)
+def post_ai_explain_snapshot_comparison(
+    data: AIExplainSnapshotComparisonRequest,
+    _: User = Depends(require_permission(Permission.AI_USE)),
+    membership: OrganizationMembership = Depends(get_current_membership),
+    service: AIService = Depends(get_ai_service),
+) -> AIResponseEnvelope:
+    return service.explain_snapshot_comparison(
+        membership.organization_id, data.from_snapshot_id, data.to_snapshot_id
+    )
 
 
 @router.post("/ask", response_model=AIResponseEnvelope)

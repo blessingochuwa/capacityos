@@ -12,6 +12,7 @@ export type AISourceReferenceType =
   | 'scenario'
   | 'skill_coverage'
   | 'priority_score'
+  | 'snapshot_comparison'
 
 export interface AISourceReference {
   type: AISourceReferenceType
@@ -84,6 +85,11 @@ export interface AIExplainScenarioRequest {
 export interface AIExplainPriorityRequest {
   project_id: string
   score_id: string
+}
+
+export interface AIExplainSnapshotComparisonRequest {
+  from_snapshot_id: string
+  to_snapshot_id: string
 }
 
 export interface AIAskRequest {

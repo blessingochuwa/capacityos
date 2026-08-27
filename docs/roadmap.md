@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–22) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat anything below "Completed phases" as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–20 were each confirmed as they happened.
+This is the single place to see what CapacityOS has built and what's genuinely still open. **Completed phases** (0–23) are drawn directly from CLAUDE.md §39 and their ADRs — that section is the authoritative build order and this table should never drift from it. **Proposed future phases** are compiled from every deferral CLAUDE.md and the ADRs already named explicitly (§22 external integrations, §23 Chrome extension, and the "Deferred items" paragraph at the end of CLAUDE.md §39) — nothing below was invented for this document. Their numbering and grouping are a proposal, not a commitment: this project's own history (see Phase 13's ADR) is that "what phase comes next" gets decided deliberately, by asking, not by assuming a pre-written list — treat anything below "Completed phases" as provisional until CLAUDE.md §39 itself is amended to confirm it, the same way Phases 9–20 were each confirmed as they happened.
 
 ## Status legend
 
@@ -11,7 +11,7 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 🔜 Proposed next | Named by name in this doc's most recent revision as the next thing to build |
 | 📋 Proposed, unscheduled | A real, named gap — not yet ordered or confirmed |
 
-## Completed phases (0–22)
+## Completed phases (0–23)
 
 | Phase | Name | Key deliverable | ADR |
 |---|---|---|---|
@@ -37,9 +37,10 @@ This is the single place to see what CapacityOS has built and what's genuinely s
 | 19 🚧 | AI priority explanation | A fifth Phase 8 AI capability (`explain-priority`), reusing `AIContextBuilder`/`AIService`/grounding unchanged — explains an existing `ProjectPriorityScore` without ever recalculating it. | [0019](adr/0019-ai-priority-explanation.md) |
 | 20 🚧 | Scenario-vs-baseline prioritization comparison | Resolves the Phase 19-flagged product decision: a Scenario can declare explicit, hypothetical criterion overrides (never auto-derived from capacity data); baseline and scenario rankings are both computed through the unchanged Phase 17/18 scoring engine and diffed. | [0020](adr/0020-scenario-priority-comparison.md) |
 | 21 | Portfolio snapshots | An explicit, user-triggered, immutable point-in-time saved ranking (the PRD's own original §8 proposal). `PortfolioSnapshotService.create` freezes `ProjectPriorityScoreService.rank_portfolio`'s result verbatim — framework name/type and every entry's project name/score/rank/breakdown — so a later rename, re-score, or deletion never retroactively changes an already-taken snapshot. No PATCH/DELETE — immutable and append-only, matching `AuditEvent`. | [0021](adr/0021-portfolio-snapshots.md) |
-| 22 | Portfolio snapshot diff/trend | Compares two immutable Phase 21 snapshots — entered/left/changed/unchanged per project, same-framework-only (rejected with 422 otherwise). Pure computation over already-frozen data (`app/domain/portfolio_snapshot.py::compare_snapshot_entries`) — no scoring engine involved, nothing persisted, 0 new tables. See "Proposed next" below for the still-named remainder. | [0022](adr/0022-portfolio-snapshot-comparison.md) |
+| 22 | Portfolio snapshot diff/trend | Compares two immutable Phase 21 snapshots — entered/left/changed/unchanged per project, same-framework-only (rejected with 422 otherwise). Pure computation over already-frozen data (`app/domain/portfolio_snapshot.py::compare_snapshot_entries`) — no scoring engine involved, nothing persisted, 0 new tables. | [0022](adr/0022-portfolio-snapshot-comparison.md) |
+| 23 | AI snapshot comparison explanation | A sixth Phase 8 AI capability (`explain-snapshot-comparison`), reusing `AIContextBuilder`/`AIService`/grounding unchanged — explains an existing Phase 22 snapshot comparison without ever recalculating its status/rank/score/category. See "Proposed next" below for the still-named remainder. | [0023](adr/0023-ai-snapshot-comparison-explanation.md) |
 
-**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–22 landed after the tag).
+**Tag:** [`v0.1-foundation`](https://github.com/blessingochuwa/capacityos/releases/tag/v0.1-foundation) marks Phases 0–16 complete (Phases 17–23 landed after the tag).
 
 ## Proposed future phases
 
@@ -47,14 +48,14 @@ None of these have a confirmed number, order, or ADR yet — each should be conf
 
 ### 🔜 Proposed next: the rest of Prioritization
 
-Phases 17-22 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
+Phases 17-23 together shipped a deliberately reduced slice of the original Phase 17 PRD (each confirmed with the user before implementation, per CLAUDE.md §31's "smallest complete slice"). Still named, scoped, not dropped:
 
 - The five Recharts visualizations (Priority vs. Effort scatter, Capacity vs. Priority matrix, Risk vs. Value quadrant, WSJF breakdown, dependency timeline).
 - An AI interpretation of the Phase 20 scenario-vs-baseline comparison — Phase 20's own brief was explicit that AI may only interpret an established deterministic comparison, never be its source, and left this for a future phase to consider deliberately rather than bundling it in speculatively.
-- **Scenario snapshots** — a snapshot of a scenario's hypothetical (rather than baseline) ranking, within a `PortfolioSnapshot`'s conceptual reach but genuinely ambiguous: `Scenario` (unlike `PrioritizationFramework`) supports a real, non-soft delete, so what happens to a scenario snapshot when its scenario is deleted needs a product decision before this is buildable (audited and explicitly not selected for Phase 22 — see ADR 0022's Context).
-- An AI explanation of a Phase 22 snapshot comparison, and a multi-snapshot trend chart beyond a two-point diff — both natural extensions of Phase 22 but not asked for in its own bounded scope.
+- **Scenario snapshots** — a snapshot of a scenario's hypothetical (rather than baseline) ranking, within a `PortfolioSnapshot`'s conceptual reach but genuinely ambiguous: `Scenario` (unlike `PrioritizationFramework`) supports a real, non-soft delete, so what happens to a scenario snapshot when its scenario is deleted needs a product decision before this is buildable (audited and explicitly not selected for Phase 22, re-confirmed still open by the Phase 23 audit — see ADR 0022's Context).
+- A multi-snapshot trend chart beyond the two-point diff Phase 22 built and Phase 23 can now explain — a natural extension of both, but not asked for in either's own bounded scope.
 
-See [ADR 0020](adr/0020-scenario-priority-comparison.md)'s, [ADR 0021](adr/0021-portfolio-snapshots.md)'s, and [ADR 0022](adr/0022-portfolio-snapshot-comparison.md)'s Consequences for the authoritative list.
+An AI explanation of a Phase 22 snapshot comparison is resolved as of Phase 23 — see [ADR 0023](adr/0023-ai-snapshot-comparison-explanation.md). See [ADR 0020](adr/0020-scenario-priority-comparison.md)'s, [ADR 0021](adr/0021-portfolio-snapshots.md)'s, [ADR 0022](adr/0022-portfolio-snapshot-comparison.md)'s, and [ADR 0023](adr/0023-ai-snapshot-comparison-explanation.md)'s Consequences for the authoritative list.
 
 ### 📋 Proposed, unscheduled
 

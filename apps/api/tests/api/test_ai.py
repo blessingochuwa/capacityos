@@ -18,6 +18,7 @@ from app.main import app
 from tests.factories import (
     make_organization,
     make_person,
+    make_portfolio_snapshot,
     make_prioritization_framework,
     make_project,
     make_project_priority_score,
@@ -453,6 +454,217 @@ def test_explain_priority_404_for_score_in_another_organization(
     finally:
         del app.dependency_overrides[get_settings]
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Explain snapshot comparison (Phase 23)
+# ---------------------------------------------------------------------------
+
+
+def _create_rice_framework(client: TestClient, *, name: str = "Feature RICE") -> dict[str, object]:
+    response = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={"name": name, "framework_type": "rice", "criteria": []},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _create_moscow_framework(
+    client: TestClient, *, name: str = "Release MoSCoW"
+) -> dict[str, object]:
+    response = client.post(
+        "/api/v1/prioritization/frameworks",
+        json={"name": name, "framework_type": "moscow", "criteria": []},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _score_rice_project(
+    client: TestClient, project_id: object, framework_id: object, *, reach: str = "1000"
+) -> dict[str, object]:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/priority-scores",
+        json={
+            "framework_id": framework_id,
+            "values": [
+                {"criterion_key": "reach", "value": reach},
+                {"criterion_key": "impact", "value": "2"},
+                {"criterion_key": "confidence", "value": "0.8"},
+                {"criterion_key": "effort", "value": "4"},
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _update_rice_score_reach(
+    client: TestClient, project_id: object, score_id: object, *, reach: str
+) -> None:
+    response = client.patch(
+        f"/api/v1/projects/{project_id}/priority-scores/{score_id}",
+        json={"values": [{"criterion_key": "reach", "value": reach}]},
+    )
+    assert response.status_code == 200, response.text
+
+
+def _take_snapshot(client: TestClient, framework_id: object) -> dict[str, object]:
+    response = client.post("/api/v1/prioritization/snapshots", json={"framework_id": framework_id})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _create_two_rice_snapshots(client: TestClient) -> tuple[dict[str, object], dict[str, object]]:
+    """A from/to snapshot pair with a genuine change between them (a
+    project's score rises from 400 to 3600 via a higher `reach` value) —
+    matching tests/api/test_portfolio_snapshots.py's own comparison-test
+    fixtures."""
+    framework = _create_rice_framework(client)
+    project = _create_project(client, name="Snapshot Comparison Project")
+    score = _score_rice_project(client, project["id"], framework["id"], reach="1000")
+    from_snapshot = _take_snapshot(client, framework["id"])
+    _update_rice_score_reach(client, project["id"], score["id"], reach="9000")
+    to_snapshot = _take_snapshot(client, framework["id"])
+    return from_snapshot, to_snapshot
+
+
+def test_explain_snapshot_comparison_is_unavailable_by_default_but_still_returns_200(
+    client: TestClient,
+) -> None:
+    from_snapshot, to_snapshot = _create_two_rice_snapshots(client)
+    response = client.post(
+        "/api/v1/ai/explain-snapshot-comparison",
+        json={"from_snapshot_id": from_snapshot["id"], "to_snapshot_id": to_snapshot["id"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "unavailable"
+    assert body["response"] is None
+
+
+def test_explain_snapshot_comparison_succeeds(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        from_snapshot, to_snapshot = _create_two_rice_snapshots(client)
+        response = client.post(
+            "/api/v1/ai/explain-snapshot-comparison",
+            json={"from_snapshot_id": from_snapshot["id"], "to_snapshot_id": to_snapshot["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["response"]["summary"]
+
+
+def test_explain_snapshot_comparison_404_for_unknown_snapshot(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        _from_snapshot, to_snapshot = _create_two_rice_snapshots(client)
+        response = client.post(
+            "/api/v1/ai/explain-snapshot-comparison",
+            json={"from_snapshot_id": str(uuid.uuid4()), "to_snapshot_id": to_snapshot["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_snapshot_comparison_404_for_snapshot_in_another_organization(
+    client: TestClient, db_session: Session
+) -> None:
+    """Same Phase 16-style proof as test_explain_priority_404_for_score_in_
+    another_organization: AIContextBuilder.build_for_snapshot_comparison
+    goes through PortfolioSnapshotService.compare, the same org-scoped
+    repository path GET .../snapshots/compare (Phase 22) already uses — for
+    a genuinely-existing cross-organization snapshot, not just a random
+    uuid."""
+    _from_snapshot, to_snapshot = _create_two_rice_snapshots(client)
+
+    org_b = make_organization(db_session, slug="org-b-ai-snapshot-compare")
+    framework_b = make_prioritization_framework(db_session, organization=org_b, name="Org B RICE")
+    snapshot_b = make_portfolio_snapshot(db_session, organization=org_b, framework=framework_b)
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/explain-snapshot-comparison",
+            json={"from_snapshot_id": str(snapshot_b.id), "to_snapshot_id": to_snapshot["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 404
+
+
+def test_explain_snapshot_comparison_422_for_mismatched_frameworks(client: TestClient) -> None:
+    """Mirrors tests/api/test_portfolio_snapshots.py::
+    test_compare_across_different_frameworks_returns_422 — a RICE score and
+    a MoSCoW category aren't comparable, so PortfolioSnapshotService.compare
+    rejects this before the AI layer ever sees a context to explain."""
+    rice = _create_rice_framework(client, name="Feature RICE for AI")
+    moscow = _create_moscow_framework(client, name="Release MoSCoW for AI")
+    from_snapshot = _take_snapshot(client, rice["id"])
+    to_snapshot = _take_snapshot(client, moscow["id"])
+
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        response = client.post(
+            "/api/v1/ai/explain-snapshot-comparison",
+            json={"from_snapshot_id": from_snapshot["id"], "to_snapshot_id": to_snapshot["id"]},
+        )
+    finally:
+        del app.dependency_overrides[get_settings]
+    assert response.status_code == 422
+
+
+def test_explain_snapshot_comparison_never_mutates_either_snapshot(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(ai_provider="mock")
+    try:
+        from_snapshot, to_snapshot = _create_two_rice_snapshots(client)
+        client.post(
+            "/api/v1/ai/explain-snapshot-comparison",
+            json={"from_snapshot_id": from_snapshot["id"], "to_snapshot_id": to_snapshot["id"]},
+        )
+        snapshots = client.get(
+            "/api/v1/prioritization/snapshots",
+            params={"framework_id": from_snapshot["framework_id"]},
+        ).json()["items"]
+    finally:
+        del app.dependency_overrides[get_settings]
+    refetched_from = next(s for s in snapshots if s["id"] == from_snapshot["id"])
+    refetched_to = next(s for s in snapshots if s["id"] == to_snapshot["id"])
+    assert refetched_from["entries"] == from_snapshot["entries"]
+    assert refetched_to["entries"] == to_snapshot["entries"]
+
+
+def test_explain_snapshot_comparison_response_carries_no_score_or_rank_fields(
+    client: TestClient,
+) -> None:
+    """Structural grounding proof, not just a behavioral one: AIModelOutput
+    (the model's only possible output shape) has no field a provider could
+    use to assert a new score, rank, or ranking — it can only emit prose
+    text, claims, and recommendations referencing facts already in context.
+    This is the same class of guarantee as test_recommendation_never_
+    mutates_data (tests/services/test_ai_service.py) applied to this
+    capability."""
+    from app.schemas.ai import AIModelOutput
+
+    fields = set(AIModelOutput.model_fields.keys())
+    assert fields == {"summary", "key_findings", "risks", "recommendations", "confidence"}
+    assert "score" not in fields
+    assert "rank" not in fields
+
+
+def test_explain_snapshot_comparison_401_when_unauthenticated(
+    unauthenticated_client: TestClient,
+) -> None:
+    response = unauthenticated_client.post(
+        "/api/v1/ai/explain-snapshot-comparison",
+        json={"from_snapshot_id": str(uuid.uuid4()), "to_snapshot_id": str(uuid.uuid4())},
+    )
+    assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------
