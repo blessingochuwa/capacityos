@@ -400,7 +400,7 @@ Deactivating an organization sets `is_active=False` and **nothing else** — no 
 - **Guard:** an organization may only be deactivated while it has **≥ 2 active Owners** (`POST /api/v1/organizations/{id}/deactivate` → 422 otherwise). A single-Owner organization must add a second Owner first. Enforced by an atomic guarded `UPDATE` (`OrganizationRepository.deactivate_if_safe`), the same technique Phase 15's last-Owner guards use.
 - **Reactivation:** `POST /api/v1/organizations/{id}/reactivate` restores `is_active=True`. Because a deactivated organization can't provide an *active*-membership context, this route authorizes by resolving the caller's membership in the target organization directly (like `switch-organization`) — only an **active Owner membership of that organization** may reactivate. Idempotent; preserves identity and every relationship. Audited as `organization.reactivate`.
 
-There is still no *hard* delete, and Phase 15's invariant guarantees an inactive organization always retains at least one active Owner able to reactivate it.
+There is still no *hard* delete, and Phase 15's invariant guarantees an inactive organization always retains at least one active Owner able to reactivate it. Both actions are surfaced in the frontend on the Owner-only `/admin/organization` page (Phase 32) — a Deactivation section and an inactive-organization recovery panel — which perform no safety logic of their own and surface the backend's 422/403/404 verbatim.
 
 ### What Phase 12 does NOT do
 

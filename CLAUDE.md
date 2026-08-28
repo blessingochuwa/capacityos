@@ -1664,6 +1664,38 @@ new permissions, 0 new roles, 0 frontend changes.** `docs/openapi.json`
 regenerated (also absorbed pre-existing Phase 23/26 AI-route drift). See
 docs/adr/0031-organization-deactivation-safety.md.
 
+### Phase 32
+Organization deactivation / reactivation **UI** (§21/§26/§29/§33) —
+**frontend only**, consuming the Phase 31 backend contract with **0
+backend files changed**. On the existing Owner-gated
+`/admin/organization` page (`apps/web/src/features/organization/`): a
+**Deactivation section** (`DeactivateOrganizationSection`, the
+established two-step inline-confirm pattern — no modal primitive)
+calling `POST .../deactivate`, and an **`InactiveOrganizationPanel`**
+recovery surface calling `POST .../reactivate`. The frontend performs
+**no** safety logic: it does **not** compute the ≥2-active-Owner count
+(no endpoint usable here exposes it — `/auth/me` lacks it and
+`/memberships` lacks the linked `User.status` the guard also needs), so
+per §21 it lets the backend's **422** be authoritative and surfaces it
+**verbatim**, never a false success. Recovery detection is **scoped**:
+`OrganizationSettingsManager` treats a **409** from its own
+`GET /organizations/{id}` as "deactivated" only because the page is
+already `organization.manage`-gated (a revoked membership would null the
+caller's role/permissions and never reach it) — **no global 409
+reinterpretation**. On deactivate/reactivate success the hooks
+`invalidateQueries()` so every surface refetches into its correct state;
+**no forced logout**, the existing session keeps working after
+reactivation with no re-login (Phase 31's verified behavior). No new
+route (the existing page hosts the recovery state), no new permission,
+no new role, no `OrganizationSummary` change. **Known limitation,
+deferred to Phase 33:** no global inactive-org banner (an Owner
+returning to a cold app lands on a generic "no longer active" error
+first, then recovers via the still-visible "Organization" nav link) — a
+clean banner needs a small read-only `OrganizationSummary.is_active`
+addition to `/auth/me`; and deactivated orgs still appear in the
+`OrganizationSwitcher` (pre-existing, ADR 0031). See
+docs/adr/0032-organization-deactivation-reactivation-ui.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1687,17 +1719,20 @@ stakeholder register (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
-Consequences); the organization-settings UI is **partially** resolved —
-**rename** is done as of Phase 30
-(docs/adr/0030-organization-settings-ui.md, frontend-only). The backend
-deactivation lifecycle is now **safe and reversible** as of Phase 31
-(docs/adr/0031-organization-deactivation-safety.md): a ≥2-active-Owners
-atomic guard on deactivation (422 otherwise) plus
-`POST /api/v1/organizations/{id}/reactivate`. What remains deferred is
-the **deactivation/reactivation frontend** itself — a future Phase 32
-can consume the Phase 31 contract (deactivate button gated on "has a
-second Owner"; an inactive-org recovery screen calling `reactivate`).
-The membership roster UI is
+Consequences); the organization-settings UI is now **complete** for the
+current backend surface — **rename** as of Phase 30
+(docs/adr/0030-organization-settings-ui.md), the backend
+deactivation/reactivation lifecycle as of Phase 31
+(docs/adr/0031-organization-deactivation-safety.md; ≥2-active-Owners
+atomic guard + `POST /api/v1/organizations/{id}/reactivate`), and the
+**deactivation/reactivation frontend** as of Phase 32
+(docs/adr/0032-organization-deactivation-reactivation-ui.md;
+frontend-only, a Deactivation section + an inactive-org recovery panel
+that surfaces the backend's 422/403/404 verbatim and never re-derives
+the Owner count). Two small, explicitly-deferred follow-ups remain (see
+ADR 0032): a global inactive-org banner (needs a read-only
+`OrganizationSummary.is_active` on `/auth/me`) and removing deactivated
+orgs from the `OrganizationSwitcher`. The membership roster UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
@@ -1756,9 +1791,12 @@ the `User`-account create/disable/re-enable UI as of Phase 29
 as of Phase 30 (docs/adr/0030-organization-settings-ui.md) — all
 frontend-only. Phase 31 (docs/adr/0031-organization-deactivation-safety.md)
 made the backend deactivation lifecycle safe and reversible (≥2-Owner
-guard + reactivate endpoint), backend-only. The remaining neighbour is
-the organization **deactivation/reactivation UI** (a future Phase 32,
-consuming the Phase 31 contract) — not a default next step.
+guard + reactivate endpoint), backend-only, and Phase 32
+(docs/adr/0032-organization-deactivation-reactivation-ui.md) added the
+frontend for it (Deactivation section + inactive-org recovery panel),
+frontend-only. Remaining follow-ups (ADR 0032): a global inactive-org
+banner and pruning deactivated orgs from the `OrganizationSwitcher` —
+not a default next step.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 
