@@ -1550,6 +1550,45 @@ password-reset / onboarding flow (the backend defines none, so none was
 invented). 0 new tables, 0 migrations, 0 new permissions, 0 backend
 files changed. See docs/adr/0028-membership-management-ui.md.
 
+### Phase 29
+User account management UI (§21/§26/§27) — the companion slice Phase 28
+named as fully backend-ready and deliberately excluded. Per the phase
+brief's audit-first instruction, `POST /api/v1/users`, `PATCH
+/api/v1/users/{id}`, `GET /api/v1/users`, `UserService`,
+`UserRepository.disable_if_safe`, `AuthService.login`, and
+`ROLE_PERMISSIONS` were re-audited: the backend already supports the
+full account lifecycle (create → `active` by default; `PATCH
+{status: "disabled"}` routes through the Phase 15 last-Owner guard;
+`PATCH {status: "active"}` re-enables), all gated by
+`Permission.USER_WRITE`/`USER_READ` (Admin/Owner). No unresolved product
+decision — no hard stop. Built with **zero backend changes**: a new
+frontend (`apps/web/src/features/users/`, one new `/admin/users` route,
+one new "Accounts" nav entry) gated by `can('user.write')` for UX only,
+mirroring `features/members/` (Phase 28) and
+`features/access/AccessManagementPage` one-for-one. Create an account
+(email, password — exactly `UserCreate`'s `min_length=10`/`max_length=128`,
+nothing more —, display name, optional link to a `Person` in the acting
+organization); disable an account (behind the existing inline
+confirm-then-act pattern, no modal); re-enable a `disabled` or `invited`
+one. A Phase 15 last-Owner 422 is rendered **verbatim** on the row, never
+re-explained by the frontend. **Multi-tenancy determined from the actual
+backend, not assumed from Phase 28**: `User` management is **global** and
+permission-gated, not organization-scoped — `GET /api/v1/users` is a
+cross-organization account directory (ADR 0012 Decision 8) and
+`PATCH /users/{id}` resolves the account globally; the *only*
+organization-scoped element is the optional `person_id` link, validated
+against the acting organization's People. A pre-existing property this
+audit surfaced and left unchanged (the brief forbids redesigning
+authorization): an Admin/Owner can, through this global `USER_WRITE`
+contract, disable an account whose only membership is another
+organization — guarded by the global last-Owner check, recorded in ADR
+0029 as a candidate for a future explicit product decision.
+Deliberately **out of scope**: organization rename/deactivate;
+invitations; email verification; password-reset; SSO/OAuth; billing; any
+account-directory search/filter; any new permission. 0 new tables, 0
+migrations, 0 new permissions, 0 backend files changed. See
+docs/adr/0029-user-account-management-ui.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1573,14 +1612,17 @@ stakeholder register (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
-Consequences); a user-account-management UI (create/disable a `User`
-account, `app/api/v1/users.py`) and an organization-settings UI (rename/
-deactivate, `ORGANIZATION_MANAGE`) — both still backend-only after Phase
-28, which deliberately scoped itself to membership roster/role/status
-management and did not touch either (the membership roster UI itself is
-resolved as of Phase 28, docs/adr/0028-membership-management-ui.md, so
-Phase 15's last-Owner invariant now has a UI surface that renders its
-422 inline); the five remaining Recharts
+Consequences); an organization-settings UI (rename/deactivate,
+`ORGANIZATION_MANAGE`) — still backend-only after Phases 28-29, which
+deliberately scoped themselves to membership and account management and
+did not touch it (the membership roster UI is resolved as of Phase 28,
+docs/adr/0028-membership-management-ui.md, and the `User`-account
+create/disable/re-enable UI as of Phase 29,
+docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
+invariant now has two UI surfaces, both rendering its 422 inline; an
+account-directory search/filter box and an explicit product decision on
+whether `USER_WRITE` should be organization-scoped rather than global are
+the named remainders from ADR 0029); the five remaining Recharts
 prioritization visualizations (ICE/WSJF/MoSCoW formulas, project
 dependency tracking/cycle detection, and criteria editing are resolved as
 of Phase 18, docs/adr/0018-prioritization-frameworks-and-dependencies.md;
@@ -1626,11 +1668,12 @@ nor Stakeholder has a natural identity key for CSV upsert-matching, a
 further open question any future phase attempting this would need to
 resolve first, reconfirmed still open by the Phase 25, Phase 26, and
 Phase 27 audits); the membership roster/role/status-management UI is
-resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md,
-frontend-only, zero backend changes) — its two deliberately-excluded
-neighbours (a `User`-account create/disable UI and an
-organization-rename/deactivate UI) remain backend-only, each a separate
-future slice, not a default next step.
+resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
+the `User`-account create/disable/re-enable UI as of Phase 29
+(docs/adr/0029-user-account-management-ui.md), both frontend-only with
+zero backend changes — the remaining deliberately-excluded neighbour (an
+organization-rename/deactivate UI) stays backend-only, a separate future
+slice, not a default next step.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 

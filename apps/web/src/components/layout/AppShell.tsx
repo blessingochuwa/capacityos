@@ -68,6 +68,11 @@ export function AppShell() {
                   Members
                 </NavLink>
               ) : null}
+              {can('user.write') ? (
+                <NavLink to="/admin/users" className={NAV_LINK_CLASS}>
+                  Accounts
+                </NavLink>
+              ) : null}
             </nav>
           </div>
           <div className="flex items-center gap-4">
