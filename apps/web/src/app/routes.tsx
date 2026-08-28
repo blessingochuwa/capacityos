@@ -11,6 +11,7 @@ import { SelectOrganizationPage } from '@/features/auth/views/SelectOrganization
 import { ImportExportPage } from '@/features/import-export/views/ImportExportPage'
 import { InsightsOverviewPage } from '@/features/insights/views/InsightsOverviewPage'
 import { MembersPage } from '@/features/members/views/MembersPage'
+import { OrganizationSettingsPage } from '@/features/organization/views/OrganizationSettingsPage'
 import { UsersPage } from '@/features/users/views/UsersPage'
 import { PrioritizationOverviewPage } from '@/features/prioritization/views/PrioritizationOverviewPage'
 import { RisksOverviewPage } from '@/features/risks/views/RisksOverviewPage'
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: 'admin/access', element: <AccessManagementPage /> },
       { path: 'admin/members', element: <MembersPage /> },
       { path: 'admin/users', element: <UsersPage /> },
+      { path: 'admin/organization', element: <OrganizationSettingsPage /> },
     ],
   },
 ])

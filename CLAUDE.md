@@ -1589,6 +1589,40 @@ account-directory search/filter; any new permission. 0 new tables, 0
 migrations, 0 new permissions, 0 backend files changed. See
 docs/adr/0029-user-account-management-ui.md.
 
+### Phase 30
+Organization settings UI — **rename only** (§21/§26/§27/§33). The last
+backend-ready admin surface Phases 28-29 named. Per the phase brief's
+audit-first instruction, the full organization-management contract was
+established against executable code: `GET`/`PATCH /api/v1/organizations/{id}`
+and `POST .../{id}/deactivate` are all `ORGANIZATION_MANAGE`-gated
+(**Owner-only** — `ROLE_PERMISSIONS[OWNER] − ROLE_PERMISSIONS[ADMIN] ==
+{ORGANIZATION_MANAGE}`) and `_require_active_organization`-gated (a path
+id that isn't the caller's active org 404s — no IDOR). `OrganizationUpdate`
+is `{name: 1..200}` only (slug immutable, `is_active` excluded); rename
+preserves every relationship. **Deactivation was audited and deferred by
+explicit product decision** (put to the user, three options offered):
+`OrganizationService.deactivate` just flips `is_active=False` with **no
+cascade, no backend guard, and no reactivation path anywhere in the
+codebase** — it is irreversible through the product and denies every
+member (including the acting Owner) on their next request via
+`get_current_membership`. Exposing that as a one-click settings action
+was judged disproportionate for a bounded slice; it stays backend-only
+until a reactivation path / safety guard exists. Built with **zero
+backend production changes**: a new frontend
+(`apps/web/src/features/organization/`, one new `/admin/organization`
+route, one new "Organization" nav entry) gated by
+`can('organization.manage')` for UX only, mirroring `features/members/`
+and `features/users/`. Reads `GET /organizations/{id}`; renames via
+`PATCH`; on success invalidates the `['session']` query too so the
+header switcher/user-menu pick up the new name. Shows the immutable slug
+read-only and an Active/Inactive status badge. No deactivation control
+anywhere on the page. `tests/api/test_organizations.py` gained 5 tests
+documenting the previously-uncovered `GET`/`PATCH` contract (Owner
+round-trip, empty-name 422, `organization.update` audit event, non-Owner
+403, non-active-org id 404) — test-only, 0 production code touched. 0 new
+tables, 0 migrations, 0 new permissions. See
+docs/adr/0030-organization-settings-ui.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1612,13 +1646,19 @@ stakeholder register (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
-Consequences); an organization-settings UI (rename/deactivate,
-`ORGANIZATION_MANAGE`) — still backend-only after Phases 28-29, which
-deliberately scoped themselves to membership and account management and
-did not touch it (the membership roster UI is resolved as of Phase 28,
-docs/adr/0028-membership-management-ui.md, and the `User`-account
-create/disable/re-enable UI as of Phase 29,
-docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
+Consequences); the organization-settings UI is **partially** resolved —
+**rename** is done as of Phase 30
+(docs/adr/0030-organization-settings-ui.md, frontend-only, 0 production
+backend changes), **deactivation** is deliberately still deferred (a
+product decision recorded in ADR 0030: `OrganizationService.deactivate`
+has no cascade, no backend guard, and no reactivation path anywhere, so
+it is irreversible through the product and locks out every member
+including the acting Owner — exposing it needs a backend reactivation
+path and/or guard first). An **organization reactivation endpoint**
+itself is the named backend remainder. The membership roster UI is
+resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
+the `User`-account create/disable/re-enable UI as of Phase 29
+(docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
 invariant now has two UI surfaces, both rendering its 422 inline; an
 account-directory search/filter box and an explicit product decision on
 whether `USER_WRITE` should be organization-scoped rather than global are
@@ -1670,10 +1710,12 @@ resolve first, reconfirmed still open by the Phase 25, Phase 26, and
 Phase 27 audits); the membership roster/role/status-management UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
-(docs/adr/0029-user-account-management-ui.md), both frontend-only with
-zero backend changes — the remaining deliberately-excluded neighbour (an
-organization-rename/deactivate UI) stays backend-only, a separate future
-slice, not a default next step.
+(docs/adr/0029-user-account-management-ui.md), and organization **rename**
+as of Phase 30 (docs/adr/0030-organization-settings-ui.md) — all
+frontend-only with zero backend production changes. The remaining
+neighbour is organization **deactivation** UI, deliberately deferred by
+product decision (ADR 0030) until the backend has a reactivation path
+and/or a safety guard — not a default next step.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 

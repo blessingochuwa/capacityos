@@ -8,8 +8,15 @@ covered at the service layer (tests/services/test_organization_membership.py)
 and, for the one path that doesn't require an active-organization switch to
 exercise honestly at the API layer, in tests/api/test_users.py's
 disable-across-multiple-owned-organizations test. See
-docs/adr/0015-last-owner-invariant.md."""
+docs/adr/0015-last-owner-invariant.md.
 
+Phase 30 added the organization read/rename endpoint coverage at the bottom
+of this file — the surface the Organization Settings UI consumes
+(docs/adr/0030-organization-settings-ui.md). No production code changed in
+Phase 30; these tests document the already-existing PATCH
+/api/v1/organizations/{id} contract."""
+
+import uuid
 from collections.abc import Callable
 
 from fastapi.testclient import TestClient
@@ -175,3 +182,96 @@ def test_revoke_then_re_add_an_owner_then_revoke_the_original_succeeds(
     ]
     assert len(active_owners) == 1
     assert active_owners[0]["user_id"] == new_owner["id"]
+
+
+# ---------------------------------------------------------------------------
+# Organization read / rename (Phase 12 endpoints; UI surface added Phase 30 —
+# docs/adr/0030-organization-settings-ui.md). Deactivation is deliberately
+# NOT exercised as a UI-exposed path here: it remains backend-only, and its
+# lifecycle (irreversible via the API, denies every member on their next
+# request) is unchanged by Phase 30.
+# ---------------------------------------------------------------------------
+
+
+def test_owner_can_read_and_rename_the_active_organization(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    organization_id = str(owner.organization.id)  # type: ignore[attr-defined]
+
+    before = owner.get(f"/api/v1/organizations/{organization_id}")
+    assert before.status_code == 200
+    assert before.json()["is_active"] is True
+    assert "slug" in before.json()
+
+    renamed = owner.patch(
+        f"/api/v1/organizations/{organization_id}", json={"name": "Renamed Org"}
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Renamed Org"
+    # slug is immutable and untouched by a rename
+    assert renamed.json()["slug"] == before.json()["slug"]
+
+    after = owner.get(f"/api/v1/organizations/{organization_id}")
+    assert after.json()["name"] == "Renamed Org"
+
+
+def test_rename_rejects_an_empty_name(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    organization_id = str(owner.organization.id)  # type: ignore[attr-defined]
+    response = owner.patch(
+        f"/api/v1/organizations/{organization_id}", json={"name": ""}
+    )
+    assert response.status_code == 422
+
+
+def test_rename_produces_an_organization_update_audit_event(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    owner = client_as(UserRole.OWNER)
+    organization_id = str(owner.organization.id)  # type: ignore[attr-defined]
+    owner.patch(
+        f"/api/v1/organizations/{organization_id}", json={"name": "Audited Rename"}
+    )
+
+    events = owner.get(
+        "/api/v1/audit",
+        params={"action": "organization.update", "resource_type": "organization"},
+    ).json()["items"]
+    assert any(e["resource_id"] == organization_id for e in events)
+
+
+def test_non_owner_roles_cannot_rename_the_organization(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    """ORGANIZATION_MANAGE is Owner-only (ROLE_PERMISSIONS) — Admin included,
+    unlike MEMBERSHIP_MANAGE which Admin does hold."""
+    owner = client_as(UserRole.OWNER)
+    organization_id = str(owner.organization.id)  # type: ignore[attr-defined]
+    original_name = owner.get(f"/api/v1/organizations/{organization_id}").json()["name"]
+
+    for role in (UserRole.ADMIN, UserRole.MANAGER, UserRole.MEMBER, UserRole.VIEWER):
+        client = client_as(role)
+        response = client.patch(
+            f"/api/v1/organizations/{organization_id}", json={"name": f"{role.value} tried"}
+        )
+        assert response.status_code == 403, role
+
+    # nothing was renamed by any of the denied roles
+    owner.activate()  # type: ignore[attr-defined]
+    assert owner.get(f"/api/v1/organizations/{organization_id}").json()["name"] == original_name
+
+
+def test_renaming_an_organization_that_is_not_the_active_one_is_not_found(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    """_require_active_organization: a path id that isn't the caller's own
+    active organization 404s, exactly like a nonexistent one (no IDOR —
+    Phase 12)."""
+    owner = client_as(UserRole.OWNER)
+    response = owner.patch(
+        f"/api/v1/organizations/{uuid.uuid4()}", json={"name": "Someone else's org"}
+    )
+    assert response.status_code == 404
