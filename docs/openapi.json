@@ -599,6 +599,50 @@
         }
       }
     },
+    "/api/v1/organizations/{organization_id}/reactivate": {
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "summary": "Reactivate Organization",
+        "description": "Restore a soft-deactivated organization to `is_active=True`\n(Phase 31 \u2014 the recovery half of the deactivation lifecycle).\n\nDeliberately does NOT depend on `get_current_membership` /\n`_require_active_organization`: the target organization is inactive,\nso the caller has no *active*-organization context for it. Instead \u2014\nexactly like `AuthService.switch_organization` \u2014 authorization is\nresolved directly against the caller's own membership in the target\norganization: only an **active Owner membership** may reactivate.\n\nA caller who isn't a member at all gets 404 (indistinguishable from a\nnonexistent organization \u2014 never confirm an org they can't see\nexists, Phase 12). A member who isn't an Owner gets 403. Reactivating\nan already-active organization is an idempotent no-op (200).",
+        "operationId": "reactivate_organization_api_v1_organizations__organization_id__reactivate_post",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Organization Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{organization_id}/memberships": {
       "post": {
         "tags": [
@@ -6898,6 +6942,88 @@
         }
       }
     },
+    "/api/v1/ai/explain-snapshot-comparison": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Post Ai Explain Snapshot Comparison",
+        "operationId": "post_ai_explain_snapshot_comparison_api_v1_ai_explain_snapshot_comparison_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIExplainSnapshotComparisonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIResponseEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/explain-scenario-priority-comparison": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Post Ai Explain Scenario Priority Comparison",
+        "operationId": "post_ai_explain_scenario_priority_comparison_api_v1_ai_explain_scenario_priority_comparison_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIExplainScenarioPriorityComparisonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIResponseEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/ask": {
       "post": {
         "tags": [
@@ -7025,6 +7151,27 @@
         "title": "AIExplainPriorityRequest",
         "description": "Addressed the same way every other ProjectPriorityScore route is\n(project_id + score_id) \u2014 see app/api/v1/prioritization.py \u2014 rather\nthan by framework_id, since a project may hold at most one score per\nframework and the score itself is the concrete thing being explained."
       },
+      "AIExplainScenarioPriorityComparisonRequest": {
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scenario Id"
+          },
+          "framework_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Framework Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "framework_id"
+        ],
+        "title": "AIExplainScenarioPriorityComparisonRequest",
+        "description": "Addressed by the same (scenario_id, framework_id) pair\nGET /api/v1/scenarios/{scenario_id}/priority-comparison?framework_id=\nalready takes (Phase 20) \u2014 the comparison being explained is the one\nthat pair identifies, never a separately-stored comparison id (none\nexists; the comparison itself is never persisted, see\ndocs/adr/0020-scenario-priority-comparison.md)."
+      },
       "AIExplainScenarioRequest": {
         "properties": {
           "scenario_id": {
@@ -7067,6 +7214,27 @@
           "end_date"
         ],
         "title": "AIExplainSignalRequest"
+      },
+      "AIExplainSnapshotComparisonRequest": {
+        "properties": {
+          "from_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Snapshot Id"
+          },
+          "to_snapshot_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Snapshot Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_snapshot_id",
+          "to_snapshot_id"
+        ],
+        "title": "AIExplainSnapshotComparisonRequest",
+        "description": "Addressed by the same (from_snapshot_id, to_snapshot_id) pair\nGET /api/v1/prioritization/snapshots/compare already takes (Phase 22)\n\u2014 the comparison being explained is the one that pair identifies,\nnever a separately-stored comparison id (none exists; the comparison\nitself is never persisted, see docs/adr/0022)."
       },
       "AIInsightResponse": {
         "properties": {
@@ -7250,7 +7418,9 @@
           "capacity",
           "scenario",
           "skill_coverage",
-          "priority_score"
+          "priority_score",
+          "snapshot_comparison",
+          "scenario_priority_comparison"
         ],
         "title": "AISourceReferenceType"
       },

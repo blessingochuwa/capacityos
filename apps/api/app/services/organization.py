@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.models.enums import MembershipStatus, UserRole
 from app.models.organization import Organization
 from app.models.organization_membership import OrganizationMembership
@@ -11,10 +11,12 @@ from app.schemas.organization import OrganizationCreate, OrganizationUpdate
 
 
 class OrganizationService:
-    """Organization lifecycle (Phase 12) — create/retrieve/update/list-
-    mine/deactivate. No hard delete (see Organization.is_active's
-    docstring) and no billing/subscription concept anywhere in this phase.
-    See docs/adr/0012-organizations-multi-tenancy.md.
+    """Organization lifecycle (Phase 12; deactivation hardened + reactivation
+    added Phase 31) — create/retrieve/update/list-mine/deactivate/reactivate.
+    No hard delete (see Organization.is_active's docstring) and no billing/
+    subscription concept anywhere in this phase. See
+    docs/adr/0012-organizations-multi-tenancy.md and
+    docs/adr/0031-organization-deactivation-safety.md.
     """
 
     def __init__(
@@ -68,11 +70,46 @@ class OrganizationService:
     def deactivate(self, organization_id: uuid.UUID) -> Organization:
         """Soft-delete only — see Organization.is_active's docstring. Once
         deactivated, get_current_membership (app/api/deps.py) denies every
-        member's access on their very next request, and the organization
-        stops appearing in list_mine (list_by_ids still returns it directly
-        by id for an admin who already has it open, but list_active
-        wouldn't)."""
+        member's access on their very next request, and switch_organization
+        (app/services/auth.py) treats it as not-found.
+
+        Phase 31 safety guard: refuses (DomainValidationError -> 422) unless
+        the organization still has at least one OTHER active Owner besides
+        the actor — i.e. >= 2 active Owners total — so a soft-deactivated
+        organization always has an Owner able to reactivate it via
+        POST /api/v1/organizations/{id}/reactivate. The check is an atomic
+        guarded UPDATE (OrganizationRepository.deactivate_if_safe), not a
+        read-then-write, so a concurrent Owner-removing mutation can't race
+        past it. See docs/adr/0031-organization-deactivation-safety.md.
+
+        Nothing but the `is_active` flag is touched — memberships, teams,
+        projects, allocations, scenarios, and snapshots are all left
+        exactly as they were (no cascade)."""
         organization = self.get(organization_id)
-        organization.is_active = False
-        self.repository.session.flush()
+        if not self.repository.deactivate_if_safe(organization_id):
+            raise DomainValidationError(
+                "This organization cannot be deactivated while it has only one "
+                "active Owner — deactivation would leave no one able to reactivate "
+                "it. Add a second Owner first, then try again."
+            )
+        self.repository.session.refresh(organization)
+        return organization
+
+    def reactivate(self, organization_id: uuid.UUID) -> Organization:
+        """Restores `is_active=True` on a soft-deactivated organization —
+        the exact inverse of deactivate()'s single-flag flip. Never
+        recreates or mutates any membership, project, scenario, or other
+        row; organization identity (id, slug) and every relationship are
+        preserved untouched. Idempotent: an already-active organization is
+        returned unchanged.
+
+        Authorization for this operation is resolved by the route directly
+        against the caller's own membership in the TARGET organization
+        (not the session's active-organization context, which a
+        deactivated org cannot provide) — see reactivate_organization in
+        app/api/v1/organizations.py."""
+        organization = self.get(organization_id)
+        if not organization.is_active:
+            organization.is_active = True
+            self.repository.session.flush()
         return organization

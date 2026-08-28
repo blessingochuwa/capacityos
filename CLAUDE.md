@@ -1623,6 +1623,47 @@ round-trip, empty-name 422, `organization.update` audit event, non-Owner
 tables, 0 migrations, 0 new permissions. See
 docs/adr/0030-organization-settings-ui.md.
 
+### Phase 31
+Organization deactivation safety guard + reactivation — **backend only,
+no frontend** (§4/§21/§27/§33). Phase 30 deferred the deactivation UI
+because the backend was unsafe: `OrganizationService.deactivate` set
+`is_active=False` with no guard, there was **no reactivation path
+anywhere** (nothing set `is_active=True` except `create`), and
+`get_current_membership` denies every member — the acting Owner included
+— on their next request. Phase 31 makes it a safe, reversible lifecycle
+a future Phase 32 UI can consume. **Safety invariant** (Phase 30's own
+stated preferred direction): an organization may be deactivated only
+while it has **≥ 2 active Owners** (an `OrganizationMembership`
+role=Owner/status=Active whose linked `User` is also Active — Phase 15's
+`count_active_owners` definition), so there is always another Owner able
+to reactivate — enforced by an **atomic guarded UPDATE**
+(`OrganizationRepository.deactivate_if_safe`, folding the count into the
+`WHERE`, exactly like Phase 15's `change_role_if_safe`), rejection →
+`DomainValidationError` → **422** (the established convention, no new
+error type). Deliberate consequence: a **single-Owner org cannot be
+deactivated** until a second Owner is added. **Reactivation**: new
+`POST /api/v1/organizations/{id}/reactivate` → `OrganizationRead`,
+CSRF-protected, authorized by resolving the caller's membership in the
+**target** org directly (**not** `get_current_membership` /
+`_require_active_organization`, which a deactivated org can't satisfy) —
+exactly `AuthService.switch_organization`'s pattern; only an active Owner
+membership may reactivate (non-member → 404, non-Owner member → 403,
+unauthenticated → 401). `OrganizationService.reactivate` flips only
+`is_active` — **no cascade, no membership/project/scenario/snapshot
+touched**, identity and every relationship preserved, idempotent for an
+already-active org. New `AuditAction.ORGANIZATION_REACTIVATE`
+(open-vocabulary `String` column → **no migration**). Session/switching
+behavior is **unchanged** — after reactivation the Owner's existing
+session works on the next request with no re-login. Concurrency proven
+against a **real file-backed SQLite database** with per-thread
+connections (`tests/api/test_organization_deactivation_safety.py`,
+mirroring `test_last_owner_concurrency.py`): the invariant "an inactive
+org always keeps ≥ 1 active Owner and stays reactivatable" holds under
+concurrent deactivate + Owner-removal. **0 new tables, 0 migrations, 0
+new permissions, 0 new roles, 0 frontend changes.** `docs/openapi.json`
+regenerated (also absorbed pre-existing Phase 23/26 AI-route drift). See
+docs/adr/0031-organization-deactivation-safety.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1648,14 +1689,15 @@ PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
 Consequences); the organization-settings UI is **partially** resolved —
 **rename** is done as of Phase 30
-(docs/adr/0030-organization-settings-ui.md, frontend-only, 0 production
-backend changes), **deactivation** is deliberately still deferred (a
-product decision recorded in ADR 0030: `OrganizationService.deactivate`
-has no cascade, no backend guard, and no reactivation path anywhere, so
-it is irreversible through the product and locks out every member
-including the acting Owner — exposing it needs a backend reactivation
-path and/or guard first). An **organization reactivation endpoint**
-itself is the named backend remainder. The membership roster UI is
+(docs/adr/0030-organization-settings-ui.md, frontend-only). The backend
+deactivation lifecycle is now **safe and reversible** as of Phase 31
+(docs/adr/0031-organization-deactivation-safety.md): a ≥2-active-Owners
+atomic guard on deactivation (422 otherwise) plus
+`POST /api/v1/organizations/{id}/reactivate`. What remains deferred is
+the **deactivation/reactivation frontend** itself — a future Phase 32
+can consume the Phase 31 contract (deactivate button gated on "has a
+second Owner"; an inactive-org recovery screen calling `reactivate`).
+The membership roster UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
@@ -1712,10 +1754,11 @@ resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md), and organization **rename**
 as of Phase 30 (docs/adr/0030-organization-settings-ui.md) — all
-frontend-only with zero backend production changes. The remaining
-neighbour is organization **deactivation** UI, deliberately deferred by
-product decision (ADR 0030) until the backend has a reactivation path
-and/or a safety guard — not a default next step.
+frontend-only. Phase 31 (docs/adr/0031-organization-deactivation-safety.md)
+made the backend deactivation lifecycle safe and reversible (≥2-Owner
+guard + reactivate endpoint), backend-only. The remaining neighbour is
+the organization **deactivation/reactivation UI** (a future Phase 32,
+consuming the Phase 31 contract) — not a default next step.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 

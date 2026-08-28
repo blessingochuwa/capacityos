@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission, has_permission
-from app.models.enums import AuditAction, AuditOutcome
+from app.models.enums import AuditAction, AuditOutcome, MembershipStatus, UserRole
 from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.organization import OrganizationRepository
@@ -160,11 +160,65 @@ def deactivate_organization(
 ) -> OrganizationRead:
     _require_active_organization(organization_id, membership)
     _require_manage(membership, Permission.ORGANIZATION_MANAGE)
+    # Phase 31: OrganizationService.deactivate now enforces the
+    # >= 2-active-Owners safety guard (DomainValidationError -> 422) so a
+    # sole Owner cannot deactivate the organization into a state only a
+    # direct database edit could recover. See
+    # docs/adr/0031-organization-deactivation-safety.md.
     organization = service.deactivate(organization_id)
     audit_service.record(
         actor_user_id=current_user.id,
         actor_email=current_user.email,
         action=AuditAction.ORGANIZATION_DEACTIVATE,
+        outcome=AuditOutcome.SUCCESS,
+        resource_type="organization",
+        resource_id=str(organization_id),
+        request_id=request_id_var.get(),
+        organization_id=organization_id,
+    )
+    return OrganizationRead.model_validate(organization)
+
+
+@router.post(
+    "/{organization_id}/reactivate",
+    response_model=OrganizationRead,
+    dependencies=[Depends(require_csrf)],
+)
+def reactivate_organization(
+    organization_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    service: OrganizationService = Depends(get_organization_service),
+    db: Session = Depends(get_db),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> OrganizationRead:
+    """Restore a soft-deactivated organization to `is_active=True`
+    (Phase 31 — the recovery half of the deactivation lifecycle).
+
+    Deliberately does NOT depend on `get_current_membership` /
+    `_require_active_organization`: the target organization is inactive,
+    so the caller has no *active*-organization context for it. Instead —
+    exactly like `AuthService.switch_organization` — authorization is
+    resolved directly against the caller's own membership in the target
+    organization: only an **active Owner membership** may reactivate.
+
+    A caller who isn't a member at all gets 404 (indistinguishable from a
+    nonexistent organization — never confirm an org they can't see
+    exists, Phase 12). A member who isn't an Owner gets 403. Reactivating
+    an already-active organization is an idempotent no-op (200).
+    """
+    membership = OrganizationMembershipRepository(db).get_by_user_and_org(
+        current_user.id, organization_id
+    )
+    if membership is None or membership.status != MembershipStatus.ACTIVE:
+        raise NotFoundError("Organization", organization_id)
+    if membership.role != UserRole.OWNER:
+        raise ForbiddenError("Only an Owner can reactivate an organization.")
+
+    organization = service.reactivate(organization_id)
+    audit_service.record(
+        actor_user_id=current_user.id,
+        actor_email=current_user.email,
+        action=AuditAction.ORGANIZATION_REACTIVATE,
         outcome=AuditOutcome.SUCCESS,
         resource_type="organization",
         resource_id=str(organization_id),

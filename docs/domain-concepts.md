@@ -393,6 +393,15 @@ A session has at most one *active* organization at a time (`UserSession.active_o
 
 Referencing another organization's Person/Team/Project/etc. by id returns 404, the same response a genuinely nonexistent id would produce — never 403. A 403 would confirm the resource exists somewhere just not to you, which is itself a leak this system is designed not to have.
 
+### Deactivation is a safe, reversible lifecycle (Phase 31)
+
+Deactivating an organization sets `is_active=False` and **nothing else** — no cascade, no membership/project/scenario/snapshot is touched. Once inactive, every organization-scoped request 409s (`get_current_membership` re-checks `is_active` per request) and it can't be switched into. Phase 31 makes this recoverable and guards against self-lockout:
+
+- **Guard:** an organization may only be deactivated while it has **≥ 2 active Owners** (`POST /api/v1/organizations/{id}/deactivate` → 422 otherwise). A single-Owner organization must add a second Owner first. Enforced by an atomic guarded `UPDATE` (`OrganizationRepository.deactivate_if_safe`), the same technique Phase 15's last-Owner guards use.
+- **Reactivation:** `POST /api/v1/organizations/{id}/reactivate` restores `is_active=True`. Because a deactivated organization can't provide an *active*-membership context, this route authorizes by resolving the caller's membership in the target organization directly (like `switch-organization`) — only an **active Owner membership of that organization** may reactivate. Idempotent; preserves identity and every relationship. Audited as `organization.reactivate`.
+
+There is still no *hard* delete, and Phase 15's invariant guarantees an inactive organization always retains at least one active Owner able to reactivate it.
+
 ### What Phase 12 does NOT do
 
 No billing or subscription concept. No SSO/OAuth or external identity provider integration. No organization hierarchies or sub-organizations. No cross-organization data sharing of any kind. No hard delete of an organization (deactivation only, matching `Skill.is_active`'s soft-delete precedent). No per-organization feature flags.

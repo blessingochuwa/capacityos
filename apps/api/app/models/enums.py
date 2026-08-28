@@ -412,6 +412,11 @@ class AuditAction(StrEnum):
     ORGANIZATION_CREATE = "organization.create"
     ORGANIZATION_UPDATE = "organization.update"
     ORGANIZATION_DEACTIVATE = "organization.deactivate"
+    ORGANIZATION_REACTIVATE = "organization.reactivate"
+    """Phase 31 — a soft-deactivated Organization was restored to
+    is_active=True. Open-vocabulary member (this enum is not DB-CHECK-
+    constrained), so this is a pure code change, no migration. See
+    docs/adr/0031-organization-deactivation-safety.md."""
 
     MEMBERSHIP_CREATE = "membership.create"
     MEMBERSHIP_ROLE_CHANGE = "membership.role_change"
