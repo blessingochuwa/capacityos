@@ -185,6 +185,22 @@ def test_me_with_a_valid_session_returns_the_current_user(
     assert response.json()["email"] == "owner@example.com"
 
 
+def test_me_active_organization_summary_reports_is_active(
+    unauthenticated_client: TestClient, db_session: Session
+) -> None:
+    """Phase 33 — OrganizationSummary carries `is_active` straight from the
+    persisted Organization, so the frontend shell can show a global
+    inactive-org banner without probing an org-scoped route (which would
+    just 409). A normal active organization reports True."""
+    _make_user_with_membership(db_session, email="owner@example.com", role=UserRole.OWNER)
+    unauthenticated_client.post(
+        "/api/v1/auth/login", json={"email": "owner@example.com", "password": PASSWORD}
+    )
+    body = unauthenticated_client.get("/api/v1/auth/me").json()
+    assert body["active_organization"]["is_active"] is True
+    assert all(org["is_active"] is True for org in body["organizations"])
+
+
 def test_me_response_includes_the_users_current_permissions(
     unauthenticated_client: TestClient, db_session: Session
 ) -> None:

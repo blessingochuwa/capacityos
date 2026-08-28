@@ -14,6 +14,13 @@ export interface OrganizationSummary {
   id: string
   name: string
   slug: string
+  /** Phase 33 — the persisted `Organization.is_active`, sent straight
+   * through `/auth/me` so the shell can render a global inactive-org
+   * banner and the switcher can stop offering a deactivated org, without
+   * probing an org-scoped endpoint that would just 409. Informational
+   * only; the backend re-checks `is_active` per request and stays the
+   * authorization boundary. */
+  is_active: boolean
 }
 
 export interface CurrentUser {

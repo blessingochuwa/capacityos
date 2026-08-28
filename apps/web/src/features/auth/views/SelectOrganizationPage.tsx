@@ -33,6 +33,12 @@ export function SelectOrganizationPage() {
     return <Navigate to={from} replace />
   }
 
+  // Phase 33 — a deactivated organization can't be switched into
+  // (POST /auth/switch-organization 404s on it), so it isn't offered here
+  // either. There is no "current" organization on this page, so unlike the
+  // header switcher nothing inactive is kept.
+  const selectableOrganizations = user?.organizations.filter((org) => org.is_active) ?? []
+
   async function handleSelect(organizationId: string) {
     setSwitchError(null)
     setSwitchingId(organizationId)
@@ -74,7 +80,7 @@ export function SelectOrganizationPage() {
           CapacityOS
         </p>
 
-        {user && user.organizations.length > 0 ? (
+        {selectableOrganizations.length > 0 ? (
           <Card>
             <CardHeader
               title="Select an organization"
@@ -82,7 +88,7 @@ export function SelectOrganizationPage() {
             />
             <CardBody>
               <ul className="space-y-2">
-                {user.organizations.map((organization) => (
+                {selectableOrganizations.map((organization) => (
                   <li key={organization.id}>
                     <Button
                       type="button"

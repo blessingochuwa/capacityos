@@ -26,15 +26,24 @@ class SwitchOrganizationRequest(BaseModel):
 
 class OrganizationSummary(BaseModel):
     """The minimal shape MeRead needs for the frontend's organization
-    switcher — id/name/slug, nothing else (not a full OrganizationRead;
-    an org's is_active/timestamps are an admin concern, not an
-    identity-response concern)."""
+    switcher and shell — id/name/slug plus is_active.
+
+    is_active was added in Phase 33 (read-only, straight from the
+    persisted Organization.is_active — never derived from a 409): the
+    frontend needs it to render a global "this organization is inactive"
+    banner and to stop offering a deactivated organization as a normal
+    switcher choice, WITHOUT probing an org-scoped endpoint that would
+    just 409. It is informational session state; backend authorization
+    (get_current_membership re-checking is_active per request) remains
+    the boundary. See docs/adr/0033-global-inactive-organization-awareness.md.
+    Timestamps stay out — those are a genuine admin concern (OrganizationRead)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     name: str
     slug: str
+    is_active: bool
 
 
 class MeRead(BaseModel):

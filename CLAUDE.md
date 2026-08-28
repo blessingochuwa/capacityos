@@ -1696,6 +1696,39 @@ addition to `/auth/me`; and deactivated orgs still appear in the
 `OrganizationSwitcher` (pre-existing, ADR 0031). See
 docs/adr/0032-organization-deactivation-reactivation-ui.md.
 
+### Phase 33
+Global inactive-organization awareness & switcher cleanup (§21/§27/§29) —
+closes the two Phase 32 known limitations. **Backend: 1 line of behavior
+change** — `OrganizationSummary` (the org shape in `/auth/me`) gains a
+read-only `is_active: bool`, populated straight from the persisted
+`Organization.is_active` via the existing `model_validate` (**no
+`_build_me`/`me_to_read` change, no migration** — the column exists since
+Phase 12; **no new endpoint/permission/role**; `GET /organizations/mine`
+already returns `is_active` via `OrganizationRead` and has no frontend
+consumer, so it's untouched). `is_active` is **never derived from a
+409** — it is the persisted flag; `get_current_membership` re-checking it
+per request stays the authorization boundary. **Frontend:** a persistent,
+shell-level `InactiveOrganizationBanner` (a `role="alert"` feature
+component composed from existing primitives + a `<Link>`, **not** a new
+`components/ui` primitive, **not** a modal/toast) rendered in `AppShell`
+when `useAuth().user.active_organization.is_active === false` — for an
+Owner (`can('organization.manage')`) it links to the **existing** Phase
+32 `/admin/organization` recovery panel (no new route, no duplicated
+reactivation call); for a non-Owner it says "ask an Owner." The
+`OrganizationSwitcher` and `SelectOrganizationPage` now filter out
+deactivated organizations (the switcher keeps the *current* one, labelled
+"(inactive)", so its `<Select>` value still resolves); this is **UX
+only** — `switch-organization` already 404s an inactive org. Phase 32's
+existing `useDeactivate/ReactivateOrganization` `invalidateQueries()`
+already refetches `/auth/me`, so the banner appears/clears with **no
+re-login and no new cache code** (verified by test + a live uvicorn run:
+`/auth/me` `active_organization.is_active` flips `true→false→true` with
+session/role/permissions intact). Phase 32's **scoped** 409 handling on
+`OrganizationSettingsManager` is untouched — no global 409 interceptor.
+**Backend: 1 schema file + 2 test files, 0 migrations. Frontend:**
+1 new component + 4 edits. `docs/openapi.json` regenerated (7-line diff).
+See docs/adr/0033-global-inactive-organization-awareness.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1729,10 +1762,12 @@ atomic guard + `POST /api/v1/organizations/{id}/reactivate`), and the
 (docs/adr/0032-organization-deactivation-reactivation-ui.md;
 frontend-only, a Deactivation section + an inactive-org recovery panel
 that surfaces the backend's 422/403/404 verbatim and never re-derives
-the Owner count). Two small, explicitly-deferred follow-ups remain (see
-ADR 0032): a global inactive-org banner (needs a read-only
-`OrganizationSummary.is_active` on `/auth/me`) and removing deactivated
-orgs from the `OrganizationSwitcher`. The membership roster UI is
+the Owner count), and completed as of Phase 33
+(docs/adr/0033-global-inactive-organization-awareness.md;
+`OrganizationSummary.is_active` on `/auth/me` + a persistent shell
+`InactiveOrganizationBanner` + `OrganizationSwitcher`/
+`SelectOrganizationPage` filtering out deactivated orgs — the two
+follow-ups ADR 0032 named). The membership roster UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
@@ -1794,9 +1829,12 @@ made the backend deactivation lifecycle safe and reversible (≥2-Owner
 guard + reactivate endpoint), backend-only, and Phase 32
 (docs/adr/0032-organization-deactivation-reactivation-ui.md) added the
 frontend for it (Deactivation section + inactive-org recovery panel),
-frontend-only. Remaining follow-ups (ADR 0032): a global inactive-org
-banner and pruning deactivated orgs from the `OrganizationSwitcher` —
-not a default next step.
+frontend-only, and Phase 33
+(docs/adr/0033-global-inactive-organization-awareness.md) completed the
+loop (`OrganizationSummary.is_active` on `/auth/me` + a shell
+inactive-org banner + switcher filtering; 1 backend schema field, 0
+migrations). The organization lifecycle UX is now complete for the
+current backend surface.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 

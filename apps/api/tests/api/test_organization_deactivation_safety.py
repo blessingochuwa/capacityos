@@ -97,8 +97,16 @@ def test_full_deactivate_then_reactivate_lifecycle_restores_access(
     assert (
         unauthenticated_client.get(f"/api/v1/organizations/{organization_id}").status_code == 409
     )
-    # ...but the session itself is still valid.
-    assert unauthenticated_client.get("/api/v1/auth/me").status_code == 200
+    # ...but the session itself is still valid, and /auth/me now reports
+    # the active organization as inactive (Phase 33) without removing the
+    # session, role, or permissions — so the frontend can show a global
+    # banner and route the Owner to recovery.
+    me_inactive = unauthenticated_client.get("/api/v1/auth/me")
+    assert me_inactive.status_code == 200
+    assert me_inactive.json()["active_organization"]["id"] == organization_id
+    assert me_inactive.json()["active_organization"]["is_active"] is False
+    assert me_inactive.json()["role"] == "owner"
+    assert "organization.manage" in me_inactive.json()["permissions"]
 
     # Reactivation does not depend on an active-organization context, so
     # the locked-out Owner can still call it.
@@ -109,8 +117,15 @@ def test_full_deactivate_then_reactivate_lifecycle_restores_access(
     assert reactivate.json()["is_active"] is True
     assert reactivate.json()["id"] == organization_id
 
-    # Access is restored with no re-login, and every relationship survived.
+    # Access is restored with no re-login, /auth/me reports the org active
+    # again (so the frontend banner clears), and every relationship survived.
     assert unauthenticated_client.get("/api/v1/people").status_code == 200
+    assert (
+        unauthenticated_client.get("/api/v1/auth/me").json()["active_organization"][
+            "is_active"
+        ]
+        is True
+    )
     memberships = unauthenticated_client.get(
         f"/api/v1/organizations/{organization_id}/memberships"
     ).json()["items"]

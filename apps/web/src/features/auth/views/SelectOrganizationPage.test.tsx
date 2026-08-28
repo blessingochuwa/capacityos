@@ -36,8 +36,8 @@ describe('SelectOrganizationPage', () => {
         active_organization: null,
         role: null,
         organizations: [
-          { id: 'org-1', name: 'Org One', slug: 'org-one' },
-          { id: 'org-2', name: 'Org Two', slug: 'org-two' },
+          { id: 'org-1', name: 'Org One', slug: 'org-one', is_active: true },
+          { id: 'org-2', name: 'Org Two', slug: 'org-two', is_active: true },
         ],
       }),
     })
@@ -48,6 +48,47 @@ describe('SelectOrganizationPage', () => {
     )
     expect(screen.getByRole('button', { name: 'Org One' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Org Two' })).toBeInTheDocument()
+  })
+
+  it('does not offer a deactivated organization as a selectable choice (Phase 33)', () => {
+    mockAuth({
+      user: makeCurrentUser({
+        active_organization: null,
+        role: null,
+        organizations: [
+          { id: 'org-1', name: 'Org One', slug: 'org-one', is_active: true },
+          { id: 'org-2', name: 'Deactivated Org', slug: 'gone', is_active: false },
+        ],
+      }),
+    })
+    render(
+      <MemoryRouter>
+        <SelectOrganizationPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: 'Org One' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Deactivated Org' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides the selection list entirely when every membership organization is inactive', () => {
+    mockAuth({
+      user: makeCurrentUser({
+        active_organization: null,
+        role: null,
+        organizations: [
+          { id: 'org-1', name: 'Gone One', slug: 'gone-one', is_active: false },
+        ],
+      }),
+    })
+    render(
+      <MemoryRouter>
+        <SelectOrganizationPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByText('Select an organization')).not.toBeInTheDocument()
+    expect(screen.getByText('Create an organization')).toBeInTheDocument()
   })
 
   it('does not show an organization list for an account with none yet', () => {
@@ -67,7 +108,7 @@ describe('SelectOrganizationPage', () => {
       user: makeCurrentUser({
         active_organization: null,
         role: null,
-        organizations: [{ id: 'org-1', name: 'Org One', slug: 'org-one' }],
+        organizations: [{ id: 'org-1', name: 'Org One', slug: 'org-one', is_active: true }],
       }),
       switchOrganization,
     })

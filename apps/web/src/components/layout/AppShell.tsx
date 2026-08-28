@@ -3,6 +3,7 @@ import { ProjectSwitcher } from '@/features/capacity/components/ProjectSwitcher'
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { OrganizationSwitcher } from '@/features/auth/components/OrganizationSwitcher'
 import { UserMenu } from '@/features/auth/components/UserMenu'
+import { InactiveOrganizationBanner } from '@/features/organization/components/InactiveOrganizationBanner'
 
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }) =>
   `rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 ${
@@ -91,6 +92,7 @@ export function AppShell() {
           </div>
         </div>
       </header>
+      <InactiveOrganizationBanner />
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <Outlet />
       </main>

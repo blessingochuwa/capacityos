@@ -93,14 +93,14 @@ describe('AuthProvider', () => {
 describe('switchOrganization (Phase 12)', () => {
   it('re-fetches the session with the new organization and purges other cached queries', async () => {
     const initialUser = makeCurrentUser({
-      active_organization: { id: 'org-1', name: 'Org One', slug: 'org-one' },
+      active_organization: { id: 'org-1', name: 'Org One', slug: 'org-one', is_active: true },
       organizations: [
-        { id: 'org-1', name: 'Org One', slug: 'org-one' },
-        { id: 'org-2', name: 'Org Two', slug: 'org-two' },
+        { id: 'org-1', name: 'Org One', slug: 'org-one', is_active: true },
+        { id: 'org-2', name: 'Org Two', slug: 'org-two', is_active: true },
       ],
     })
     const switchedUser = makeCurrentUser({
-      active_organization: { id: 'org-2', name: 'Org Two', slug: 'org-two' },
+      active_organization: { id: 'org-2', name: 'Org Two', slug: 'org-two', is_active: true },
       organizations: initialUser.organizations,
       role: 'viewer',
       permissions: ['person.read'],

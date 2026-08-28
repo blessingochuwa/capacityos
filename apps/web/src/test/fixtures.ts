@@ -65,8 +65,15 @@ export function makeCurrentUser(
     display_name: 'Owner Person',
     status: 'active',
     role: 'owner',
-    active_organization: { id: 'org-1', name: 'Test Organization', slug: 'test-org' },
-    organizations: [{ id: 'org-1', name: 'Test Organization', slug: 'test-org' }],
+    active_organization: {
+      id: 'org-1',
+      name: 'Test Organization',
+      slug: 'test-org',
+      is_active: true,
+    },
+    organizations: [
+      { id: 'org-1', name: 'Test Organization', slug: 'test-org', is_active: true },
+    ],
     person_id: null,
     last_login_at: '2026-01-01T00:00:00Z',
     created_at: '2026-01-01T00:00:00Z',

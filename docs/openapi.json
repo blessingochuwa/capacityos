@@ -9928,16 +9928,21 @@
           "slug": {
             "type": "string",
             "title": "Slug"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
           }
         },
         "type": "object",
         "required": [
           "id",
           "name",
-          "slug"
+          "slug",
+          "is_active"
         ],
         "title": "OrganizationSummary",
-        "description": "The minimal shape MeRead needs for the frontend's organization\nswitcher \u2014 id/name/slug, nothing else (not a full OrganizationRead;\nan org's is_active/timestamps are an admin concern, not an\nidentity-response concern)."
+        "description": "The minimal shape MeRead needs for the frontend's organization\nswitcher and shell \u2014 id/name/slug plus is_active.\n\nis_active was added in Phase 33 (read-only, straight from the\npersisted Organization.is_active \u2014 never derived from a 409): the\nfrontend needs it to render a global \"this organization is inactive\"\nbanner and to stop offering a deactivated organization as a normal\nswitcher choice, WITHOUT probing an org-scoped endpoint that would\njust 409. It is informational session state; backend authorization\n(get_current_membership re-checking is_active per request) remains\nthe boundary. See docs/adr/0033-global-inactive-organization-awareness.md.\nTimestamps stay out \u2014 those are a genuine admin concern (OrganizationRead)."
       },
       "OrganizationUpdate": {
         "properties": {
