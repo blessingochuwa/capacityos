@@ -63,6 +63,11 @@ export function AppShell() {
                   Access
                 </NavLink>
               ) : null}
+              {can('membership.manage') ? (
+                <NavLink to="/admin/members" className={NAV_LINK_CLASS}>
+                  Members
+                </NavLink>
+              ) : null}
             </nav>
           </div>
           <div className="flex items-center gap-4">

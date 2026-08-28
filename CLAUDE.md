@@ -1511,6 +1511,45 @@ one for display. 0 new tables, 0 migrations, 0 new permissions, 0
 backend files changed. See
 docs/adr/0027-priority-effort-scatter-visualization.md.
 
+### Phase 28
+Membership management UI, first slice (§16/§27) — the item every audit
+from Phase 22 onward named as "fully backend-ready, deferred for size
+only." Per the phase brief's audit-first instruction, every other
+deferred candidate was re-verified directly against current code and
+found still blocked: `ScenarioService.delete` still hard-deletes
+(Scenario snapshots), `ImportEntityType` still has the same 10 members
+(Import/Export registration), `ProjectDependency` still has only
+`created_at` (dependency timeline), and the Capacity-vs-Priority and
+Risk-vs-Value quadrant charts still have no cross-domain specification.
+The membership UI was the only viable, non-blocked candidate, so no
+"which candidate" blocking question was warranted — but its first-slice
+boundary (a "materially larger multi-flow vertical slice") is a genuine
+scoping decision, so it was put to the user, who chose **roster +
+role/status management** (list every membership, change a member's role,
+revoke, reactivate, add an existing account by email) over a read-only
+roster or a larger slice that also created/disabled `User` accounts.
+Built with **zero backend changes**: every route consumed
+(`app/api/v1/organizations.py`, list/add/change-role/revoke/reactivate
+memberships) already exists (Phases 12/15), is already
+`Permission.MEMBERSHIP_MANAGE`-gated (Admin/Owner), already
+organization-scoped (a path `organization_id` that isn't the caller's
+active org 404s — `_require_active_organization`), already audited, and
+already enforces the Owner-escalation rule (only an Owner may grant or
+change an Owner/Admin role → 403) and the Phase 15 last-Owner invariant
+(→ 422). The new frontend (`apps/web/src/features/members/`, one new
+`/admin/members` route, one new nav entry) re-implements **none** of
+that authorization — it is gated by `can('membership.manage')` for UX
+only and surfaces the backend's own 403/422/404/409 message inline,
+mirroring `features/access/views/AccessManagementPage` one-for-one.
+Deliberately **out of scope**: creating or disabling `User` accounts
+(`app/api/v1/users.py` untouched — "add member" takes an existing
+account's email, and no account is created if none matches, per §26);
+organization rename/deactivation (a separate `ORGANIZATION_MANAGE`
+surface — §32-style discipline, not combined); any invitation / email /
+password-reset / onboarding flow (the backend defines none, so none was
+invented). 0 new tables, 0 migrations, 0 new permissions, 0 backend
+files changed. See docs/adr/0028-membership-management-ui.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1534,9 +1573,14 @@ stakeholder register (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
-Consequences); a membership- or user-management UI — no such page exists
-anywhere in the frontend yet, so Phase 15's invariant has no UI to surface
-through beyond the raw 422 response; the five remaining Recharts
+Consequences); a user-account-management UI (create/disable a `User`
+account, `app/api/v1/users.py`) and an organization-settings UI (rename/
+deactivate, `ORGANIZATION_MANAGE`) — both still backend-only after Phase
+28, which deliberately scoped itself to membership roster/role/status
+management and did not touch either (the membership roster UI itself is
+resolved as of Phase 28, docs/adr/0028-membership-management-ui.md, so
+Phase 15's last-Owner invariant now has a UI surface that renders its
+422 inline); the five remaining Recharts
 prioritization visualizations (ICE/WSJF/MoSCoW formulas, project
 dependency tracking/cycle detection, and criteria editing are resolved as
 of Phase 18, docs/adr/0018-prioritization-frameworks-and-dependencies.md;
@@ -1581,11 +1625,12 @@ a Phase 22 audit of the actual import/export code confirmed neither Risk
 nor Stakeholder has a natural identity key for CSV upsert-matching, a
 further open question any future phase attempting this would need to
 resolve first, reconfirmed still open by the Phase 25, Phase 26, and
-Phase 27 audits); a membership/user-management UI (re-confirmed fully
-backend-ready with zero frontend surface by the Phase 22, Phase 25,
-Phase 26, and Phase 27 audits, not selected for any of them — a
-materially larger vertical slice than the single-capability slices
-selected instead).
+Phase 27 audits); the membership roster/role/status-management UI is
+resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md,
+frontend-only, zero backend changes) — its two deliberately-excluded
+neighbours (a `User`-account create/disable UI and an
+organization-rename/deactivate UI) remain backend-only, each a separate
+future slice, not a default next step.
 None of these are scheduled — do not build any of them without an
 explicit request, per §32.
 
