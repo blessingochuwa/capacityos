@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
@@ -6,8 +6,16 @@ import { useAuth } from '@/features/auth/context/AuthContext'
 import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { usePeopleLookup } from '@/hooks/usePeople'
 import { CreateUserForm } from '../components/CreateUserForm'
+import { UsersFilterBar } from '../components/UsersFilterBar'
 import { UsersTable } from '../components/UsersTable'
 import { useCreateUser, useSetUserStatus, useUserAccounts } from '../hooks/useUserAccounts'
+import type { UserStatus } from '../types/users'
+
+/** How long to wait after the last keystroke before the search box's value
+ * is actually sent to the API — avoids firing a request on every
+ * character while a search-shaped result set (no client-side filtering,
+ * CLAUDE.md §21/Phase 34 brief) is otherwise the alternative. */
+const SEARCH_DEBOUNCE_MS = 300
 
 /**
  * "Who has a login, and is it active?" — account lifecycle management
@@ -59,7 +67,24 @@ export function UsersPage() {
 }
 
 function UsersManager() {
-  const usersQuery = useUserAccounts()
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<UserStatus | ''>('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const usersQuery = useUserAccounts({
+    q: debouncedSearch || undefined,
+    status: statusFilter || undefined,
+  })
+  /** Unfiltered, so the "already linked" check below (and therefore the
+   * create-form's Person picker) always sees every account regardless of
+   * the active search/status filter above — a filtered `usersQuery` must
+   * never be the source for "which People are eligible to link." */
+  const allUsersQuery = useUserAccounts()
   const peopleLookup = usePeopleLookup()
   const createUser = useCreateUser()
   const setStatus = useSetUserStatus()
@@ -74,11 +99,11 @@ function UsersManager() {
 
   const linkedPersonIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const user of usersQuery.data?.items ?? []) {
+    for (const user of allUsersQuery.data?.items ?? []) {
       if (user.person_id) ids.add(user.person_id)
     }
     return ids
-  }, [usersQuery.data])
+  }, [allUsersQuery.data])
 
   const eligiblePeople = useMemo(
     () =>
@@ -103,6 +128,12 @@ function UsersManager() {
         isPending={createUser.isPending}
         error={createUser.isError ? createUser.error.message : undefined}
       />
+      <UsersFilterBar
+        searchValue={searchInput}
+        onSearchChange={setSearchInput}
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+      />
       <QueryBoundary query={usersQuery} loadingLabel="Loading accounts…">
         {(page) => (
           <UsersTable
@@ -112,6 +143,7 @@ function UsersManager() {
             onDisable={(userId) => setStatus.mutate({ userId, status: 'disabled' })}
             pendingUserId={pendingUserId}
             actionError={actionError}
+            isFiltered={Boolean(debouncedSearch || statusFilter)}
           />
         )}
       </QueryBoundary>

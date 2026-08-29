@@ -43,11 +43,33 @@ class UserRepository(BaseRepository[User]):
         return list(self.session.scalars(select(User).where(User.id.in_(user_ids))))
 
     def list_filtered(
-        self, *, limit: int = 100, offset: int = 0
+        self,
+        *,
+        q: str | None = None,
+        status: UserStatus | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[User], int]:
-        total = self.session.scalar(select(func.count()).select_from(User)) or 0
+        """Phase 34: `q` is a case-insensitive substring match against email
+        OR display_name (the only two identity fields the directory shows —
+        never password_hash or any other credential), via SQLAlchemy's
+        portable `ilike()` (native ILIKE on PostgreSQL, `lower() LIKE
+        lower()` on SQLite — no database-specific workaround). `status` is
+        an exact match, the same shape as Skill.is_active/Scenario.status.
+        Both are optional filters over the existing global, unscoped
+        directory (ADR 0012 Decision 8) — neither narrows it to an
+        organization."""
+        stmt = select(User)
+        stripped = q.strip() if q else None
+        if stripped:
+            pattern = f"%{stripped}%"
+            stmt = stmt.where(or_(User.email.ilike(pattern), User.display_name.ilike(pattern)))
+        if status is not None:
+            stmt = stmt.where(User.status == status)
+
+        total = self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         items = list(
-            self.session.scalars(select(User).order_by(User.email).limit(limit).offset(offset))
+            self.session.scalars(stmt.order_by(User.email).limit(limit).offset(offset))
         )
         return items, total
 

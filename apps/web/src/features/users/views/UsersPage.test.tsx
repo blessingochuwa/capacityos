@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { usePeopleLookup } from '@/hooks/usePeople'
@@ -94,6 +94,7 @@ describe('UsersPage', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText('User accounts')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Search')).not.toBeInTheDocument()
   })
 
   it('lists accounts and wires enable to a status:active mutation', async () => {
@@ -180,6 +181,103 @@ describe('UsersPage', () => {
     )
 
     render(<UsersPage />)
+
+    const select = screen.getByLabelText('Linked person (optional)')
+    expect(select).toHaveTextContent('Free Person')
+    expect(select).not.toHaveTextContent('Linked Person')
+  })
+
+  it('renders search and status filter controls for an authorized role', () => {
+    mockedUseAuth.mockReturnValue(authValue())
+    mockedUsePeopleLookup.mockReturnValue(new Map())
+    mockMutations()
+    mockedUseUserAccounts.mockReturnValue(mockQuerySuccess({ items: ACCOUNTS, total: 2 }))
+
+    render(<UsersPage />)
+
+    expect(screen.getByLabelText('Search')).toBeInTheDocument()
+    expect(screen.getByLabelText('Status')).toBeInTheDocument()
+  })
+
+  it('debounces the search box before applying it to the accounts query', async () => {
+    mockedUseAuth.mockReturnValue(authValue())
+    mockedUsePeopleLookup.mockReturnValue(new Map())
+    mockMutations()
+    mockedUseUserAccounts.mockReturnValue(mockQuerySuccess({ items: ACCOUNTS, total: 2 }))
+
+    const user = userEvent.setup()
+    render(<UsersPage />)
+
+    await user.type(screen.getByLabelText('Search'), 'ada')
+    expect(mockedUseUserAccounts).not.toHaveBeenCalledWith({
+      q: 'ada',
+      status: undefined,
+    })
+
+    await waitFor(() => {
+      expect(mockedUseUserAccounts).toHaveBeenCalledWith({ q: 'ada', status: undefined })
+    })
+  })
+
+  it('applies the status filter immediately, without debouncing', async () => {
+    mockedUseAuth.mockReturnValue(authValue())
+    mockedUsePeopleLookup.mockReturnValue(new Map())
+    mockMutations()
+    mockedUseUserAccounts.mockReturnValue(mockQuerySuccess({ items: ACCOUNTS, total: 2 }))
+
+    const user = userEvent.setup()
+    render(<UsersPage />)
+
+    await user.selectOptions(screen.getByLabelText('Status'), 'disabled')
+
+    await waitFor(() => {
+      expect(mockedUseUserAccounts).toHaveBeenCalledWith({ q: undefined, status: 'disabled' })
+    })
+  })
+
+  it('clearing the search box restores the unfiltered query', async () => {
+    mockedUseAuth.mockReturnValue(authValue())
+    mockedUsePeopleLookup.mockReturnValue(new Map())
+    mockMutations()
+    mockedUseUserAccounts.mockReturnValue(mockQuerySuccess({ items: ACCOUNTS, total: 2 }))
+
+    const user = userEvent.setup()
+    render(<UsersPage />)
+
+    const search = screen.getByLabelText('Search')
+    await user.type(search, 'ada')
+    await waitFor(() => {
+      expect(mockedUseUserAccounts).toHaveBeenCalledWith({ q: 'ada', status: undefined })
+    })
+
+    await user.clear(search)
+    await waitFor(() => {
+      expect(mockedUseUserAccounts).toHaveBeenCalledWith({ q: undefined, status: undefined })
+    })
+  })
+
+  it('always resolves the create-form Person picker from the unfiltered directory', async () => {
+    mockedUseAuth.mockReturnValue(authValue())
+    mockedUsePeopleLookup.mockReturnValue(
+      new Map<string, Person>([
+        ['person-1', { id: 'person-1', display_name: 'Linked Person' } as Person],
+        ['person-2', { id: 'person-2', display_name: 'Free Person' } as Person],
+      ]),
+    )
+    mockMutations()
+    // Every call to useUserAccounts (filtered or not) returns the same full
+    // set here — this test only asserts the picker still excludes
+    // person-1 even while a search term narrows what the table shows.
+    mockedUseUserAccounts.mockReturnValue(
+      mockQuerySuccess({
+        items: [{ ...ACCOUNTS[0], person_id: 'person-1' }, ACCOUNTS[1]],
+        total: 2,
+      }),
+    )
+
+    const user = userEvent.setup()
+    render(<UsersPage />)
+    await user.type(screen.getByLabelText('Search'), 'alan')
 
     const select = screen.getByLabelText('Linked person (optional)')
     expect(select).toHaveTextContent('Free Person')

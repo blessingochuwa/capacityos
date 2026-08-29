@@ -22,6 +22,11 @@ interface UsersTableProps {
    * for, so the backend's own message (e.g. the Phase 15 last-Owner 422)
    * is shown on the exact row it applies to, verbatim. */
   actionError?: { userId: string; message: string }
+  /** True when a search term or status filter is currently applied — an
+   * empty result then means "no match", not "no accounts exist", so the
+   * empty state (Phase 34) says so instead of suggesting account
+   * creation. */
+  isFiltered?: boolean
 }
 
 function personCell(user: UserAccount, personLabels: Map<string, string>) {
@@ -40,11 +45,17 @@ export function UsersTable({
   onDisable,
   pendingUserId,
   actionError,
+  isFiltered = false,
 }: UsersTableProps) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   if (users.length === 0) {
-    return (
+    return isFiltered ? (
+      <EmptyState
+        title="No accounts match your search."
+        description="Try a different name, email, or status filter."
+      />
+    ) : (
       <EmptyState
         title="No accounts yet."
         description="Create one above. An account is a login identity — give it a role in an organization from the Members page."

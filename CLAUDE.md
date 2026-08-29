@@ -1729,6 +1729,47 @@ session/role/permissions intact). Phase 32's **scoped** 409 handling on
 1 new component + 4 edits. `docs/openapi.json` regenerated (7-line diff).
 See docs/adr/0033-global-inactive-organization-awareness.md.
 
+### Phase 34
+Account directory search & filtering (§18/§21/§27) — the search/filter
+box Phase 29 named as its own known limitation, reconfirmed as the only
+non-blocked named gap by every audit since (Phases 30-33). `GET
+/api/v1/users` gains two optional query parameters — `q` (case-
+insensitive substring over `email`/`display_name` only, via SQLAlchemy's
+portable `.ilike()` — the existing database abstraction, no database-
+specific workaround) and `status` (exact match against `UserStatus`) —
+both filtered in SQL (`UserRepository.list_filtered`), never fetched-
+then-filtered in Python. The directory's existing global, cross-
+organization scope (ADR 0012 Decision 8) is unchanged; `Permission.
+USER_READ` gating is unchanged; the separate, still-unresolved `USER_WRITE`
+org-scoping product decision (ADR 0029) was deliberately **not** touched
+— search/filter are additive `WHERE` clauses on an already-authorized
+route, not a scoping change. No new/expanded filter beyond `q`/`status`
+was added — `person_id`/`last_login_at` filters were considered and
+rejected as unrequested scope. **Frontend:** a new `UsersFilterBar`
+(search input + status `Select`) on the existing `/admin/users` page, no
+new route; the search box is debounced 300ms (a small local `useEffect`/
+`setTimeout`, no new shared debounce utility — none existed to extend);
+both filters are threaded through the React Query key
+(`['user-accounts', filters]`) so a filter change is a distinct cached
+query, never a client-side re-filter of an already-fetched page. A
+correctness interaction was found and fixed along the way: the create-
+account form's "eligible People" picker was recomputed from an always-
+**unfiltered** second query, so an active search/status filter can never
+hide an already-linked Person from it (previously it read the same query
+the table renders, which would have been wrong once that query could be
+filtered). No pagination-UI redesign — no page-index state exists
+anywhere in this app yet (every list fetches up to 500 rows in one
+request, unchanged since before this phase), so there was nothing to
+reconcile. No index added (a leading-wildcard `ilike` can't use a B-tree
+regardless; `status` is low-cardinality) — documented as a deliberate
+non-change, not a silent omission. **0 new tables, 0 migrations, 0 new
+permissions.** Backend: 3 files changed, 12 new tests (1006 total).
+Frontend: 2 new files + 5 edited, 9 new tests (318 total). Verified live
+against a freshly-migrated database via a real `uvicorn` run (case-
+insensitive search, display-name search, status filter, no-match, and
+invalid-status → 422 all exercised over real HTTP), in addition to the
+full test suites. See docs/adr/0034-account-directory-search-filter.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1771,10 +1812,13 @@ follow-ups ADR 0032 named). The membership roster UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md — so Phase 15's last-Owner
-invariant now has two UI surfaces, both rendering its 422 inline; an
-account-directory search/filter box and an explicit product decision on
-whether `USER_WRITE` should be organization-scoped rather than global are
-the named remainders from ADR 0029); the five remaining Recharts
+invariant now has two UI surfaces, both rendering its 422 inline; the
+account-directory search/filter box is resolved as of Phase 34
+(docs/adr/0034-account-directory-search-filter.md — `q`/`status` query
+parameters, filtered server-side, global scope preserved); an explicit
+product decision on whether `USER_WRITE` should be organization-scoped
+rather than global remains the one still-open named remainder from ADR
+0029, deliberately left untouched by Phase 34); the five remaining Recharts
 prioritization visualizations (ICE/WSJF/MoSCoW formulas, project
 dependency tracking/cycle detection, and criteria editing are resolved as
 of Phase 18, docs/adr/0018-prioritization-frameworks-and-dependencies.md;

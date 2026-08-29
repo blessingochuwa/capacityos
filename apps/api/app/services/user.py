@@ -60,8 +60,15 @@ class UserService:
             raise NotFoundError("User", user_id)
         return user
 
-    def list(self, *, limit: int = 100, offset: int = 0) -> tuple[list[User], int]:
-        return self.repository.list_filtered(limit=limit, offset=offset)
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        status: UserStatus | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[User], int]:
+        return self.repository.list_filtered(q=q, status=status, limit=limit, offset=offset)
 
     def update(self, organization_id: uuid.UUID, user_id: uuid.UUID, data: UserUpdate) -> User:
         user = self.get(user_id)

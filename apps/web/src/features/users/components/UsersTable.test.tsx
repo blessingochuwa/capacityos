@@ -31,6 +31,20 @@ describe('UsersTable', () => {
     expect(screen.getByText('No accounts yet.')).toBeInTheDocument()
   })
 
+  it('renders a distinct empty state when a search/filter excludes every account', () => {
+    render(
+      <UsersTable
+        users={[]}
+        personLabels={new Map()}
+        onEnable={vi.fn()}
+        onDisable={vi.fn()}
+        isFiltered
+      />,
+    )
+    expect(screen.getByText('No accounts match your search.')).toBeInTheDocument()
+    expect(screen.queryByText('No accounts yet.')).not.toBeInTheDocument()
+  })
+
   it('shows each account with status badge, linked person, and last login', () => {
     render(
       <UsersTable

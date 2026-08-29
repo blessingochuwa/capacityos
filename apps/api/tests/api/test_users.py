@@ -178,6 +178,123 @@ def test_user_status_change_produces_an_audit_event(
     assert matching[0]["outcome"] == "success"
 
 
+def test_list_users_default_returns_the_full_directory(client: TestClient) -> None:
+    """Phase 34 baseline: with no `q`/`status`, the directory behaves
+    exactly as before — every account is returned. `client` itself creates
+    one Owner account; two more are created here."""
+    _create_user(client, email="alpha@example.com")
+    _create_user(client, email="beta@example.com")
+
+    response = client.get("/api/v1/users")
+    assert response.status_code == 200
+    body = response.json()
+    emails = {item["email"] for item in body["items"]}
+    assert {"alpha@example.com", "beta@example.com"}.issubset(emails)
+    assert body["total"] >= 3
+
+
+def test_list_users_search_by_email_substring_is_case_insensitive(
+    client: TestClient,
+) -> None:
+    _create_user(client, email="ada.lovelace@example.com")
+    _create_user(client, email="alan.turing@example.com")
+
+    response = client.get("/api/v1/users", params={"q": "LOVELACE"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["email"] for item in body["items"]] == ["ada.lovelace@example.com"]
+    assert body["total"] == 1
+
+
+def test_list_users_search_by_display_name_substring(client: TestClient) -> None:
+    response_a = client.post(
+        "/api/v1/users",
+        json={
+            "email": "grace@example.com",
+            "password": "a reasonably long password",
+            "display_name": "Grace Hopper",
+        },
+    )
+    assert response_a.status_code == 201
+    _create_user(client, email="someone-else@example.com")
+
+    response = client.get("/api/v1/users", params={"q": "hopper"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["display_name"] for item in body["items"]] == ["Grace Hopper"]
+
+
+def test_list_users_search_with_no_match_returns_an_empty_page(client: TestClient) -> None:
+    _create_user(client, email="present@example.com")
+
+    response = client.get("/api/v1/users", params={"q": "nobody-has-this-substring"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["total"] == 0
+
+
+def test_clearing_the_search_restores_the_full_directory(client: TestClient) -> None:
+    _create_user(client, email="findme@example.com")
+
+    narrowed = client.get("/api/v1/users", params={"q": "findme"})
+    assert narrowed.json()["total"] == 1
+
+    cleared = client.get("/api/v1/users")
+    assert cleared.json()["total"] >= 2  # the owner account plus findme@example.com
+
+
+def test_list_users_filters_by_status(client: TestClient) -> None:
+    target = _create_user(client, email="to-disable@example.com")
+    client.patch(f"/api/v1/users/{target['id']}", json={"status": "disabled"})
+    _create_user(client, email="stays-active@example.com")
+
+    response = client.get("/api/v1/users", params={"status": "disabled"})
+    assert response.status_code == 200
+    body = response.json()
+    emails = {item["email"] for item in body["items"]}
+    assert emails == {"to-disable@example.com"}
+    assert all(item["status"] == "disabled" for item in body["items"])
+
+
+def test_list_users_combines_search_and_status_filters(client: TestClient) -> None:
+    matching = _create_user(client, email="combo-match@example.com")
+    client.patch(f"/api/v1/users/{matching['id']}", json={"status": "disabled"})
+    # Same search substring, but still active — must be excluded.
+    _create_user(client, email="combo-active@example.com")
+    # Disabled, but doesn't match the search substring — must be excluded.
+    other = _create_user(client, email="unrelated@example.com")
+    client.patch(f"/api/v1/users/{other['id']}", json={"status": "disabled"})
+
+    response = client.get("/api/v1/users", params={"q": "combo", "status": "disabled"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["email"] for item in body["items"]] == ["combo-match@example.com"]
+
+
+def test_list_users_invalid_status_filter_returns_422(client: TestClient) -> None:
+    response = client.get("/api/v1/users", params={"status": "not-a-real-status"})
+    assert response.status_code == 422
+
+
+def test_list_users_search_never_exposes_password_fields(client: TestClient) -> None:
+    _create_user(client, email="findable@example.com")
+
+    response = client.get("/api/v1/users", params={"q": "findable"})
+    assert response.status_code == 200
+    for item in response.json()["items"]:
+        assert "password" not in item
+        assert "password_hash" not in item
+
+
+def test_manager_cannot_list_users_even_with_search_params(
+    client_as: Callable[[UserRole], TestClient],
+) -> None:
+    manager = client_as(UserRole.MANAGER)
+    response = manager.get("/api/v1/users", params={"q": "anything", "status": "active"})
+    assert response.status_code == 403
+
+
 def test_role_change_produces_an_audit_event_with_old_and_new_role(
     client_as: Callable[[UserRole], TestClient],
 ) -> None:

@@ -7,7 +7,7 @@ from app.api.deps import get_audit_service, get_current_membership, require_csrf
 from app.core.database import get_db
 from app.core.logging import request_id_var
 from app.domain.authorization import Permission
-from app.models.enums import AuditAction, AuditOutcome
+from app.models.enums import AuditAction, AuditOutcome, UserStatus
 from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.repositories.person import PersonRepository
@@ -57,6 +57,8 @@ def create_user(
 
 @router.get("", response_model=Page[UserRead])
 def list_users(
+    q: str | None = Query(default=None, max_length=200),
+    status_filter: UserStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: User = Depends(require_permission(Permission.USER_READ)),
@@ -67,8 +69,14 @@ def list_users(
     account by email, not just accounts already in the acting
     organization. require_permission still requires an active
     organization context to reach this route at all; it just doesn't
-    filter the account directory by it."""
-    items, total = service.list(limit=limit, offset=offset)
+    filter the account directory by it.
+
+    Phase 34: `q` (case-insensitive substring over email/display_name) and
+    `status` (exact match) are additional optional filters over that same
+    unscoped directory — see UserRepository.list_filtered. Neither field is
+    ever a credential; password_hash is never selectable through this
+    route or serialized by UserRead."""
+    items, total = service.list(q=q, status=status_filter, limit=limit, offset=offset)
     return Page[UserRead](items=[user_to_read(item) for item in items], total=total)
 
 

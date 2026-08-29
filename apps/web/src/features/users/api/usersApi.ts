@@ -1,6 +1,6 @@
 import { apiGet, apiPatch, apiPost } from '@/api/client'
 import type { Page } from '@/types/entities'
-import type { UserAccount } from '../types/users'
+import type { UserAccount, UserStatus } from '../types/users'
 
 /** Thin typed wrappers over apps/api's Phase 10/12/15 user-account
  * endpoints (apps/api/app/api/v1/users.py). These are gated by
@@ -22,8 +22,23 @@ export interface CreateUserInput {
   person_id?: string | null
 }
 
+/** Phase 34: `q` is a case-insensitive substring match against email OR
+ * display_name; `status` is an exact match — both applied server-side by
+ * apps/api (GET /api/v1/users?q=&status=), never filtered client-side over
+ * an already-fetched page. Neither narrows the directory's existing global
+ * (cross-organization) scope. */
+export interface UserAccountFilters {
+  q?: string
+  status?: UserStatus
+}
+
 export const usersApi = {
-  list: () => apiGet<Page<UserAccount>>('/api/v1/users', { limit: LIST_ALL_LIMIT }),
+  list: (filters: UserAccountFilters = {}) =>
+    apiGet<Page<UserAccount>>('/api/v1/users', {
+      limit: LIST_ALL_LIMIT,
+      q: filters.q || undefined,
+      status: filters.status || undefined,
+    }),
 
   create: (data: CreateUserInput) => apiPost<UserAccount>('/api/v1/users', data),
 

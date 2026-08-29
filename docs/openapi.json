@@ -249,9 +249,42 @@
           "users"
         ],
         "summary": "List Users",
-        "description": "Deliberately NOT organization-scoped (Decision 8) \u2014 an admin's\n\"add an existing user to my organization\" flow needs to find any\naccount by email, not just accounts already in the acting\norganization. require_permission still requires an active\norganization context to reach this route at all; it just doesn't\nfilter the account directory by it.",
+        "description": "Deliberately NOT organization-scoped (Decision 8) \u2014 an admin's\n\"add an existing user to my organization\" flow needs to find any\naccount by email, not just accounts already in the acting\norganization. require_permission still requires an active\norganization context to reach this route at all; it just doesn't\nfilter the account directory by it.\n\nPhase 34: `q` (case-insensitive substring over email/display_name) and\n`status` (exact match) are additional optional filters over that same\nunscoped directory \u2014 see UserRepository.list_filtered. Neither field is\never a credential; password_hash is never selectable through this\nroute or serialized by UserRead.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UserStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
           {
             "name": "limit",
             "in": "query",
