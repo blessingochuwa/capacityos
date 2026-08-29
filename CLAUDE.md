@@ -1770,6 +1770,35 @@ insensitive search, display-name search, status filter, no-match, and
 invalid-status → 422 all exercised over real HTTP), in addition to the
 full test suites. See docs/adr/0034-account-directory-search-filter.md.
 
+### Phase 35
+USER_WRITE organization-scoping decision (§21/§27) — resolves the item
+ADR 0029 explicitly flagged as "a candidate for a future explicit
+product decision" and every phase since (30-34) repeated as still open.
+Per the phase brief's audit-first, decision-gate-first instruction, the
+repository was audited to confirm no explicit decision already existed
+(ADR 0029 frames it as an open question, not a lean; CLAUDE.md §27's
+"don't modify another organization's data" principle was considered and
+found not dispositive, since `User` is explicitly modeled by ADR 0012 as
+belonging to no organization at all — treating §27 as decisive would
+have been exactly the "infer intent" the brief forbade) — and, finding
+none, the user was asked directly rather than a default being chosen.
+Three options were presented (keep `USER_WRITE` global; scope both
+rename and status to the caller's organization; scope only status,
+leaving rename global), each with its tradeoffs. **The user chose to
+keep `USER_WRITE` global** — no code change to production behavior.
+What Phase 35 actually closes is the *ambiguity itself*: the property
+ADR 0029 recorded as an open candidate is now a documented, deliberate,
+accepted decision, locked in by one new regression test
+(`test_user_write_is_deliberately_global_across_organizations`) proving
+an Admin/Owner can rename/disable an account whose only membership is in
+a different organization — verified live over real HTTP with a control
+check confirming the *already*-organization-scoped membership/role
+surface (`/organizations/{id}/memberships/...`, unaffected by this
+decision) still correctly 404s cross-organization. **0 backend
+production changes, 0 frontend changes, 0 migrations, 0 new
+permissions.** Backend: 1007 tests (was 1006), `ruff`/`uv run pyright`
+(strict) both clean. See docs/adr/0035-user-write-global-scope.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1815,10 +1844,11 @@ the `User`-account create/disable/re-enable UI as of Phase 29
 invariant now has two UI surfaces, both rendering its 422 inline; the
 account-directory search/filter box is resolved as of Phase 34
 (docs/adr/0034-account-directory-search-filter.md — `q`/`status` query
-parameters, filtered server-side, global scope preserved); an explicit
-product decision on whether `USER_WRITE` should be organization-scoped
-rather than global remains the one still-open named remainder from ADR
-0029, deliberately left untouched by Phase 34); the five remaining Recharts
+parameters, filtered server-side, global scope preserved); the
+`USER_WRITE` organization-scoping question is resolved as of Phase 35
+(docs/adr/0035-user-write-global-scope.md — the user chose to keep it
+global; no code change, closed as a documented decision rather than an
+open question); the five remaining Recharts
 prioritization visualizations (ICE/WSJF/MoSCoW formulas, project
 dependency tracking/cycle detection, and criteria editing are resolved as
 of Phase 18, docs/adr/0018-prioritization-frameworks-and-dependencies.md;

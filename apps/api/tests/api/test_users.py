@@ -1,8 +1,10 @@
 from collections.abc import Callable
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.models.enums import UserRole
+from tests.factories import make_organization, make_organization_membership, make_user
 
 
 def _create_user(owner: TestClient, *, email: str) -> dict[str, object]:
@@ -58,6 +60,34 @@ def test_update_user_display_name(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.json()["display_name"] == "Renamed"
+
+
+def test_user_write_is_deliberately_global_across_organizations(
+    client_as: Callable[[UserRole], TestClient], db_session: Session
+) -> None:
+    """Phase 35: ADR 0029 flagged this as an open question and Phase 35
+    closes it — an explicit, deliberate decision (not an oversight) to
+    keep USER_WRITE global, matching GET's already-explicit global scope
+    (ADR 0012 Decision 8). An Admin/Owner may rename or disable/enable an
+    account that has NO membership in their own active organization, only
+    a membership in a completely different one. This test locks that
+    decision in as an intentional, tested contract rather than an
+    untested accident — see docs/adr/0035-user-write-global-scope.md."""
+    owner = client_as(UserRole.OWNER)  # active organization: "Org A"
+    other_org = make_organization(db_session, name="Org B")
+    target = make_user(db_session, email="org-b-only@example.com")
+    make_organization_membership(
+        db_session, user=target, organization=other_org, role=UserRole.MEMBER
+    )
+    db_session.commit()
+
+    rename = owner.patch(f"/api/v1/users/{target.id}", json={"display_name": "Renamed"})
+    assert rename.status_code == 200
+    assert rename.json()["display_name"] == "Renamed"
+
+    disable = owner.patch(f"/api/v1/users/{target.id}", json={"status": "disabled"})
+    assert disable.status_code == 200
+    assert disable.json()["status"] == "disabled"
 
 
 def test_cannot_demote_the_last_remaining_owner_of_an_organization(
