@@ -21,9 +21,13 @@ from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
+from app.repositories.stakeholder import StakeholderRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -35,8 +39,11 @@ from app.services.import_service import ImportService
 from app.services.person import PersonService
 from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
+from app.services.risk import RiskService
 from app.services.skill import SkillService
+from app.services.stakeholder import StakeholderService
 from app.services.team import TeamService
 from app.services.team_membership import TeamMembershipService
 from app.services.working_schedule import WorkingScheduleService
@@ -72,6 +79,17 @@ def get_import_service(
         ProjectSkillRequirementRepository(db),
         ProjectSkillRequirementService(
             ProjectSkillRequirementRepository(db), ProjectRepository(db), SkillRepository(db)
+        ),
+        RiskRepository(db),
+        RiskService(RiskRepository(db), ProjectRepository(db), PersonRepository(db)),
+        StakeholderRepository(db),
+        StakeholderService(StakeholderRepository(db), ProjectRepository(db), PersonRepository(db)),
+        PrioritizationFrameworkRepository(db),
+        ProjectPriorityScoreRepository(db),
+        ProjectPriorityScoreService(
+            ProjectPriorityScoreRepository(db),
+            ProjectRepository(db),
+            PrioritizationFrameworkRepository(db),
         ),
         max_file_size_bytes=settings.import_max_file_size_bytes,
         max_rows=settings.import_max_rows,

@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, Enum, ForeignKey, Text
+from sqlalchemy import Date, Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -38,9 +38,21 @@ class Risk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     Person, not User (CLAUDE.md §9: Person answers "who is being
     planned," User answers "who is logged in" — a risk owner is an
     accountable individual, not necessarily someone with system access).
+
+    external_id (Phase 36) is the Phase 6 import identity key — Risk has
+    no other natural key (description is free text, not unique), matching
+    Project/Allocation/WorkingSchedule/AvailabilityException's exact
+    precedent (docs/adr/0006-phase-6-import-export.md): nullable, and
+    scoped to (organization_id, external_id) rather than globally unique,
+    matching Project's own Phase-12-rescoped shape.
     """
 
     __tablename__ = "risks"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "external_id", name="uq_risk_organization_external_id"
+        ),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -93,6 +105,7 @@ class Risk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         index=True,
     )
     review_date: Mapped[date | None] = mapped_column(Date)
+    external_id: Mapped[str | None] = mapped_column(String(200), index=True)
 
     project: Mapped[Project] = relationship(back_populates="risks")
     owner: Mapped[Person | None] = relationship()

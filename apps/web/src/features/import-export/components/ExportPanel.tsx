@@ -27,7 +27,14 @@ function scopeFieldFor(
   ) {
     return 'person'
   }
-  if (entityType === 'project_skill_requirement') return 'project'
+  if (
+    entityType === 'project_skill_requirement' ||
+    entityType === 'risk' ||
+    entityType === 'stakeholder' ||
+    entityType === 'project_priority_score'
+  ) {
+    return 'project'
+  }
   if (entityType === 'allocation') return 'person_and_project'
   return null
 }

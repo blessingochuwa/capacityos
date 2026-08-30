@@ -21,13 +21,25 @@ from typing import Literal, NamedTuple, cast
 
 from pydantic import BaseModel, ValidationError
 
-from app.domain.import_export_parsing import coerce_entries_cell, coerce_optional_str
+from app.domain.import_export_parsing import (
+    coerce_criterion_values_cell,
+    coerce_entries_cell,
+    coerce_optional_str,
+)
 from app.models.enums import (
     AllocationUnit,
     AvailabilityType,
     EmploymentStatus,
+    MoscowCategory,
+    PrioritizationFrameworkType,
     ProjectStatus,
+    RiskImpact,
+    RiskProbability,
+    RiskStatus,
     SkillProficiency,
+    StakeholderDecisionAuthority,
+    StakeholderInfluence,
+    StakeholderInterest,
 )
 from app.schemas.allocation import AllocationCreate, AllocationUpdate
 from app.schemas.availability_exception import (
@@ -37,12 +49,19 @@ from app.schemas.availability_exception import (
 from app.schemas.import_export import ImportErrorCode, ImportFieldError, ImportMode
 from app.schemas.person import PersonCreate, PersonUpdate
 from app.schemas.person_skill import PersonSkillCreate, PersonSkillUpdate
+from app.schemas.prioritization import (
+    CriterionValueInput,
+    ProjectPriorityScoreCreate,
+    ProjectPriorityScoreUpdate,
+)
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.schemas.project_skill_requirement import (
     ProjectSkillRequirementCreate,
     ProjectSkillRequirementUpdate,
 )
+from app.schemas.risk import RiskCreate, RiskUpdate
 from app.schemas.skill import SkillCreate, SkillUpdate
+from app.schemas.stakeholder import StakeholderCreate, StakeholderUpdate
 from app.schemas.team import TeamCreate, TeamUpdate
 from app.schemas.team_membership import TeamMembershipCreate
 from app.schemas.working_schedule import (
@@ -158,6 +177,60 @@ class ProjectSkillRequirementFact:
 
 
 @dataclass(frozen=True)
+class RiskFact:
+    id: uuid.UUID
+    external_id: str | None
+    project_id: uuid.UUID
+    description: str
+    cause: str | None
+    potential_effect: str | None
+    probability: RiskProbability
+    impact: RiskImpact
+    response: str | None
+    owner_person_id: uuid.UUID | None
+    status: RiskStatus
+    review_date: date | None
+
+
+@dataclass(frozen=True)
+class StakeholderFact:
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    person_id: uuid.UUID | None
+    role: str
+    influence: StakeholderInfluence
+    interest: StakeholderInterest
+    decision_authority: StakeholderDecisionAuthority
+    communication_needs: str | None
+
+
+@dataclass(frozen=True)
+class PrioritizationFrameworkFact:
+    id: uuid.UUID
+    name: str
+    framework_type: PrioritizationFrameworkType
+    criterion_keys: frozenset[str]
+    """Every PrioritizationCriterion.key belonging to this framework — used
+    to validate a submitted criterion_key against the ACTUAL framework
+    definition (mirrors ProjectPriorityScoreService._apply_values's own
+    "not a criterion of framework" check), never a second copy of the
+    formula/weight logic itself."""
+
+
+@dataclass(frozen=True)
+class ProjectPriorityScoreFact:
+    id: uuid.UUID
+    project_id: uuid.UUID
+    framework_id: uuid.UUID
+    category: MoscowCategory | None
+    notes: str | None
+    values: tuple[tuple[str, Decimal], ...]
+    """(criterion_key, value) pairs — order-independent, compared via a
+    sorted key like WorkingScheduleFact.entries."""
+
+
+@dataclass(frozen=True)
 class ReferenceLookup:
     """Batch-loaded once per request via repository list_by_ids/
     list_by_emails/list_by_names/list_by_external_ids calls, then passed to
@@ -172,6 +245,8 @@ class ReferenceLookup:
     projects_by_external_id: Mapping[str, ProjectFact]
     skills_by_id: Mapping[uuid.UUID, SkillFact]
     skills_by_name: Mapping[str, SkillFact]
+    frameworks_by_id: Mapping[uuid.UUID, PrioritizationFrameworkFact]
+    frameworks_by_name: Mapping[str, PrioritizationFrameworkFact]
 
 
 class NormalizeOutcome[PayloadT](NamedTuple):
@@ -209,6 +284,26 @@ class PersonSkillPayload(NamedTuple):
 class ProjectSkillRequirementPayload(NamedTuple):
     project_id: uuid.UUID
     data: ProjectSkillRequirementCreate | ProjectSkillRequirementUpdate
+
+
+class RiskPayload(NamedTuple):
+    """RiskCreate/Update only carry the fields on the Risk row itself
+    (project_id normally comes from the URL path) — this wrapper carries
+    the resolved project_id alongside it, the same reason
+    ProjectSkillRequirementPayload exists."""
+
+    project_id: uuid.UUID
+    data: RiskCreate | RiskUpdate
+
+
+class StakeholderPayload(NamedTuple):
+    project_id: uuid.UUID
+    data: StakeholderCreate | StakeholderUpdate
+
+
+class ProjectPriorityScorePayload(NamedTuple):
+    project_id: uuid.UUID
+    data: ProjectPriorityScoreCreate | ProjectPriorityScoreUpdate
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +440,70 @@ def resolve_skill_reference(
     return ImportFieldError(
         field=None, code=ImportErrorCode.INVALID_REFERENCE,
         message="Provide skill_id or skill_name.",
+    )
+
+
+def resolve_optional_person_reference(
+    row: Mapping[str, object], lookup: ReferenceLookup, *, id_field: str, email_field: str
+) -> uuid.UUID | None | ImportFieldError:
+    """Like resolve_person_reference, but the reference is OPTIONAL —
+    absence of both columns returns None (not an error). Used for Risk's
+    owner_person_id/owner_person_email and Stakeholder's person_id/
+    person_email, whose underlying model column is nullable (unlike
+    person_id/team_id/project_id/skill_id, which are always required
+    wherever they're used). A malformed or unresolvable reference is
+    still a blocking error — only genuine absence is tolerated."""
+    id_raw = coerce_optional_str(row.get(id_field))
+    if id_raw:
+        parsed = _parse_uuid(id_raw, id_field)
+        if isinstance(parsed, ImportFieldError):
+            return parsed
+        fact = lookup.people_by_id.get(parsed)
+        if fact is None:
+            return ImportFieldError(
+                field=id_field, code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No person with id {id_raw}.",
+            )
+        return fact.id
+    email = coerce_optional_str(row.get(email_field))
+    if email:
+        fact = lookup.people_by_email.get(email)
+        if fact is None:
+            return ImportFieldError(
+                field=email_field, code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No person with email {email}.",
+            )
+        return fact.id
+    return None
+
+
+def resolve_framework_reference(
+    row: Mapping[str, object], lookup: ReferenceLookup
+) -> uuid.UUID | ImportFieldError:
+    id_raw = coerce_optional_str(row.get("framework_id"))
+    if id_raw:
+        parsed = _parse_uuid(id_raw, "framework_id")
+        if isinstance(parsed, ImportFieldError):
+            return parsed
+        fact = lookup.frameworks_by_id.get(parsed)
+        if fact is None:
+            return ImportFieldError(
+                field="framework_id", code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No prioritization framework with id {id_raw}.",
+            )
+        return fact.id
+    name = coerce_optional_str(row.get("framework_name"))
+    if name:
+        fact = lookup.frameworks_by_name.get(name)
+        if fact is None:
+            return ImportFieldError(
+                field="framework_name", code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No prioritization framework named '{name}'.",
+            )
+        return fact.id
+    return ImportFieldError(
+        field=None, code=ImportErrorCode.INVALID_REFERENCE,
+        message="Provide framework_id or framework_name.",
     )
 
 
@@ -664,6 +823,13 @@ def _entries_key(entries: Sequence[WorkingScheduleEntryCreate]) -> tuple[tuple[i
     differences (e.g. "8" vs "8.00") are treated as a real change, matching
     the exact value a re-export would have written."""
     return tuple(sorted((entry.weekday, str(entry.hours)) for entry in entries))
+
+
+def _values_key(values: Sequence[CriterionValueInput]) -> tuple[tuple[str, str], ...]:
+    """Order-independent comparison key for ProjectPriorityScore's
+    criterion values — same rationale as _entries_key (compared as
+    strings, not Decimal, so formatting differences count as a change)."""
+    return tuple(sorted((item.criterion_key, str(item.value)) for item in values))
 
 
 def normalize_working_schedule_row(
@@ -1005,5 +1171,288 @@ def normalize_project_skill_requirement_row(
     return NormalizeOutcome(
         action,
         ProjectSkillRequirementPayload(project_id=project_ref, data=payload),
+        existing.id, identity, [],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Risk (Phase 36) — matched by external_id if given, mirroring Allocation's
+# exact self-identity pattern; owner_person_id is an OPTIONAL reference
+# (resolve_optional_person_reference), unlike every REQUIRED reference above.
+# ---------------------------------------------------------------------------
+
+
+def normalize_risk_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing_by_external_id: Mapping[str, RiskFact],
+) -> NormalizeOutcome[RiskPayload]:
+    external_id = coerce_optional_str(row.get("external_id"))
+    existing = existing_by_external_id.get(external_id) if external_id else None
+    identity = f"external_id={external_id}" if external_id else None
+
+    owner_ref = resolve_optional_person_reference(
+        row, lookup, id_field="owner_person_id", email_field="owner_person_email"
+    )
+    if isinstance(owner_ref, ImportFieldError):
+        return NormalizeOutcome(
+            None, None, existing.id if existing else None, identity, [owner_ref]
+        )
+
+    fields: dict[str, object | None] = {
+        "description": coerce_optional_str(row.get("description")),
+        "cause": coerce_optional_str(row.get("cause")),
+        "potential_effect": coerce_optional_str(row.get("potential_effect")),
+        "probability": coerce_optional_str(row.get("probability")),
+        "impact": coerce_optional_str(row.get("impact")),
+        "response": coerce_optional_str(row.get("response")),
+        "owner_person_id": owner_ref,
+        "status": coerce_optional_str(row.get("status")),
+        "review_date": coerce_optional_str(row.get("review_date")),
+        "external_id": external_id,
+    }
+
+    if existing is None:
+        project_ref = resolve_project_reference(row, lookup)
+        if isinstance(project_ref, ImportFieldError):
+            return NormalizeOutcome(None, None, None, identity, [project_ref])
+        try:
+            payload = RiskCreate.model_validate(_present_fields(fields))
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome(
+            "create", RiskPayload(project_id=project_ref, data=payload), None, identity, []
+        )
+
+    try:
+        payload = RiskUpdate.model_validate(_present_fields(fields))
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = RiskUpdate(
+        description=existing.description, cause=existing.cause,
+        potential_effect=existing.potential_effect, probability=existing.probability,
+        impact=existing.impact, response=existing.response,
+        owner_person_id=existing.owner_person_id, status=existing.status,
+        review_date=existing.review_date, external_id=existing.external_id,
+    )
+    action = "unchanged" if _unchanged(payload, current) else "update"
+    return NormalizeOutcome(
+        action, RiskPayload(project_id=existing.project_id, data=payload), existing.id, identity, []
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stakeholder (Phase 36) — matched by the resolved (project_id, person_id)
+# pair when person_id is given (mirroring ProjectSkillRequirement's
+# composite-key pattern); a row with no person reference has no natural
+# key at all and always creates, matching Project/Allocation's "no
+# external_id -> always creates" precedent for the same reason.
+# ---------------------------------------------------------------------------
+
+
+def normalize_stakeholder_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing_by_pair: Mapping[tuple[uuid.UUID, uuid.UUID], StakeholderFact],
+) -> NormalizeOutcome[StakeholderPayload]:
+    project_ref = resolve_project_reference(row, lookup)
+    if isinstance(project_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [project_ref])
+    person_ref = resolve_optional_person_reference(
+        row, lookup, id_field="person_id", email_field="person_email"
+    )
+    if isinstance(person_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [person_ref])
+
+    # None (not a compound string) when there's no person reference — this
+    # row has no natural key at all (matches Project/Allocation's own "no
+    # external_id -> identity=None" convention), so
+    # _flag_duplicate_identities correctly never treats two different
+    # person-less stakeholder rows on the same project as colliding.
+    identity = (
+        f"{_reference_display(row, 'project_id', 'project_external_id')},"
+        f"{_reference_display(row, 'person_id', 'person_email')}"
+        if person_ref is not None
+        else None
+    )
+    existing = existing_by_pair.get((project_ref, person_ref)) if person_ref is not None else None
+    fields: dict[str, object | None] = {
+        "name": coerce_optional_str(row.get("name")),
+        "person_id": person_ref,
+        "role": coerce_optional_str(row.get("role")),
+        "influence": coerce_optional_str(row.get("influence")),
+        "interest": coerce_optional_str(row.get("interest")),
+        "decision_authority": coerce_optional_str(row.get("decision_authority")),
+        "communication_needs": coerce_optional_str(row.get("communication_needs")),
+    }
+
+    if existing is None:
+        try:
+            payload = StakeholderCreate.model_validate(_present_fields(fields))
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome(
+            "create", StakeholderPayload(project_id=project_ref, data=payload), None, identity, []
+        )
+
+    try:
+        payload = StakeholderUpdate.model_validate(_present_fields(fields))
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = StakeholderUpdate(
+        name=existing.name, person_id=existing.person_id, role=existing.role,
+        influence=existing.influence, interest=existing.interest,
+        decision_authority=existing.decision_authority,
+        communication_needs=existing.communication_needs,
+    )
+    action = "unchanged" if _unchanged(payload, current) else "update"
+    return NormalizeOutcome(
+        action, StakeholderPayload(project_id=project_ref, data=payload), existing.id, identity, []
+    )
+
+
+# ---------------------------------------------------------------------------
+# ProjectPriorityScore (Phase 36) — matched by the resolved
+# (project_id, framework_id) pair, mirroring ProjectSkillRequirement's
+# composite-key pattern exactly (ProjectPriorityScore has the identical
+# UniqueConstraint("project_id", "framework_id") shape). category is
+# MOSCOW-only, values is every other framework_type's input — which one
+# is meaningful is validated against the resolved framework's own
+# framework_type/criteria, never re-decided here.
+# ---------------------------------------------------------------------------
+
+
+def normalize_project_priority_score_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing_by_pair: Mapping[tuple[uuid.UUID, uuid.UUID], ProjectPriorityScoreFact],
+) -> NormalizeOutcome[ProjectPriorityScorePayload]:
+    project_ref = resolve_project_reference(row, lookup)
+    if isinstance(project_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [project_ref])
+    framework_ref = resolve_framework_reference(row, lookup)
+    if isinstance(framework_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [framework_ref])
+    framework_fact = lookup.frameworks_by_id[framework_ref]
+
+    identity = (
+        f"{_reference_display(row, 'project_id', 'project_external_id')},"
+        f"{_reference_display(row, 'framework_id', 'framework_name')}"
+    )
+    existing = existing_by_pair.get((project_ref, framework_ref))
+
+    category_raw = coerce_optional_str(row.get("category"))
+    category: MoscowCategory | None = None
+    if category_raw is not None:
+        try:
+            category = MoscowCategory(category_raw)
+        except ValueError:
+            return NormalizeOutcome(
+                None, None, existing.id if existing else None, identity,
+                [ImportFieldError(
+                    field="category", code=ImportErrorCode.FIELD_TYPE_INVALID,
+                    message=f"'{category_raw}' is not a valid MoSCoW category.",
+                )],
+            )
+        if framework_fact.framework_type != PrioritizationFrameworkType.MOSCOW:
+            return NormalizeOutcome(
+                None, None, existing.id if existing else None, identity,
+                [ImportFieldError(
+                    field="category", code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                    message=(
+                        f"'category' is only meaningful for a MOSCOW framework, not "
+                        f"{framework_fact.framework_type.value.upper()}."
+                    ),
+                )],
+            )
+
+    values_raw = row.get("values")
+    values: list[CriterionValueInput] | None = None
+    try:
+        if isinstance(values_raw, list):
+            raw_values = cast(list[object], values_raw)
+            values = [CriterionValueInput.model_validate(item) for item in raw_values]
+        elif isinstance(values_raw, str) and values_raw.strip():
+            values = [
+                CriterionValueInput.model_validate(item)
+                for item in coerce_criterion_values_cell(values_raw)
+            ]
+        else:
+            values = None
+    except ValidationError as exc:
+        return NormalizeOutcome(
+            None, None, existing.id if existing else None, identity, _validation_errors(exc)
+        )
+    except ValueError as exc:
+        return NormalizeOutcome(
+            None, None, existing.id if existing else None, identity,
+            [ImportFieldError(
+                field="values", code=ImportErrorCode.FIELD_TYPE_INVALID, message=str(exc)
+            )],
+        )
+
+    if values:
+        unknown = [
+            v.criterion_key for v in values if v.criterion_key not in framework_fact.criterion_keys
+        ]
+        if unknown:
+            return NormalizeOutcome(
+                None, None, existing.id if existing else None, identity,
+                [ImportFieldError(
+                    field="values", code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                    message=(
+                        f"'{unknown[0]}' is not a criterion of framework "
+                        f"'{framework_fact.name}'."
+                    ),
+                )],
+            )
+
+    notes = coerce_optional_str(row.get("notes"))
+
+    if existing is None:
+        try:
+            payload = ProjectPriorityScoreCreate.model_validate(
+                {
+                    "framework_id": framework_ref,
+                    "values": values or [],
+                    **({"category": category} if category is not None else {}),
+                    **({"notes": notes} if notes is not None else {}),
+                }
+            )
+        except ValidationError as exc:
+            return NormalizeOutcome(None, None, None, identity, _validation_errors(exc))
+        return NormalizeOutcome(
+            "create",
+            ProjectPriorityScorePayload(project_id=project_ref, data=payload),
+            None, identity, [],
+        )
+
+    update_fields: dict[str, object] = {}
+    if category is not None:
+        update_fields["category"] = category
+    if notes is not None:
+        update_fields["notes"] = notes
+    if values is not None:
+        update_fields["values"] = values
+    try:
+        payload = ProjectPriorityScoreUpdate.model_validate(update_fields)
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, existing.id, identity, _validation_errors(exc))
+
+    current = ProjectPriorityScoreUpdate(
+        category=existing.category,
+        notes=existing.notes,
+        values=[
+            CriterionValueInput(criterion_key=key, value=value) for key, value in existing.values
+        ],
+    )
+    same_scalars = _unchanged(payload, current, exclude={"values"})
+    same_values = values is None or _values_key(values) == _values_key(current.values or [])
+    action = "unchanged" if same_scalars and same_values else "update"
+    return NormalizeOutcome(
+        action,
+        ProjectPriorityScorePayload(project_id=project_ref, data=payload),
         existing.id, identity, [],
     )

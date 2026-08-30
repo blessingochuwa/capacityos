@@ -385,6 +385,7 @@ def make_risk(
     owner: Person | None = None,
     status: RiskStatus = RiskStatus.OPEN,
     review_date: date | None = None,
+    external_id: str | None = None,
 ) -> Risk:
     risk = Risk(
         organization_id=organization.id,
@@ -398,6 +399,7 @@ def make_risk(
         owner_person_id=owner.id if owner is not None else None,
         status=status,
         review_date=review_date,
+        external_id=external_id,
     )
     session.add(risk)
     session.flush()

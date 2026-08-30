@@ -1799,6 +1799,63 @@ production changes, 0 frontend changes, 0 migrations, 0 new
 permissions.** Backend: 1007 tests (was 1006), `ruff`/`uv run pyright`
 (strict) both clean. See docs/adr/0035-user-write-global-scope.md.
 
+### Phase 36
+Import/export registration for Risk, Stakeholder & Prioritization
+(§18/§39 Phase 6) — closes the gap ADR 0013/0014 explicitly named as
+deferred ("every phase since Phase 7 that introduced a new source-data
+entity registered it into the Phase 6 import/export pipeline... recorded
+as recommended future work") and the roadmap's own long-standing blocking
+sub-question ("neither entity has a Person/Project-style natural
+identity key for CSV upsert-matching"). Audited first: the existing
+pipeline is a single central registry (`ImportEntityType` enum +
+`ENTITY_COLUMNS` + per-entity `normalize_*_row` functions) needing zero
+new routes; identity/upsert-matching already has three established
+shapes (a real unique column, a resolved-reference composite pair, or a
+new nullable `external_id` column) to choose from per-entity, never
+invented fresh; import/export is deliberately role-only, never
+project-instance-scoped (ADR 0011 names "imports/exports" explicitly as
+a deliberate deferral, not an oversight) — exactly the same
+characteristic `ProjectSkillRequirement` (Phase 7) already carries.
+**Risk** gets a new nullable `external_id` column (mechanical
+application of the established "no natural key → add external_id"
+precedent, migration `b8b6cb4c08bf`) — also exposed on the normal
+Risk API, matching Project's own precedent. **Stakeholder** needed no
+schema change — its existing `UniqueConstraint(project_id, person_id)`
+already supplies a natural key for person-linked rows; a person-less
+row has none and always creates, exactly like Project/Allocation's own
+"no external_id" behavior (a subtlety caught before shipping: a
+person-less row must get `identity=None`, not a colliding placeholder
+string, or two different person-less stakeholders on one project would
+wrongly collide as duplicates). **Prioritization** registers
+`ProjectPriorityScore`/`ProjectPriorityCriterionValue` — the actual
+human-entered source data (a project's RICE/ICE/WSJF/Weighted inputs or
+MoSCoW category; the score itself is derived, never stored, exactly
+like `Risk.exposure`) — gated by `PRIORITIZATION_SCORE`, the same
+Manager+ tier as `IMPORT_USE`. **`PrioritizationFramework` was
+deliberately excluded**: it is `PRIORITIZATION_MANAGE`-gated
+(Admin/Owner only, since a framework edit reshuffles the whole
+portfolio's ranking), and registering it into the `IMPORT_USE`-gated
+pipeline would be a genuine privilege escalation, not the pre-existing
+"role-only, not instance-scoped" characteristic every other registered
+entity already accepts — the one place this audit found a real
+authorization boundary that must not be crossed. `values` (Prioritization's
+packed criterion cell) reuses `WorkingSchedule.entries`'s exact
+packed-cell convention. `resolve_optional_person_reference` (new, shared
+by Risk's optional owner and Stakeholder's optional person link) is the
+first *optional* reference resolver — every existing one is required —
+added as a parameterized sibling of `resolve_person_reference`, not a
+second mechanism. Frontend: the existing `IMPORT_ENTITY_TYPES` picker
+list and `ExportPanel`'s `scopeFieldFor` (which already documents itself
+as mirroring the backend's dispatch exactly) both gained three entries —
+zero other frontend changes, since every other component is generic
+over `ImportEntityType`. **1 migration, 0 new permissions, 0 new
+routes.** Backend: 1037 tests (was 1007), `ruff`/`uv run pyright`
+(strict) both clean. Frontend: 321 tests (was 318), oxlint/tsc/build
+clean. Verified live over real HTTP, including a call to the unchanged
+`GET /prioritization/portfolio` route confirming imported RICE values
+feed the existing, unmodified scoring engine. See
+docs/adr/0036-import-export-risk-stakeholder-prioritization.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1813,12 +1870,17 @@ gaps, are resolved-as-retained per Phase 16,
 docs/adr/0016-instance-authorization-completion.md — re-opening either
 requires a new, explicit product requirement naming the missing ownership
 concept, not a rebuild of what Phase 16 already decided);
-Risk Import/Export registration and an org-wide cross-project risk
-register (see ADR 0013's Consequences — its other listed gap, the
-Prioritization (§18) domain concept, is resolved as a v1 slice per Phase
-17, docs/adr/0017-prioritization-engine.md);
-Stakeholder Import/Export registration and an org-wide cross-project
-stakeholder register (see ADR 0014's Consequences); independent
+Risk Import/Export registration is resolved as of Phase 36
+(docs/adr/0036-import-export-risk-stakeholder-prioritization.md — a new
+nullable `external_id` column) — an org-wide cross-project risk
+register remains open (see ADR 0013's Consequences — its other listed
+gap, the Prioritization (§18) domain concept, is resolved as a v1 slice
+per Phase 17, docs/adr/0017-prioritization-engine.md);
+Stakeholder Import/Export registration is resolved as of Phase 36
+(docs/adr/0036-import-export-risk-stakeholder-prioritization.md —
+matched by its existing `(project_id, person_id)` unique constraint, no
+schema change) — an org-wide cross-project
+stakeholder register remains open (see ADR 0014's Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
@@ -1887,13 +1949,22 @@ blocked on unspecified cross-domain semantics, reconfirmed unchanged by
 the Phase 27 audit; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
 ADR 0024's, ADR 0025's, ADR 0026's, and ADR 0027's Consequences for the
 remaining named boundaries);
-Prioritization, Project Dependency, and Portfolio Snapshot Import/Export
-registration (matching Risk/Stakeholder's own precedent, not specified —
-a Phase 22 audit of the actual import/export code confirmed neither Risk
-nor Stakeholder has a natural identity key for CSV upsert-matching, a
-further open question any future phase attempting this would need to
-resolve first, reconfirmed still open by the Phase 25, Phase 26, and
-Phase 27 audits); the membership roster/role/status-management UI is
+Prioritization Import/Export registration is resolved as of Phase 36
+(docs/adr/0036-import-export-risk-stakeholder-prioritization.md) —
+scoped specifically to `ProjectPriorityScore`/`ProjectPriorityCriterionValue`
+(the actual human-entered source data, gated by the Manager+
+`PRIORITIZATION_SCORE` permission); `PrioritizationFramework` was
+deliberately excluded, since it is `PRIORITIZATION_MANAGE`-gated
+(Admin/Owner only) and registering it into the Manager+ `IMPORT_USE`
+pipeline would be a genuine privilege escalation, not the pre-existing
+"role-only, not instance-scoped" characteristic every other registered
+entity already accepts. Project Dependency and Portfolio Snapshot
+Import/Export registration remain open — named in the same roadmap
+sentence as Prioritization but outside Phase 36's explicit three-domain
+scope, and each carrying its own unaudited open question (Portfolio
+Snapshot is immutable/append-only, like AuditEvent — never a natural
+import target; Project Dependency's own natural key and its interaction
+with cycle detection was not audited); the membership roster/role/status-management UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md), and organization **rename**

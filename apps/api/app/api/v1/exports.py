@@ -16,9 +16,13 @@ from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
+from app.repositories.stakeholder import StakeholderRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -42,6 +46,10 @@ def get_export_service(
         SkillRepository(db),
         PersonSkillRepository(db),
         ProjectSkillRequirementRepository(db),
+        RiskRepository(db),
+        StakeholderRepository(db),
+        PrioritizationFrameworkRepository(db),
+        ProjectPriorityScoreRepository(db),
         max_rows=settings.export_max_rows,
     )
 

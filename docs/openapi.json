@@ -9170,7 +9170,10 @@
           "availability_exception",
           "skill",
           "person_skill",
-          "project_skill_requirement"
+          "project_skill_requirement",
+          "risk",
+          "stakeholder",
+          "project_priority_score"
         ],
         "title": "ImportEntityType"
       },
@@ -12306,6 +12309,18 @@
               }
             ],
             "title": "Review Date"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
           }
         },
         "type": "object",
@@ -12450,6 +12465,18 @@
               }
             ],
             "title": "Review Date"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
           }
         },
         "type": "object",
@@ -15336,6 +15363,17 @@
             ],
             "title": "Review Date"
           },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -15361,6 +15399,7 @@
           "owner_person_id",
           "status",
           "review_date",
+          "external_id",
           "created_at",
           "updated_at"
         ],

@@ -17,6 +17,9 @@ export type ImportEntityType =
   | 'skill'
   | 'person_skill'
   | 'project_skill_requirement'
+  | 'risk'
+  | 'stakeholder'
+  | 'project_priority_score'
 
 export type ImportMode = 'upsert' | 'create_only' | 'update_only'
 
@@ -106,4 +109,7 @@ export const IMPORT_ENTITY_TYPES: {
   { value: 'skill', label: 'Skills' },
   { value: 'person_skill', label: 'Person skills' },
   { value: 'project_skill_requirement', label: 'Project skill requirements' },
+  { value: 'risk', label: 'Risks' },
+  { value: 'stakeholder', label: 'Stakeholders' },
+  { value: 'project_priority_score', label: 'Project priority scores' },
 ]

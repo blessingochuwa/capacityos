@@ -49,6 +49,27 @@ class RiskRepository(BaseRepository[Risk]):
             )
         )
 
+    def get_by_external_id(self, external_id: str, organization_id: uuid.UUID) -> Risk | None:
+        return self.session.scalar(
+            select(Risk).where(
+                Risk.external_id == external_id, Risk.organization_id == organization_id
+            )
+        )
+
+    def list_by_external_ids(
+        self, external_ids: list[str], organization_id: uuid.UUID
+    ) -> list[Risk]:
+        """Batched lookup for Phase 36 import identity resolution."""
+        if not external_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(Risk).where(
+                    Risk.external_id.in_(external_ids), Risk.organization_id == organization_id
+                )
+            )
+        )
+
     def list_open_for_project(
         self, project_id: uuid.UUID, organization_id: uuid.UUID
     ) -> list[Risk]:

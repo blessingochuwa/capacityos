@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any, cast
 
 from app.domain.dates import ranges_overlap
@@ -32,11 +33,18 @@ from app.domain.import_export_diff import (
     PersonFact,
     PersonSkillFact,
     PersonSkillPayload,
+    PrioritizationFrameworkFact,
     ProjectFact,
+    ProjectPriorityScoreFact,
+    ProjectPriorityScorePayload,
     ProjectSkillRequirementFact,
     ProjectSkillRequirementPayload,
     ReferenceLookup,
+    RiskFact,
+    RiskPayload,
     SkillFact,
+    StakeholderFact,
+    StakeholderPayload,
     TeamFact,
     TeamMembershipFact,
     TeamMembershipPayload,
@@ -46,9 +54,12 @@ from app.domain.import_export_diff import (
     normalize_availability_exception_row,
     normalize_person_row,
     normalize_person_skill_row,
+    normalize_project_priority_score_row,
     normalize_project_row,
     normalize_project_skill_requirement_row,
+    normalize_risk_row,
     normalize_skill_row,
+    normalize_stakeholder_row,
     normalize_team_membership_row,
     normalize_team_row,
     normalize_working_schedule_row,
@@ -70,18 +81,26 @@ from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
+from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.risk import Risk
 from app.models.skill import Skill
+from app.models.stakeholder import Stakeholder
 from app.models.team import Team
 from app.models.working_schedule import WorkingSchedule
 from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
+from app.repositories.stakeholder import StakeholderRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -99,12 +118,15 @@ from app.schemas.import_export import (
 )
 from app.schemas.person import PersonCreate, PersonUpdate
 from app.schemas.person_skill import PersonSkillCreate, PersonSkillUpdate
+from app.schemas.prioritization import ProjectPriorityScoreCreate, ProjectPriorityScoreUpdate
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.schemas.project_skill_requirement import (
     ProjectSkillRequirementCreate,
     ProjectSkillRequirementUpdate,
 )
+from app.schemas.risk import RiskCreate, RiskUpdate
 from app.schemas.skill import SkillCreate, SkillUpdate
+from app.schemas.stakeholder import StakeholderCreate, StakeholderUpdate
 from app.schemas.team import TeamCreate, TeamUpdate
 from app.schemas.working_schedule import WorkingScheduleCreate, WorkingScheduleUpdate
 from app.services.allocation import AllocationService
@@ -112,8 +134,11 @@ from app.services.availability_exception import AvailabilityExceptionService
 from app.services.person import PersonService
 from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
+from app.services.risk import RiskService
 from app.services.skill import SkillService
+from app.services.stakeholder import StakeholderService
 from app.services.team import TeamService
 from app.services.team_membership import TeamMembershipService
 from app.services.working_schedule import WorkingScheduleService
@@ -198,6 +223,46 @@ def _project_skill_requirement_fact(
     )
 
 
+def _risk_fact(risk: Risk) -> RiskFact:
+    return RiskFact(
+        id=risk.id, external_id=risk.external_id, project_id=risk.project_id,
+        description=risk.description, cause=risk.cause,
+        potential_effect=risk.potential_effect, probability=risk.probability,
+        impact=risk.impact, response=risk.response, owner_person_id=risk.owner_person_id,
+        status=risk.status, review_date=risk.review_date,
+    )
+
+
+def _stakeholder_fact(stakeholder: Stakeholder) -> StakeholderFact:
+    return StakeholderFact(
+        id=stakeholder.id, project_id=stakeholder.project_id, name=stakeholder.name,
+        person_id=stakeholder.person_id, role=stakeholder.role,
+        influence=stakeholder.influence, interest=stakeholder.interest,
+        decision_authority=stakeholder.decision_authority,
+        communication_needs=stakeholder.communication_needs,
+    )
+
+
+def _framework_fact(framework: PrioritizationFramework) -> PrioritizationFrameworkFact:
+    return PrioritizationFrameworkFact(
+        id=framework.id, name=framework.name, framework_type=framework.framework_type,
+        criterion_keys=frozenset(c.key for c in framework.criteria),
+    )
+
+
+def _project_priority_score_fact(score: ProjectPriorityScore) -> ProjectPriorityScoreFact:
+    criteria_by_id = {c.id: c for c in score.framework.criteria}
+    values: list[tuple[str, Decimal]] = []
+    for value in score.values:
+        criterion = criteria_by_id.get(value.criterion_id)
+        if criterion is not None:
+            values.append((criterion.key, value.value))
+    return ProjectPriorityScoreFact(
+        id=score.id, project_id=score.project_id, framework_id=score.framework_id,
+        category=score.category, notes=score.notes, values=tuple(values),
+    )
+
+
 def _collect(rows: Sequence[Mapping[str, object]], column: str) -> set[str]:
     return {v for v in (coerce_optional_str(row.get(column)) for row in rows) if v is not None}
 
@@ -249,6 +314,13 @@ class ImportService:
         person_skill_service: PersonSkillService,
         project_skill_requirement_repository: ProjectSkillRequirementRepository,
         project_skill_requirement_service: ProjectSkillRequirementService,
+        risk_repository: RiskRepository,
+        risk_service: RiskService,
+        stakeholder_repository: StakeholderRepository,
+        stakeholder_service: StakeholderService,
+        prioritization_framework_repository: PrioritizationFrameworkRepository,
+        project_priority_score_repository: ProjectPriorityScoreRepository,
+        project_priority_score_service: ProjectPriorityScoreService,
         *,
         max_file_size_bytes: int,
         max_rows: int,
@@ -273,6 +345,13 @@ class ImportService:
         self.person_skill_service = person_skill_service
         self.project_skill_requirement_repository = project_skill_requirement_repository
         self.project_skill_requirement_service = project_skill_requirement_service
+        self.risk_repository = risk_repository
+        self.risk_service = risk_service
+        self.stakeholder_repository = stakeholder_repository
+        self.stakeholder_service = stakeholder_service
+        self.prioritization_framework_repository = prioritization_framework_repository
+        self.project_priority_score_repository = project_priority_score_repository
+        self.project_priority_score_service = project_priority_score_service
         self.max_file_size_bytes = max_file_size_bytes
         self.max_rows = max_rows
 
@@ -373,6 +452,9 @@ class ImportService:
             ImportEntityType.SKILL: self._prepare_skill,
             ImportEntityType.PERSON_SKILL: self._prepare_person_skill,
             ImportEntityType.PROJECT_SKILL_REQUIREMENT: self._prepare_project_skill_requirement,
+            ImportEntityType.RISK: self._prepare_risk,
+            ImportEntityType.STAKEHOLDER: self._prepare_stakeholder,
+            ImportEntityType.PROJECT_PRIORITY_SCORE: self._prepare_project_priority_score,
         }
         rows = preparers[entity_type](organization_id, parsed, mode)
         return _Prepared(None, self._flag_duplicate_identities(rows))
@@ -413,8 +495,14 @@ class ImportService:
     def _person_lookup_maps(
         self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, PersonFact], dict[str, PersonFact]]:
-        ids = _collect_uuids(rows, "person_id")
-        emails = _collect(rows, "person_email")
+        # "person_id"/"person_email" is the reference shape every entity
+        # through Phase 7 uses; Risk's OPTIONAL owner reference (Phase 36)
+        # is spelled "owner_person_id"/"owner_person_email" instead (it
+        # can't reuse "person_id" — Risk has no such column), so both
+        # column-name pairs are scanned into the same Person catalog here
+        # rather than building a second, parallel lookup map.
+        ids = _collect_uuids(rows, "person_id") | _collect_uuids(rows, "owner_person_id")
+        emails = _collect(rows, "person_email") | _collect(rows, "owner_person_email")
         by_id: dict[uuid.UUID, PersonFact] = {}
         for person in self.person_repository.list_by_ids(list(ids), organization_id):
             by_id[person.id] = _person_fact(person)
@@ -466,6 +554,25 @@ class ImportService:
         by_name = {fact.name: fact for fact in by_id.values()}
         return by_id, by_name
 
+    def _framework_lookup_maps(
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
+    ) -> tuple[
+        dict[uuid.UUID, PrioritizationFrameworkFact], dict[str, PrioritizationFrameworkFact]
+    ]:
+        ids = _collect_uuids(rows, "framework_id")
+        names = _collect(rows, "framework_name")
+        by_id: dict[uuid.UUID, PrioritizationFrameworkFact] = {}
+        for framework in self.prioritization_framework_repository.list_by_ids(
+            list(ids), organization_id
+        ):
+            by_id[framework.id] = _framework_fact(framework)
+        for framework in self.prioritization_framework_repository.list_by_names(
+            list(names), organization_id
+        ):
+            by_id[framework.id] = _framework_fact(framework)
+        by_name = {fact.name: fact for fact in by_id.values()}
+        return by_id, by_name
+
     def _build_lookup(
         self,
         organization_id: uuid.UUID,
@@ -475,6 +582,7 @@ class ImportService:
         need_teams: bool = False,
         need_projects: bool = False,
         need_skills: bool = False,
+        need_frameworks: bool = False,
     ) -> ReferenceLookup:
         people_by_id, people_by_email = (
             self._person_lookup_maps(organization_id, rows) if need_people else ({}, {})
@@ -488,10 +596,14 @@ class ImportService:
         skills_by_id, skills_by_name = (
             self._skill_lookup_maps(organization_id, rows) if need_skills else ({}, {})
         )
+        frameworks_by_id, frameworks_by_name = (
+            self._framework_lookup_maps(organization_id, rows) if need_frameworks else ({}, {})
+        )
         return ReferenceLookup(
             people_by_id=people_by_id, people_by_email=people_by_email,
             teams_by_id=teams_by_id, teams_by_name=teams_by_name,
             projects_by_id=projects_by_id, projects_by_external_id=projects_by_external_id,
+            frameworks_by_id=frameworks_by_id, frameworks_by_name=frameworks_by_name,
             skills_by_id=skills_by_id, skills_by_name=skills_by_name,
         )
 
@@ -512,7 +624,7 @@ class ImportService:
             people_by_id={f.id: f for f in people_by_email.values()},
             people_by_email=people_by_email,
             teams_by_id={}, teams_by_name={}, projects_by_id={}, projects_by_external_id={},
-            skills_by_id={}, skills_by_name={},
+            skills_by_id={}, skills_by_name={}, frameworks_by_id={}, frameworks_by_name={},
         )
         return [
             _PreparedRow(i, apply_mode_policy(normalize_person_row(row, lookup), mode))
@@ -533,7 +645,7 @@ class ImportService:
             people_by_id={}, people_by_email={},
             teams_by_id={f.id: f for f in teams_by_name.values()}, teams_by_name=teams_by_name,
             projects_by_id={}, projects_by_external_id={},
-            skills_by_id={}, skills_by_name={},
+            skills_by_id={}, skills_by_name={}, frameworks_by_id={}, frameworks_by_name={},
         )
         return [
             _PreparedRow(i, apply_mode_policy(normalize_team_row(row, lookup), mode))
@@ -786,6 +898,71 @@ class ImportService:
             for i, row in enumerate(rows, start=1)
         ]
 
+    def _prepare_risk(
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(organization_id, rows, need_projects=True, need_people=True)
+        external_ids = _collect(rows, "external_id")
+        existing = {
+            r.external_id: _risk_fact(r)
+            for r in self.risk_repository.list_by_external_ids(
+                list(external_ids), organization_id
+            )
+            if r.external_id is not None
+        }
+        return [
+            _PreparedRow(i, apply_mode_policy(normalize_risk_row(row, lookup, existing), mode))
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_stakeholder(
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(organization_id, rows, need_projects=True, need_people=True)
+        resolved_project_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_project_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_project_ids.add(ref)
+        existing = {
+            (s.project_id, s.person_id): _stakeholder_fact(s)
+            for s in self.stakeholder_repository.list_for_projects(
+                list(resolved_project_ids), organization_id
+            )
+            if s.person_id is not None
+        }
+        return [
+            _PreparedRow(
+                i, apply_mode_policy(normalize_stakeholder_row(row, lookup, existing), mode)
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
+    def _prepare_project_priority_score(
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(organization_id, rows, need_projects=True, need_frameworks=True)
+        resolved_project_ids: set[uuid.UUID] = set()
+        for row in rows:
+            ref = resolve_project_reference(row, lookup)
+            if not isinstance(ref, ImportFieldError):
+                resolved_project_ids.add(ref)
+        existing = {
+            (s.project_id, s.framework_id): _project_priority_score_fact(s)
+            for s in self.project_priority_score_repository.list_for_projects(
+                list(resolved_project_ids), organization_id
+            )
+        }
+        return [
+            _PreparedRow(
+                i,
+                apply_mode_policy(
+                    normalize_project_priority_score_row(row, lookup, existing), mode
+                ),
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+
     # -- Writing (apply only; every row already confirmed clean) -------------
 
     def _write_row(
@@ -882,7 +1059,7 @@ class ImportService:
                     cast(uuid.UUID, outcome.matched_id),
                     cast(PersonSkillUpdate, payload.data),
                 )
-        else:
+        elif entity_type == ImportEntityType.PROJECT_SKILL_REQUIREMENT:
             requirement_payload = cast(ProjectSkillRequirementPayload, outcome.payload)
             if outcome.action == "create":
                 self.project_skill_requirement_service.add(
@@ -896,6 +1073,49 @@ class ImportService:
                     requirement_payload.project_id,
                     cast(uuid.UUID, outcome.matched_id),
                     cast(ProjectSkillRequirementUpdate, requirement_payload.data),
+                )
+        elif entity_type == ImportEntityType.RISK:
+            risk_payload = cast(RiskPayload, outcome.payload)
+            if outcome.action == "create":
+                self.risk_service.create(
+                    organization_id, risk_payload.project_id, cast(RiskCreate, risk_payload.data)
+                )
+            else:
+                self.risk_service.update(
+                    organization_id,
+                    risk_payload.project_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(RiskUpdate, risk_payload.data),
+                )
+        elif entity_type == ImportEntityType.STAKEHOLDER:
+            stakeholder_payload = cast(StakeholderPayload, outcome.payload)
+            if outcome.action == "create":
+                self.stakeholder_service.create(
+                    organization_id,
+                    stakeholder_payload.project_id,
+                    cast(StakeholderCreate, stakeholder_payload.data),
+                )
+            else:
+                self.stakeholder_service.update(
+                    organization_id,
+                    stakeholder_payload.project_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(StakeholderUpdate, stakeholder_payload.data),
+                )
+        else:
+            score_payload = cast(ProjectPriorityScorePayload, outcome.payload)
+            if outcome.action == "create":
+                self.project_priority_score_service.create(
+                    organization_id,
+                    score_payload.project_id,
+                    cast(ProjectPriorityScoreCreate, score_payload.data),
+                )
+            else:
+                self.project_priority_score_service.update(
+                    organization_id,
+                    score_payload.project_id,
+                    cast(uuid.UUID, outcome.matched_id),
+                    cast(ProjectPriorityScoreUpdate, score_payload.data),
                 )
 
     # -- Report assembly -------------------------------------------------

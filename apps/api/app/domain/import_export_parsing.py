@@ -25,6 +25,9 @@ class ImportEntityType(StrEnum):
     SKILL = "skill"
     PERSON_SKILL = "person_skill"
     PROJECT_SKILL_REQUIREMENT = "project_skill_requirement"
+    RISK = "risk"
+    STAKEHOLDER = "stakeholder"
+    PROJECT_PRIORITY_SCORE = "project_priority_score"
 
 
 class ImportMode(StrEnum):
@@ -184,6 +187,51 @@ ENTITY_COLUMNS: dict[ImportEntityType, list[ColumnSpec]] = {
         ColumnSpec("created_at", False),
         ColumnSpec("updated_at", False),
     ],
+    ImportEntityType.RISK: [
+        ColumnSpec("id", False),
+        ColumnSpec("external_id", False),
+        ColumnSpec("project_id", False),
+        ColumnSpec("project_external_id", False),
+        ColumnSpec("description", True),
+        ColumnSpec("cause", False),
+        ColumnSpec("potential_effect", False),
+        ColumnSpec("probability", False),
+        ColumnSpec("impact", False),
+        ColumnSpec("response", False),
+        ColumnSpec("owner_person_id", False),
+        ColumnSpec("owner_person_email", False),
+        ColumnSpec("status", False),
+        ColumnSpec("review_date", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.STAKEHOLDER: [
+        ColumnSpec("id", False),
+        ColumnSpec("project_id", False),
+        ColumnSpec("project_external_id", False),
+        ColumnSpec("name", True),
+        ColumnSpec("person_id", False),
+        ColumnSpec("person_email", False),
+        ColumnSpec("role", True),
+        ColumnSpec("influence", False),
+        ColumnSpec("interest", False),
+        ColumnSpec("decision_authority", False),
+        ColumnSpec("communication_needs", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.PROJECT_PRIORITY_SCORE: [
+        ColumnSpec("id", False),
+        ColumnSpec("project_id", False),
+        ColumnSpec("project_external_id", False),
+        ColumnSpec("framework_id", False),
+        ColumnSpec("framework_name", False),
+        ColumnSpec("category", False),
+        ColumnSpec("values", False),
+        ColumnSpec("notes", False),
+        ColumnSpec("created_at", False),
+        ColumnSpec("updated_at", False),
+    ],
 }
 """Single source of truth for column/header order — shared verbatim by
 import parsing (which headers to expect) and export writing (which
@@ -324,6 +372,27 @@ def coerce_entries_cell(raw: str) -> list[dict[str, str]]:
     return entries
 
 
+def coerce_criterion_values_cell(raw: str) -> list[dict[str, str]]:
+    """Parses ProjectPriorityScore's packed CSV cell
+    'criterion_key:value,criterion_key:value,...' (e.g.
+    'reach:8000,impact:2,confidence:80,effort:5') into the list-of-dicts
+    shape CriterionValueInput expects — the same packed-cell convention
+    WorkingSchedule's 'entries' column already established (see
+    coerce_entries_cell). Raises ValueError on malformed input, exactly
+    like coerce_entries_cell. JSON rows carry values as a native array
+    already and never call this."""
+    values: list[dict[str, str]] = []
+    for chunk in raw.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        key, sep, value_str = chunk.partition(":")
+        if not sep:
+            raise ValueError(f"'{chunk}' is not in 'criterion_key:value' format")
+        values.append({"criterion_key": key.strip(), "value": value_str.strip()})
+    return values
+
+
 _TEMPLATE_EXAMPLES: dict[ImportEntityType, dict[str, str]] = {
     ImportEntityType.PERSON: {
         "email": "jane.doe@example.com",
@@ -389,6 +458,27 @@ _TEMPLATE_EXAMPLES: dict[ImportEntityType, dict[str, str]] = {
         "required_hours": "80",
         "minimum_proficiency": "working",
     },
+    ImportEntityType.RISK: {
+        "external_id": "RISK-100",
+        "project_external_id": "PRJ-100",
+        "description": "Key vendor may miss the delivery deadline",
+        "probability": "medium",
+        "impact": "high",
+        "status": "open",
+    },
+    ImportEntityType.STAKEHOLDER: {
+        "project_external_id": "PRJ-100",
+        "name": "Jordan Client",
+        "role": "Sponsor",
+        "influence": "high",
+        "interest": "medium",
+        "decision_authority": "decision_maker",
+    },
+    ImportEntityType.PROJECT_PRIORITY_SCORE: {
+        "project_external_id": "PRJ-100",
+        "framework_name": "RICE",
+        "values": "reach:8000,impact:2,confidence:80,effort:5",
+    },
 }
 """One realistic, schema-valid example row per entity for build_template.
 Keys are a SUBSET of that entity's ENTITY_COLUMNS — build_template fills any
@@ -413,6 +503,8 @@ def build_template(entity_type: ImportEntityType, fmt: ExportFormat) -> bytes:
                     entry.split(":") for entry in example["entries"].split(",")
                 )
             ]
+        if entity_type == ImportEntityType.PROJECT_PRIORITY_SCORE:
+            row["values"] = coerce_criterion_values_cell(example["values"])
         return json.dumps([row], indent=2).encode("utf-8")
 
     fieldnames = [spec.name for spec in ENTITY_COLUMNS[entity_type]]

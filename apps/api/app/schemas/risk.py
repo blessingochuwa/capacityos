@@ -21,6 +21,9 @@ class RiskCreate(BaseModel):
     owner_person_id: uuid.UUID | None = None
     status: RiskStatus = RiskStatus.OPEN
     review_date: date | None = None
+    external_id: str | None = Field(default=None, max_length=200)
+    """Phase 6/36 import identity key — see Risk model's docstring.
+    Settable through the normal API too, matching Project's precedent."""
 
 
 class RiskUpdate(BaseModel):
@@ -33,6 +36,7 @@ class RiskUpdate(BaseModel):
     owner_person_id: uuid.UUID | None = None
     status: RiskStatus | None = None
     review_date: date | None = None
+    external_id: str | None = Field(default=None, max_length=200)
 
 
 class RiskRead(BaseModel):
@@ -53,6 +57,7 @@ class RiskRead(BaseModel):
     owner_person_id: uuid.UUID | None
     status: RiskStatus
     review_date: date | None
+    external_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -75,6 +80,7 @@ def risk_to_read(risk: Risk) -> RiskRead:
         owner_person_id=risk.owner_person_id,
         status=risk.status,
         review_date=risk.review_date,
+        external_id=risk.external_id,
         created_at=risk.created_at,
         updated_at=risk.updated_at,
     )

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.project_priority_score import ProjectPriorityScore
@@ -59,6 +59,45 @@ class ProjectPriorityScoreRepository(BaseRepository[ProjectPriorityScore]):
                     ProjectPriorityScore.organization_id == organization_id,
                 )
                 .order_by(ProjectPriorityScore.created_at)
+            )
+        )
+
+    def list_filtered(
+        self, organization_id: uuid.UUID, *, limit: int = 100, offset: int = 0
+    ) -> tuple[list[ProjectPriorityScore], int]:
+        """Org-wide, paginated — Phase 36 import/export's "no project_id
+        filter given" fallback, matching Skill/Risk/Stakeholder's
+        list()/list_filtered() shape."""
+        stmt = select(ProjectPriorityScore).where(
+            ProjectPriorityScore.organization_id == organization_id
+        )
+        total = self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        items = list(
+            self.session.scalars(
+                stmt.options(*_EAGER_LOAD)
+                .order_by(ProjectPriorityScore.created_at)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        return items, total
+
+    def list_for_projects(
+        self, project_ids: list[uuid.UUID], organization_id: uuid.UUID
+    ) -> list[ProjectPriorityScore]:
+        """Batched — one query for the whole id list, used by Phase 36
+        import identity resolution instead of one list_for_project call
+        per row (matches ProjectSkillRequirementRepository.list_for_projects)."""
+        if not project_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(ProjectPriorityScore)
+                .options(*_EAGER_LOAD)
+                .where(
+                    ProjectPriorityScore.project_id.in_(project_ids),
+                    ProjectPriorityScore.organization_id == organization_id,
+                )
             )
         )
 

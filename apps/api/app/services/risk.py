@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.risk import Risk
 from app.repositories.person import PersonRepository
 from app.repositories.project import ProjectRepository
@@ -31,6 +31,10 @@ class RiskService:
             raise NotFoundError("Project", project_id)
         if data.owner_person_id is not None:
             self._require_owner(organization_id, data.owner_person_id)
+        if data.external_id is not None and self.repository.get_by_external_id(
+            data.external_id, organization_id
+        ):
+            raise ConflictError(f"A risk with external_id {data.external_id} already exists.")
 
         risk = Risk(
             organization_id=organization_id,
@@ -44,6 +48,7 @@ class RiskService:
             owner_person_id=data.owner_person_id,
             status=data.status,
             review_date=data.review_date,
+            external_id=data.external_id,
         )
         return self.repository.add(risk)
 
@@ -65,6 +70,12 @@ class RiskService:
         new_owner_id = updates.get("owner_person_id")
         if new_owner_id is not None:
             self._require_owner(organization_id, new_owner_id)
+
+        new_external_id = updates.get("external_id")
+        if new_external_id is not None and new_external_id != risk.external_id:
+            existing = self.repository.get_by_external_id(new_external_id, organization_id)
+            if existing is not None and existing.id != risk.id:
+                raise ConflictError(f"A risk with external_id {new_external_id} already exists.")
 
         for field, value in updates.items():
             setattr(risk, field, value)

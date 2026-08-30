@@ -35,6 +35,40 @@ class PrioritizationFrameworkRepository(BaseRepository[PrioritizationFramework])
             )
         )
 
+    def list_by_ids(
+        self, ids: list[uuid.UUID], organization_id: uuid.UUID
+    ) -> list[PrioritizationFramework]:
+        """Batched lookup for Phase 36 import identity resolution."""
+        if not ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(PrioritizationFramework)
+                .options(selectinload(PrioritizationFramework.criteria))
+                .where(
+                    PrioritizationFramework.id.in_(ids),
+                    PrioritizationFramework.organization_id == organization_id,
+                )
+            )
+        )
+
+    def list_by_names(
+        self, names: list[str], organization_id: uuid.UUID
+    ) -> list[PrioritizationFramework]:
+        """Batched lookup for Phase 36 import identity resolution."""
+        if not names:
+            return []
+        return list(
+            self.session.scalars(
+                select(PrioritizationFramework)
+                .options(selectinload(PrioritizationFramework.criteria))
+                .where(
+                    PrioritizationFramework.name.in_(names),
+                    PrioritizationFramework.organization_id == organization_id,
+                )
+            )
+        )
+
     def list(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         organization_id: uuid.UUID,

@@ -55,6 +55,23 @@ class StakeholderRepository(BaseRepository[Stakeholder]):
             )
         )
 
+    def list_for_projects(
+        self, project_ids: list[uuid.UUID], organization_id: uuid.UUID
+    ) -> list[Stakeholder]:
+        """Batched — one query for the whole id list, used by Phase 36
+        import identity resolution instead of one list_for_project call
+        per row (matches ProjectSkillRequirementRepository.list_for_projects)."""
+        if not project_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(Stakeholder).where(
+                    Stakeholder.project_id.in_(project_ids),
+                    Stakeholder.organization_id == organization_id,
+                )
+            )
+        )
+
     def get_by_project_and_person(
         self, project_id: uuid.UUID, person_id: uuid.UUID, organization_id: uuid.UUID
     ) -> Stakeholder | None:

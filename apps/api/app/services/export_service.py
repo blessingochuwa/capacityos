@@ -26,9 +26,13 @@ from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
+from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
+from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
+from app.models.risk import Risk
 from app.models.skill import Skill
+from app.models.stakeholder import Stakeholder
 from app.models.team import Team
 from app.models.team_membership import TeamMembership
 from app.models.working_schedule import WorkingSchedule
@@ -36,9 +40,13 @@ from app.repositories.allocation import AllocationRepository
 from app.repositories.availability_exception import AvailabilityExceptionRepository
 from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
+from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
+from app.repositories.risk import RiskRepository
 from app.repositories.skill import SkillRepository
+from app.repositories.stakeholder import StakeholderRepository
 from app.repositories.team import TeamRepository
 from app.repositories.team_membership import TeamMembershipRepository
 from app.repositories.working_schedule import WorkingScheduleRepository
@@ -226,6 +234,80 @@ def _project_skill_requirement_row(
     }
 
 
+def _risk_row(risk: Risk, projects: dict[uuid.UUID, Project]) -> dict[str, object]:
+    project = projects.get(risk.project_id)
+    return {
+        "id": str(risk.id),
+        "external_id": risk.external_id,
+        "project_id": str(risk.project_id),
+        "project_external_id": project.external_id if project else None,
+        "description": risk.description,
+        "cause": risk.cause,
+        "potential_effect": risk.potential_effect,
+        "probability": risk.probability.value,
+        "impact": risk.impact.value,
+        "response": risk.response,
+        "owner_person_id": str(risk.owner_person_id) if risk.owner_person_id else None,
+        "status": risk.status.value,
+        "review_date": risk.review_date.isoformat() if risk.review_date else None,
+        "created_at": risk.created_at.isoformat(),
+        "updated_at": risk.updated_at.isoformat(),
+    }
+
+
+def _stakeholder_row(
+    stakeholder: Stakeholder, projects: dict[uuid.UUID, Project]
+) -> dict[str, object]:
+    project = projects.get(stakeholder.project_id)
+    return {
+        "id": str(stakeholder.id),
+        "project_id": str(stakeholder.project_id),
+        "project_external_id": project.external_id if project else None,
+        "name": stakeholder.name,
+        "person_id": str(stakeholder.person_id) if stakeholder.person_id else None,
+        "role": stakeholder.role,
+        "influence": stakeholder.influence.value,
+        "interest": stakeholder.interest.value,
+        "decision_authority": stakeholder.decision_authority.value,
+        "communication_needs": stakeholder.communication_needs,
+        "created_at": stakeholder.created_at.isoformat(),
+        "updated_at": stakeholder.updated_at.isoformat(),
+    }
+
+
+def _project_priority_score_row(
+    score: ProjectPriorityScore,
+    projects: dict[uuid.UUID, Project],
+    frameworks: dict[uuid.UUID, PrioritizationFramework],
+    fmt: ExportFormat,
+) -> dict[str, object]:
+    project = projects.get(score.project_id)
+    framework = frameworks.get(score.framework_id)
+    criteria_by_id = {c.id: c for c in framework.criteria} if framework else {}
+    pairs = sorted(
+        (criteria_by_id[v.criterion_id].key, v.value)
+        for v in score.values
+        if v.criterion_id in criteria_by_id
+    )
+    values_value: object = (
+        [{"criterion_key": key, "value": str(value)} for key, value in pairs]
+        if fmt == ExportFormat.JSON
+        else ",".join(f"{key}:{value}" for key, value in pairs)
+    )
+    return {
+        "id": str(score.id),
+        "project_id": str(score.project_id),
+        "project_external_id": project.external_id if project else None,
+        "framework_id": str(score.framework_id),
+        "framework_name": framework.name if framework else None,
+        "category": score.category.value if score.category else None,
+        "values": values_value,
+        "notes": score.notes,
+        "created_at": score.created_at.isoformat(),
+        "updated_at": score.updated_at.isoformat(),
+    }
+
+
 class ExportService:
     """Organization-scoped (Phase 12) — export() and every _collect_rows
     branch take organization_id, threaded into every repository call
@@ -249,6 +331,10 @@ class ExportService:
         skill_repository: SkillRepository,
         person_skill_repository: PersonSkillRepository,
         project_skill_requirement_repository: ProjectSkillRequirementRepository,
+        risk_repository: RiskRepository,
+        stakeholder_repository: StakeholderRepository,
+        prioritization_framework_repository: PrioritizationFrameworkRepository,
+        project_priority_score_repository: ProjectPriorityScoreRepository,
         *,
         max_rows: int,
     ) -> None:
@@ -262,6 +348,10 @@ class ExportService:
         self.skill_repository = skill_repository
         self.person_skill_repository = person_skill_repository
         self.project_skill_requirement_repository = project_skill_requirement_repository
+        self.risk_repository = risk_repository
+        self.stakeholder_repository = stakeholder_repository
+        self.prioritization_framework_repository = prioritization_framework_repository
+        self.project_priority_score_repository = project_priority_score_repository
         self.max_rows = max_rows
 
     def export(
@@ -324,6 +414,16 @@ class ExportService:
         return {
             skill.id: skill
             for skill in self.skill_repository.list_by_ids(list(ids), organization_id)
+        }
+
+    def _frameworks_by_id(
+        self, organization_id: uuid.UUID, ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, PrioritizationFramework]:
+        return {
+            framework.id: framework
+            for framework in self.prioritization_framework_repository.list_by_ids(
+                list(ids), organization_id
+            )
         }
 
     def _collect_rows(
@@ -429,20 +529,64 @@ class ExportService:
             skills = self._skills_by_id(organization_id, {ps.skill_id for ps in person_skills})
             return [_person_skill_row(ps, people, skills) for ps in person_skills]
 
-        requirements: list[ProjectSkillRequirement]
+        if entity_type == ImportEntityType.PROJECT_SKILL_REQUIREMENT:
+            requirements: list[ProjectSkillRequirement]
+            if project_id is not None:
+                requirements = self.project_skill_requirement_repository.list_for_project(
+                    project_id, organization_id
+                )
+                self._check_cap(len(requirements))
+            else:
+                requirements, total = self.project_skill_requirement_repository.list(
+                    organization_id, limit=self.max_rows, offset=0
+                )
+                self._check_cap(total)
+            projects = self._projects_by_id(organization_id, {r.project_id for r in requirements})
+            skills = self._skills_by_id(organization_id, {r.skill_id for r in requirements})
+            return [_project_skill_requirement_row(r, projects, skills) for r in requirements]
+
+        if entity_type == ImportEntityType.RISK:
+            risks: list[Risk]
+            if project_id is not None:
+                risks = self.risk_repository.list_for_project(project_id, organization_id)
+                self._check_cap(len(risks))
+            else:
+                risks, total = self.risk_repository.list(
+                    organization_id, limit=self.max_rows, offset=0
+                )
+                self._check_cap(total)
+            projects = self._projects_by_id(organization_id, {r.project_id for r in risks})
+            return [_risk_row(r, projects) for r in risks]
+
+        if entity_type == ImportEntityType.STAKEHOLDER:
+            stakeholders: list[Stakeholder]
+            if project_id is not None:
+                stakeholders = self.stakeholder_repository.list_for_project(
+                    project_id, organization_id
+                )
+                self._check_cap(len(stakeholders))
+            else:
+                stakeholders, total = self.stakeholder_repository.list(
+                    organization_id, limit=self.max_rows, offset=0
+                )
+                self._check_cap(total)
+            projects = self._projects_by_id(organization_id, {s.project_id for s in stakeholders})
+            return [_stakeholder_row(s, projects) for s in stakeholders]
+
+        scores: list[ProjectPriorityScore]
         if project_id is not None:
-            requirements = self.project_skill_requirement_repository.list_for_project(
+            scores = self.project_priority_score_repository.list_for_project(
                 project_id, organization_id
             )
-            self._check_cap(len(requirements))
+            self._check_cap(len(scores))
         else:
-            requirements, total = self.project_skill_requirement_repository.list(
+            scores, total = self.project_priority_score_repository.list_filtered(
                 organization_id, limit=self.max_rows, offset=0
             )
             self._check_cap(total)
-        projects = self._projects_by_id(organization_id, {r.project_id for r in requirements})
-        skills = self._skills_by_id(organization_id, {r.skill_id for r in requirements})
-        return [_project_skill_requirement_row(r, projects, skills) for r in requirements]
+        projects = self._projects_by_id(organization_id, {s.project_id for s in scores})
+        frameworks = self._frameworks_by_id(organization_id, {s.framework_id for s in scores})
+        return [_project_priority_score_row(s, projects, frameworks, fmt) for s in scores]
 
     def _serialize(
         self, entity_type: ImportEntityType, fmt: ExportFormat, rows: list[dict[str, object]]
