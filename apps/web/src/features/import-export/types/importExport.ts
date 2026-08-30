@@ -20,6 +20,7 @@ export type ImportEntityType =
   | 'risk'
   | 'stakeholder'
   | 'project_priority_score'
+  | 'project_dependency'
 
 export type ImportMode = 'upsert' | 'create_only' | 'update_only'
 
@@ -112,4 +113,5 @@ export const IMPORT_ENTITY_TYPES: {
   { value: 'risk', label: 'Risks' },
   { value: 'stakeholder', label: 'Stakeholders' },
   { value: 'project_priority_score', label: 'Project priority scores' },
+  { value: 'project_dependency', label: 'Project dependencies' },
 ]

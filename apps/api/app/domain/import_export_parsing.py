@@ -28,6 +28,7 @@ class ImportEntityType(StrEnum):
     RISK = "risk"
     STAKEHOLDER = "stakeholder"
     PROJECT_PRIORITY_SCORE = "project_priority_score"
+    PROJECT_DEPENDENCY = "project_dependency"
 
 
 class ImportMode(StrEnum):
@@ -231,6 +232,15 @@ ENTITY_COLUMNS: dict[ImportEntityType, list[ColumnSpec]] = {
         ColumnSpec("notes", False),
         ColumnSpec("created_at", False),
         ColumnSpec("updated_at", False),
+    ],
+    ImportEntityType.PROJECT_DEPENDENCY: [
+        ColumnSpec("id", False),
+        ColumnSpec("from_project_id", False),
+        ColumnSpec("from_project_external_id", False),
+        ColumnSpec("to_project_id", False),
+        ColumnSpec("to_project_external_id", False),
+        ColumnSpec("dependency_type", True),
+        ColumnSpec("created_at", False),
     ],
 }
 """Single source of truth for column/header order — shared verbatim by
@@ -478,6 +488,11 @@ _TEMPLATE_EXAMPLES: dict[ImportEntityType, dict[str, str]] = {
         "project_external_id": "PRJ-100",
         "framework_name": "RICE",
         "values": "reach:8000,impact:2,confidence:80,effort:5",
+    },
+    ImportEntityType.PROJECT_DEPENDENCY: {
+        "from_project_external_id": "PRJ-100",
+        "to_project_external_id": "PRJ-200",
+        "dependency_type": "blocks",
     },
 }
 """One realistic, schema-valid example row per entity for build_template.

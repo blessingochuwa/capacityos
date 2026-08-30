@@ -23,6 +23,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_dependency import ProjectDependencyRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.risk import RiskRepository
@@ -39,6 +40,7 @@ from app.services.import_service import ImportService
 from app.services.person import PersonService
 from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_dependency import ProjectDependencyService
 from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
 from app.services.risk import RiskService
@@ -91,6 +93,8 @@ def get_import_service(
             ProjectRepository(db),
             PrioritizationFrameworkRepository(db),
         ),
+        ProjectDependencyRepository(db),
+        ProjectDependencyService(ProjectDependencyRepository(db), ProjectRepository(db)),
         max_file_size_bytes=settings.import_max_file_size_bytes,
         max_rows=settings.import_max_rows,
     )

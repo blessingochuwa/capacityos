@@ -18,6 +18,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_dependency import ProjectDependencyRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.risk import RiskRepository
@@ -50,6 +51,7 @@ def get_export_service(
         StakeholderRepository(db),
         PrioritizationFrameworkRepository(db),
         ProjectPriorityScoreRepository(db),
+        ProjectDependencyRepository(db),
         max_rows=settings.export_max_rows,
     )
 

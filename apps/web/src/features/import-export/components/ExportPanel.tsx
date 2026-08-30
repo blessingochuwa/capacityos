@@ -31,7 +31,8 @@ function scopeFieldFor(
     entityType === 'project_skill_requirement' ||
     entityType === 'risk' ||
     entityType === 'stakeholder' ||
-    entityType === 'project_priority_score'
+    entityType === 'project_priority_score' ||
+    entityType === 'project_dependency'
   ) {
     return 'project'
   }

@@ -71,6 +71,27 @@ class ProjectDependencyRepository(BaseRepository[ProjectDependency]):
             )
         )
 
+    def list_for_projects(
+        self, project_ids: list[uuid.UUID], organization_id: uuid.UUID
+    ) -> list[ProjectDependency]:
+        """Batched — every edge where EITHER side is in project_ids, one
+        query for the whole id list, used by Phase 37 import identity
+        resolution instead of one list_for_project call per row (matches
+        ProjectSkillRequirementRepository.list_for_projects)."""
+        if not project_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(ProjectDependency).where(
+                    ProjectDependency.organization_id == organization_id,
+                    or_(
+                        ProjectDependency.from_project_id.in_(project_ids),
+                        ProjectDependency.to_project_id.in_(project_ids),
+                    ),
+                )
+            )
+        )
+
     def list_for_organization(self, organization_id: uuid.UUID) -> list[ProjectDependency]:
         """Every dependency edge in the organization — used to build the
         Dependency Graph view. Unfiltered by project since a graph is

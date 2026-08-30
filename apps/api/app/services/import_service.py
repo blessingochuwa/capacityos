@@ -34,6 +34,8 @@ from app.domain.import_export_diff import (
     PersonSkillFact,
     PersonSkillPayload,
     PrioritizationFrameworkFact,
+    ProjectDependencyFact,
+    ProjectDependencyPayload,
     ProjectFact,
     ProjectPriorityScoreFact,
     ProjectPriorityScorePayload,
@@ -54,6 +56,7 @@ from app.domain.import_export_diff import (
     normalize_availability_exception_row,
     normalize_person_row,
     normalize_person_skill_row,
+    normalize_project_dependency_row,
     normalize_project_priority_score_row,
     normalize_project_row,
     normalize_project_skill_requirement_row,
@@ -63,6 +66,7 @@ from app.domain.import_export_diff import (
     normalize_team_membership_row,
     normalize_team_row,
     normalize_working_schedule_row,
+    resolve_named_project_reference,
     resolve_person_reference,
     resolve_project_reference,
 )
@@ -77,12 +81,15 @@ from app.domain.import_export_parsing import (
     parse_csv_rows,
     parse_json_rows,
 )
+from app.domain.prioritization import detects_cycle
 from app.models.allocation import Allocation
 from app.models.availability_exception import AvailabilityException
+from app.models.enums import ProjectDependencyType
 from app.models.person import Person
 from app.models.person_skill import PersonSkill
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
+from app.models.project_dependency import ProjectDependency
 from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
@@ -96,6 +103,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_dependency import ProjectDependencyRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.risk import RiskRepository
@@ -134,6 +142,7 @@ from app.services.availability_exception import AvailabilityExceptionService
 from app.services.person import PersonService
 from app.services.person_skill import PersonSkillService
 from app.services.project import ProjectService
+from app.services.project_dependency import ProjectDependencyService
 from app.services.project_priority_score import ProjectPriorityScoreService
 from app.services.project_skill_requirement import ProjectSkillRequirementService
 from app.services.risk import RiskService
@@ -263,6 +272,13 @@ def _project_priority_score_fact(score: ProjectPriorityScore) -> ProjectPriority
     )
 
 
+def _project_dependency_fact(dependency: ProjectDependency) -> ProjectDependencyFact:
+    return ProjectDependencyFact(
+        from_project_id=dependency.from_project_id, to_project_id=dependency.to_project_id,
+        dependency_type=dependency.dependency_type,
+    )
+
+
 def _collect(rows: Sequence[Mapping[str, object]], column: str) -> set[str]:
     return {v for v in (coerce_optional_str(row.get(column)) for row in rows) if v is not None}
 
@@ -321,6 +337,8 @@ class ImportService:
         prioritization_framework_repository: PrioritizationFrameworkRepository,
         project_priority_score_repository: ProjectPriorityScoreRepository,
         project_priority_score_service: ProjectPriorityScoreService,
+        project_dependency_repository: ProjectDependencyRepository,
+        project_dependency_service: ProjectDependencyService,
         *,
         max_file_size_bytes: int,
         max_rows: int,
@@ -352,6 +370,8 @@ class ImportService:
         self.prioritization_framework_repository = prioritization_framework_repository
         self.project_priority_score_repository = project_priority_score_repository
         self.project_priority_score_service = project_priority_score_service
+        self.project_dependency_repository = project_dependency_repository
+        self.project_dependency_service = project_dependency_service
         self.max_file_size_bytes = max_file_size_bytes
         self.max_rows = max_rows
 
@@ -455,6 +475,7 @@ class ImportService:
             ImportEntityType.RISK: self._prepare_risk,
             ImportEntityType.STAKEHOLDER: self._prepare_stakeholder,
             ImportEntityType.PROJECT_PRIORITY_SCORE: self._prepare_project_priority_score,
+            ImportEntityType.PROJECT_DEPENDENCY: self._prepare_project_dependency,
         }
         rows = preparers[entity_type](organization_id, parsed, mode)
         return _Prepared(None, self._flag_duplicate_identities(rows))
@@ -527,8 +548,24 @@ class ImportService:
     def _project_lookup_maps(
         self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]]
     ) -> tuple[dict[uuid.UUID, ProjectFact], dict[str, ProjectFact]]:
-        ids = _collect_uuids(rows, "project_id")
-        external_ids = _collect(rows, "project_external_id")
+        # "project_id"/"project_external_id" is the reference shape every
+        # single-project-reference entity uses; ProjectDependency (Phase
+        # 37) references TWO projects per row under different column names
+        # ("from_project_id"/"from_project_external_id" and
+        # "to_project_id"/"to_project_external_id" — see
+        # resolve_named_project_reference), so all three column-name pairs
+        # are scanned into the same Project catalog here rather than
+        # building a second, parallel lookup map.
+        ids = (
+            _collect_uuids(rows, "project_id")
+            | _collect_uuids(rows, "from_project_id")
+            | _collect_uuids(rows, "to_project_id")
+        )
+        external_ids = (
+            _collect(rows, "project_external_id")
+            | _collect(rows, "from_project_external_id")
+            | _collect(rows, "to_project_external_id")
+        )
         by_id: dict[uuid.UUID, ProjectFact] = {}
         for project in self.project_repository.list_by_ids(list(ids), organization_id):
             by_id[project.id] = _project_fact(project)
@@ -963,6 +1000,77 @@ class ImportService:
             for i, row in enumerate(rows, start=1)
         ]
 
+    def _prepare_project_dependency(
+        self, organization_id: uuid.UUID, rows: Sequence[Mapping[str, object]], mode: ImportMode
+    ) -> list[_PreparedRow]:
+        lookup = self._build_lookup(organization_id, rows, need_projects=True)
+        resolved_project_ids: set[uuid.UUID] = set()
+        for row in rows:
+            for ref in (
+                resolve_named_project_reference(
+                    row, lookup,
+                    id_field="from_project_id", external_id_field="from_project_external_id",
+                ),
+                resolve_named_project_reference(
+                    row, lookup,
+                    id_field="to_project_id", external_id_field="to_project_external_id",
+                ),
+            ):
+                if not isinstance(ref, ImportFieldError):
+                    resolved_project_ids.add(ref)
+        existing = {
+            (d.from_project_id, d.to_project_id, d.dependency_type): _project_dependency_fact(d)
+            for d in self.project_dependency_repository.list_for_projects(
+                list(resolved_project_ids), organization_id
+            )
+        }
+        existing_triples = set(existing.keys())
+
+        # BLOCKS-edge cycle pre-check (Level 3): seed the organization's
+        # current BLOCKS edges, then simulate the batch in file order so a
+        # later row also sees a cycle a PRECEDING row in this same file
+        # would introduce — exactly mirroring
+        # _check_working_schedule_overlap's identical batch-simulation
+        # shape, and ProjectDependencyService.create's own cycle check
+        # (self-dependency is already rejected inside
+        # normalize_project_dependency_row itself, needing no batch state).
+        blocks_edges = [
+            (str(f), str(t)) for f, t in self.project_dependency_repository.list_blocks_edges(
+                organization_id
+            )
+        ]
+        result: list[_PreparedRow] = []
+        for i, row in enumerate(rows, start=1):
+            outcome = apply_mode_policy(
+                normalize_project_dependency_row(row, lookup, existing_triples), mode
+            )
+            outcome = self._check_project_dependency_cycle(outcome, blocks_edges)
+            result.append(_PreparedRow(i, outcome))
+        return result
+
+    def _check_project_dependency_cycle(
+        self, outcome: NormalizeOutcome[Any], blocks_edges: list[tuple[str, str]]
+    ) -> NormalizeOutcome[Any]:
+        if outcome.errors or outcome.action != "create":
+            return outcome
+        payload = outcome.payload
+        if not isinstance(payload, ProjectDependencyPayload):
+            return outcome
+        if payload.data.dependency_type != ProjectDependencyType.BLOCKS:
+            return outcome
+
+        from_id = str(payload.from_project_id)
+        to_id = str(payload.data.to_project_id)
+        if detects_cycle(blocks_edges, (from_id, to_id)):
+            error = ImportFieldError(
+                field=None, code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                message="This dependency would create a cycle in the project dependency graph.",
+            )
+            return NormalizeOutcome(None, None, outcome.matched_id, outcome.identity, [error])
+
+        blocks_edges.append((from_id, to_id))
+        return outcome
+
     # -- Writing (apply only; every row already confirmed clean) -------------
 
     def _write_row(
@@ -1102,7 +1210,7 @@ class ImportService:
                     cast(uuid.UUID, outcome.matched_id),
                     cast(StakeholderUpdate, stakeholder_payload.data),
                 )
-        else:
+        elif entity_type == ImportEntityType.PROJECT_PRIORITY_SCORE:
             score_payload = cast(ProjectPriorityScorePayload, outcome.payload)
             if outcome.action == "create":
                 self.project_priority_score_service.create(
@@ -1117,6 +1225,13 @@ class ImportService:
                     cast(uuid.UUID, outcome.matched_id),
                     cast(ProjectPriorityScoreUpdate, score_payload.data),
                 )
+        else:
+            # PROJECT_DEPENDENCY — always "create" (see
+            # ProjectDependencyFact's docstring: no update case exists).
+            dependency_payload = cast(ProjectDependencyPayload, outcome.payload)
+            self.project_dependency_service.create(
+                organization_id, dependency_payload.from_project_id, dependency_payload.data
+            )
 
     # -- Report assembly -------------------------------------------------
 

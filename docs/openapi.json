@@ -9173,7 +9173,8 @@
           "project_skill_requirement",
           "risk",
           "stakeholder",
-          "project_priority_score"
+          "project_priority_score",
+          "project_dependency"
         ],
         "title": "ImportEntityType"
       },

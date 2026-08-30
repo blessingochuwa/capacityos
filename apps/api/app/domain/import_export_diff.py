@@ -32,6 +32,7 @@ from app.models.enums import (
     EmploymentStatus,
     MoscowCategory,
     PrioritizationFrameworkType,
+    ProjectDependencyType,
     ProjectStatus,
     RiskImpact,
     RiskProbability,
@@ -51,6 +52,7 @@ from app.schemas.person import PersonCreate, PersonUpdate
 from app.schemas.person_skill import PersonSkillCreate, PersonSkillUpdate
 from app.schemas.prioritization import (
     CriterionValueInput,
+    ProjectDependencyCreate,
     ProjectPriorityScoreCreate,
     ProjectPriorityScoreUpdate,
 )
@@ -231,6 +233,18 @@ class ProjectPriorityScoreFact:
 
 
 @dataclass(frozen=True)
+class ProjectDependencyFact:
+    """Just the composite-key fields — a dependency edge has no mutable
+    fields at all (see ProjectDependency's model docstring: "created/added
+    or removed only"), so this Fact exists purely for existence-checking,
+    matching TeamMembershipFact's identical minimal shape."""
+
+    from_project_id: uuid.UUID
+    to_project_id: uuid.UUID
+    dependency_type: ProjectDependencyType
+
+
+@dataclass(frozen=True)
 class ReferenceLookup:
     """Batch-loaded once per request via repository list_by_ids/
     list_by_emails/list_by_names/list_by_external_ids calls, then passed to
@@ -304,6 +318,17 @@ class StakeholderPayload(NamedTuple):
 class ProjectPriorityScorePayload(NamedTuple):
     project_id: uuid.UUID
     data: ProjectPriorityScoreCreate | ProjectPriorityScoreUpdate
+
+
+class ProjectDependencyPayload(NamedTuple):
+    """ProjectDependencyCreate only carries to_project_id/dependency_type
+    (from_project_id normally comes from the URL path) — this wrapper
+    carries the resolved from_project_id alongside it, the same reason
+    ProjectSkillRequirementPayload exists. Always a "create" — there is no
+    update case (see ProjectDependencyFact's docstring)."""
+
+    from_project_id: uuid.UUID
+    data: ProjectDependencyCreate
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +405,42 @@ def resolve_project_reference(
     return ImportFieldError(
         field=None, code=ImportErrorCode.INVALID_REFERENCE,
         message="Provide project_id or project_external_id.",
+    )
+
+
+def resolve_named_project_reference(
+    row: Mapping[str, object], lookup: ReferenceLookup, *, id_field: str, external_id_field: str
+) -> uuid.UUID | ImportFieldError:
+    """Like resolve_project_reference, but for a row needing MORE THAN ONE
+    project reference under different column names — ProjectDependency's
+    from_project_id/from_project_external_id and
+    to_project_id/to_project_external_id both resolve through this, since
+    the plain resolve_project_reference is hardcoded to the single
+    "project_id"/"project_external_id" pair every other entity uses."""
+    id_raw = coerce_optional_str(row.get(id_field))
+    if id_raw:
+        parsed = _parse_uuid(id_raw, id_field)
+        if isinstance(parsed, ImportFieldError):
+            return parsed
+        fact = lookup.projects_by_id.get(parsed)
+        if fact is None:
+            return ImportFieldError(
+                field=id_field, code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No project with id {id_raw}.",
+            )
+        return fact.id
+    external_id = coerce_optional_str(row.get(external_id_field))
+    if external_id:
+        fact = lookup.projects_by_external_id.get(external_id)
+        if fact is None:
+            return ImportFieldError(
+                field=external_id_field, code=ImportErrorCode.INVALID_REFERENCE,
+                message=f"No project with external_id {external_id}.",
+            )
+        return fact.id
+    return ImportFieldError(
+        field=None, code=ImportErrorCode.INVALID_REFERENCE,
+        message=f"Provide {id_field} or {external_id_field}.",
     )
 
 
@@ -1456,3 +1517,64 @@ def normalize_project_priority_score_row(
         ProjectPriorityScorePayload(project_id=project_ref, data=payload),
         existing.id, identity, [],
     )
+
+
+# ---------------------------------------------------------------------------
+# ProjectDependency (Phase 37) — matched by the resolved
+# (from_project_id, to_project_id, dependency_type) triple, the table's own
+# UniqueConstraint. No update case at all — a dependency edge has no
+# mutable fields (see ProjectDependencyFact's docstring), so an existing
+# match is always "unchanged," never "update," mirroring
+# normalize_team_membership_row exactly. Self-dependency is rejected here
+# (Level 3, matches ProjectDependencyService.create's unconditional check);
+# BLOCKS-edge cycle detection needs cross-row batch state (which edge a
+# PREVIOUS row in this same file already added) and is therefore applied
+# by the caller (ImportService._check_project_dependency_cycle), the same
+# division of labor as WorkingSchedule's overlap check.
+# ---------------------------------------------------------------------------
+
+
+def normalize_project_dependency_row(
+    row: Mapping[str, object],
+    lookup: ReferenceLookup,
+    existing: set[tuple[uuid.UUID, uuid.UUID, ProjectDependencyType]],
+) -> NormalizeOutcome[ProjectDependencyPayload]:
+    from_ref = resolve_named_project_reference(
+        row, lookup, id_field="from_project_id", external_id_field="from_project_external_id"
+    )
+    if isinstance(from_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [from_ref])
+    to_ref = resolve_named_project_reference(
+        row, lookup, id_field="to_project_id", external_id_field="to_project_external_id"
+    )
+    if isinstance(to_ref, ImportFieldError):
+        return NormalizeOutcome(None, None, None, None, [to_ref])
+
+    identity_prefix = (
+        f"{_reference_display(row, 'from_project_id', 'from_project_external_id')},"
+        f"{_reference_display(row, 'to_project_id', 'to_project_external_id')}"
+    )
+    dependency_type_raw = coerce_optional_str(row.get("dependency_type"))
+    try:
+        payload_data = ProjectDependencyCreate.model_validate(
+            {"to_project_id": to_ref, "dependency_type": dependency_type_raw}
+        )
+    except ValidationError as exc:
+        return NormalizeOutcome(None, None, None, identity_prefix, _validation_errors(exc))
+
+    identity = f"{identity_prefix},{payload_data.dependency_type.value}"
+
+    if from_ref == to_ref:
+        return NormalizeOutcome(
+            None, None, None, identity,
+            [ImportFieldError(
+                field=None, code=ImportErrorCode.DOMAIN_RULE_VIOLATED,
+                message="A project cannot depend on itself.",
+            )],
+        )
+
+    if (from_ref, to_ref, payload_data.dependency_type) in existing:
+        return NormalizeOutcome("unchanged", None, None, identity, [])
+
+    payload = ProjectDependencyPayload(from_project_id=from_ref, data=payload_data)
+    return NormalizeOutcome("create", payload, None, identity, [])

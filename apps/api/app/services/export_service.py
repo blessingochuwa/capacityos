@@ -28,6 +28,7 @@ from app.models.person import Person
 from app.models.person_skill import PersonSkill
 from app.models.prioritization_framework import PrioritizationFramework
 from app.models.project import Project
+from app.models.project_dependency import ProjectDependency
 from app.models.project_priority_score import ProjectPriorityScore
 from app.models.project_skill_requirement import ProjectSkillRequirement
 from app.models.risk import Risk
@@ -42,6 +43,7 @@ from app.repositories.person import PersonRepository
 from app.repositories.person_skill import PersonSkillRepository
 from app.repositories.prioritization_framework import PrioritizationFrameworkRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_dependency import ProjectDependencyRepository
 from app.repositories.project_priority_score import ProjectPriorityScoreRepository
 from app.repositories.project_skill_requirement import ProjectSkillRequirementRepository
 from app.repositories.risk import RiskRepository
@@ -308,6 +310,22 @@ def _project_priority_score_row(
     }
 
 
+def _project_dependency_row(
+    dependency: ProjectDependency, projects: dict[uuid.UUID, Project]
+) -> dict[str, object]:
+    from_project = projects.get(dependency.from_project_id)
+    to_project = projects.get(dependency.to_project_id)
+    return {
+        "id": str(dependency.id),
+        "from_project_id": str(dependency.from_project_id),
+        "from_project_external_id": from_project.external_id if from_project else None,
+        "to_project_id": str(dependency.to_project_id),
+        "to_project_external_id": to_project.external_id if to_project else None,
+        "dependency_type": dependency.dependency_type.value,
+        "created_at": dependency.created_at.isoformat(),
+    }
+
+
 class ExportService:
     """Organization-scoped (Phase 12) — export() and every _collect_rows
     branch take organization_id, threaded into every repository call
@@ -335,6 +353,7 @@ class ExportService:
         stakeholder_repository: StakeholderRepository,
         prioritization_framework_repository: PrioritizationFrameworkRepository,
         project_priority_score_repository: ProjectPriorityScoreRepository,
+        project_dependency_repository: ProjectDependencyRepository,
         *,
         max_rows: int,
     ) -> None:
@@ -352,6 +371,7 @@ class ExportService:
         self.stakeholder_repository = stakeholder_repository
         self.prioritization_framework_repository = prioritization_framework_repository
         self.project_priority_score_repository = project_priority_score_repository
+        self.project_dependency_repository = project_dependency_repository
         self.max_rows = max_rows
 
     def export(
@@ -573,20 +593,43 @@ class ExportService:
             projects = self._projects_by_id(organization_id, {s.project_id for s in stakeholders})
             return [_stakeholder_row(s, projects) for s in stakeholders]
 
-        scores: list[ProjectPriorityScore]
+        if entity_type == ImportEntityType.PROJECT_PRIORITY_SCORE:
+            scores: list[ProjectPriorityScore]
+            if project_id is not None:
+                scores = self.project_priority_score_repository.list_for_project(
+                    project_id, organization_id
+                )
+                self._check_cap(len(scores))
+            else:
+                scores, total = self.project_priority_score_repository.list_filtered(
+                    organization_id, limit=self.max_rows, offset=0
+                )
+                self._check_cap(total)
+            projects = self._projects_by_id(organization_id, {s.project_id for s in scores})
+            frameworks = self._frameworks_by_id(organization_id, {s.framework_id for s in scores})
+            return [_project_priority_score_row(s, projects, frameworks, fmt) for s in scores]
+
+        # PROJECT_DEPENDENCY — both directions via list_for_project (an
+        # edge where this project is either the from or to side), matching
+        # the direct API's list_project_dependencies route exactly; the
+        # organization-wide fallback reuses list_for_organization, the
+        # same method the Dependency Graph view already calls.
+        dependencies: list[ProjectDependency]
         if project_id is not None:
-            scores = self.project_priority_score_repository.list_for_project(
+            dependencies = self.project_dependency_repository.list_for_project(
                 project_id, organization_id
             )
-            self._check_cap(len(scores))
+            self._check_cap(len(dependencies))
         else:
-            scores, total = self.project_priority_score_repository.list_filtered(
-                organization_id, limit=self.max_rows, offset=0
+            dependencies = self.project_dependency_repository.list_for_organization(
+                organization_id
             )
-            self._check_cap(total)
-        projects = self._projects_by_id(organization_id, {s.project_id for s in scores})
-        frameworks = self._frameworks_by_id(organization_id, {s.framework_id for s in scores})
-        return [_project_priority_score_row(s, projects, frameworks, fmt) for s in scores]
+            self._check_cap(len(dependencies))
+        projects = self._projects_by_id(
+            organization_id,
+            {d.from_project_id for d in dependencies} | {d.to_project_id for d in dependencies},
+        )
+        return [_project_dependency_row(d, projects) for d in dependencies]
 
     def _serialize(
         self, entity_type: ImportEntityType, fmt: ExportFormat, rows: list[dict[str, object]]

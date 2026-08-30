@@ -1856,6 +1856,54 @@ clean. Verified live over real HTTP, including a call to the unchanged
 feed the existing, unmodified scoring engine. See
 docs/adr/0036-import-export-risk-stakeholder-prioritization.md.
 
+### Phase 37
+Import/export registration for ProjectDependency; PortfolioSnapshot
+deliberately deferred (§18/§39 Phase 6) — completes the two entities
+Phase 36 explicitly named as outside its own three-domain scope, each
+carrying "its own unaudited open question." Audited both. **ProjectDependency**:
+its `UniqueConstraint(from_project_id, to_project_id, dependency_type)`
+already supplied a complete natural key — no migration. No `updated_at`
+at all (create/remove only, matching `TeamMembership`'s exact shape), so
+import has no update case — a match is always `"unchanged"`. Gated by
+`PRIORITIZATION_SCORE`, already proven safe in Phase 36. Self-dependency
+(applies to every `dependency_type`) is checked in the pure normalize
+function; `BLOCKS`-only cycle detection needs cross-row batch state (a
+later row must see a cycle an earlier row in the same file already
+closes), so it lives in `ImportService`, mirroring
+`_check_working_schedule_overlap`'s exact shape and reusing
+`detects_cycle` — the same function the direct API route already calls,
+never a second implementation. A new `resolve_named_project_reference`
+(parameterized, since ProjectDependency needs `from_`/`to_`-prefixed
+project references under different column names than every other
+entity's plain `project_id`/`project_external_id`) is the second
+generalized reference resolver after Phase 36's `resolve_optional_
+person_reference` — same technique, not a new mechanism. **PortfolioSnapshot
+was deliberately NOT registered, on either side.** Its own model
+docstring settles import: *"Deliberately NOT read back as an input to
+any live computation"*, immutable/append-only "matching AuditEvent's own
+shape exactly," and `PortfolioSnapshotService.create` takes only a
+`framework_id` — there is no user-supplied content a CSV row could even
+represent; accepting one would let an import fabricate historical
+portfolio state that never existed, the exact failure ADR 0006's own
+"import must not become a second capacity engine" principle forbids.
+Export was evaluated separately (reading an already-frozen JSON column
+isn't the same act as `ExportService`'s documented "no derived value
+computed at export time" concern) but the existing architecture offers
+no way to expose export without also exposing import — `/imports/{type}`
+and `/exports/{type}` share one `ImportEntityType` enum with no
+per-route capability flag, so adding the entity without an import
+dispatch entry would leave `/imports/portfolio_snapshot/validate`
+hitting an unhandled `KeyError` unless new infrastructure were built to
+guard it, which this phase was explicitly told not to build. **0
+migrations, 0 new permissions, 0 new routes, 0 changes of any kind to
+PortfolioSnapshot.** Backend: 1058 tests (was 1037), `ruff`/`uv run
+pyright` (strict) both clean. Frontend: 322 tests (was 321),
+oxlint/tsc/build clean. Verified live, including a real cross-row cycle
+check (an existing DB edge plus two new batch rows correctly rejecting
+only the row that closes the cycle) and cross-organization reference/
+export isolation. See
+docs/adr/0037-import-export-project-dependency.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -1958,13 +2006,24 @@ deliberately excluded, since it is `PRIORITIZATION_MANAGE`-gated
 (Admin/Owner only) and registering it into the Manager+ `IMPORT_USE`
 pipeline would be a genuine privilege escalation, not the pre-existing
 "role-only, not instance-scoped" characteristic every other registered
-entity already accepts. Project Dependency and Portfolio Snapshot
-Import/Export registration remain open — named in the same roadmap
-sentence as Prioritization but outside Phase 36's explicit three-domain
-scope, and each carrying its own unaudited open question (Portfolio
-Snapshot is immutable/append-only, like AuditEvent — never a natural
-import target; Project Dependency's own natural key and its interaction
-with cycle detection was not audited); the membership roster/role/status-management UI is
+entity already accepts. Project Dependency Import/Export registration is
+resolved as of Phase 37 (docs/adr/0037-import-export-project-dependency.md
+— its existing `(from_project_id, to_project_id, dependency_type)`
+unique constraint already supplied a complete natural key, no migration;
+self-dependency checked per-row, `BLOCKS`-only cycle detection via the
+same cross-row batch-simulation technique WorkingSchedule's overlap
+check already established, reusing `detects_cycle` verbatim). Portfolio
+Snapshot Import/Export registration was audited in the same phase and
+deliberately **not** built on either side: its own model docstring
+already settles import ("deliberately NOT read back as an input to any
+live computation," immutable/append-only like AuditEvent, and its
+`create()` takes only a `framework_id` — there is no user-supplied
+content a CSV row could represent); export was evaluated separately but
+the existing architecture offers no way to expose it without also
+exposing an unguarded import path, since `/imports/{type}` and
+`/exports/{type}` share one `ImportEntityType` enum with no per-route
+capability flag — closing that gap would be new infrastructure, out of
+that phase's explicit scope; the membership roster/role/status-management UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md), and organization **rename**

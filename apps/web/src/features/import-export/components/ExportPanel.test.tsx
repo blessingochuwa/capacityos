@@ -34,12 +34,13 @@ function setUpQueries() {
   } as unknown as ReturnType<typeof useExportEntities>)
 }
 
-/** Phase 36: Risk, Stakeholder, and ProjectPriorityScore export are all
- * project-scoped, exactly like ProjectSkillRequirement — this locks in
- * ExportPanel's scopeFieldFor mapping (mirrors
+/** Phase 36/37: Risk, Stakeholder, ProjectPriorityScore, and
+ * ProjectDependency export are all project-scoped, exactly like
+ * ProjectSkillRequirement — this locks in ExportPanel's scopeFieldFor
+ * mapping (mirrors
  * apps/api/app/services/export_service.py::ExportService._collect_rows). */
-describe('ExportPanel scope field for Phase 36 entities', () => {
-  it.each(['risk', 'stakeholder', 'project_priority_score'])(
+describe('ExportPanel scope field for Phase 36/37 entities', () => {
+  it.each(['risk', 'stakeholder', 'project_priority_score', 'project_dependency'])(
     'shows a Project filter, not Person or Team, for %s',
     async (entityType) => {
       setUpQueries()
