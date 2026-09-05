@@ -7,12 +7,14 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/features/auth/context/AuthContext'
+import { useProjects } from '@/hooks/useProjects'
 import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { ProjectFilterPicker } from '@/features/insights/components/ProjectFilterPicker'
 import { ExplainPriorityButton } from '@/features/ai/components/ExplainPriorityButton'
 import { ExplainSnapshotComparisonButton } from '@/features/ai/components/ExplainSnapshotComparisonButton'
 import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
+import { DependencyTimeline } from '../components/DependencyTimeline'
 import { FrameworkCriteriaEditor } from '../components/FrameworkCriteriaEditor'
 import { FrameworkForm } from '../components/FrameworkForm'
 import { PortfolioSnapshotComparisonTable } from '../components/PortfolioSnapshotComparisonTable'
@@ -62,9 +64,14 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * scatter (PriorityEffortScatterChart), shown for a RICE- or WSJF-typed
  * framework (the only two with a defined effort-like criterion), also
  * built entirely from the same portfolio ranking — no new backend
- * endpoint; see utils/priorityEffortScatter.ts. The remaining three PRD
- * visualizations (Capacity vs. Priority matrix, Risk vs. Value quadrant,
- * dependency timeline) remain deferred.
+ * endpoint; see utils/priorityEffortScatter.ts. Phase 40 adds the PRD's
+ * §15 dependency timeline (DependencyTimeline) — every fully-dated project
+ * placed on a shared date axis with the blocking relationships between
+ * them, built from GET /api/v1/projects + the existing dependency-graph
+ * read, no new backend endpoint; see utils/dependencyTimeline.ts. The
+ * remaining two PRD visualizations (Capacity vs. Priority matrix, Risk vs.
+ * Value quadrant) remain deferred — each still needs a product decision
+ * (see docs/adr/0040-dependency-timeline.md).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -84,6 +91,7 @@ export function PrioritizationOverviewPage() {
   const portfolioQuery = usePortfolio(frameworkId)
   const scoresQuery = useProjectPriorityScores(scoringProjectId)
   const dependencyGraphQuery = useDependencyGraph()
+  const projectsQuery = useProjects()
   const snapshotsQuery = usePortfolioSnapshots(frameworkId)
   const createSnapshot = useCreateSnapshot()
   const comparisonQuery = useSnapshotComparison(compareFromId, compareToId)
@@ -385,6 +393,27 @@ export function PrioritizationOverviewPage() {
         <CardBody>
           <QueryBoundary query={dependencyGraphQuery} loadingLabel="Loading dependency graph…">
             {(graph) => <DependencyGraphTable graph={graph} />}
+          </QueryBoundary>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Dependency timeline"
+          description="How projects are scheduled relative to the blocking dependencies between them."
+        />
+        <CardBody>
+          <QueryBoundary query={projectsQuery} loadingLabel="Loading projects…">
+            {(projectsPage) => (
+              <QueryBoundary
+                query={dependencyGraphQuery}
+                loadingLabel="Loading dependency graph…"
+              >
+                {(graph) => (
+                  <DependencyTimeline projects={projectsPage.items} graph={graph} />
+                )}
+              </QueryBoundary>
+            )}
           </QueryBoundary>
         </CardBody>
       </Card>

@@ -1946,6 +1946,66 @@ existing export still works, `portfolio_snapshot` is rejected on both
 paths, and a Viewer is denied. See
 docs/adr/0038-portfoliosnapshot-export-capability.md.
 
+### Phase 39
+Prioritization visualization audit — **hard stop, audit only** (§38/§39).
+No code, no ADR, no commit. Re-verified directly against current source
+(models, endpoints, enums, service methods — not on the strength of a
+prior ADR's claim) that all three then-remaining PRD §15 visualizations
+are blocked by genuine, unresolved product decisions: **Capacity-vs-
+Priority matrix** ("a project's capacity" is undefined — whose capacity,
+over what period, aggregated how; `Project` has no capacity field and the
+portfolio endpoint returns none; "matrix" implies quadrant thresholds
+§17/§29 forbid inventing), **Risk-vs-Value quadrant** (`Risk` is a
+project-scoped *set* with categorical `low/medium/high` exposure and no
+specified aggregation into one number; "Value" is not a defined term —
+only WSJF has a literal `business_value` criterion), and the **dependency
+timeline** (narrowest of the three — `Project.start_date`/`end_date`
+already exist, so the gap is "what does the axis plot and how are undated
+projects handled," not "the data does not exist"). Recommended the
+dependency timeline as the next bounded increment. Phase 40 acted on it.
+
+### Phase 40
+Dependency timeline visualization (§18/§38, the PRD's own §15) —
+**frontend-only, zero backend changes**, implementing the Phase 39
+recommendation with the Phase 39 product decisions applied verbatim.
+`features/prioritization/utils/dependencyTimeline.ts::buildDependencyTimeline`
+is a pure, unit-tested function joining two already-authorized, already-
+organization-scoped reads client-side: `GET /api/v1/projects` (via the
+existing `useProjects()` hook — `Permission.PROJECT_READ`, scoped to
+`membership.organization_id`) and the existing, unchanged `GET
+/api/v1/prioritization/dependency-graph` (already rendered on
+`PrioritizationOverviewPage` for the Phase 18 Dependency Graph table).
+`DependencyTimeline.tsx` renders a horizontal Recharts range-bar Gantt
+(`aria-hidden`) paired with an accessible table — the
+`ProjectDemandTimeline`/`PriorityEffortScatterChart` precedent — inside
+one new "Dependency timeline" card (no new route, no new nav entry).
+**Semantics (Phase 39 decisions):** timeline span is each project's own
+`start_date` → `end_date`, copied verbatim; a project is "scheduled" only
+when **both** dates are present — one missing either goes to a separate
+**"Unscheduled projects"** list, never given a fabricated date or axis
+position; only `blocks` edges are drawn (`related`/`enables` excluded;
+`blocked_by` is not synthesised — it is only ever the inverse read of a
+stored `blocks` edge); **no schedule-consistency judgement is computed**
+(a `blocks` predecessor whose dates fall after its successor's is not
+flagged — a separate unrequested product rule, and inventing a
+consistency judgement for display is exactly what §17/§29 warn against);
+the view is entirely read-only. `buildDependencyTimeline` sorts
+deterministically (start, then end, then name, then id) and reflects only
+the projects it is given (a unit test asserts an edge pointing at an
+unknown project id pulls in no row). **0 new tables, 0 migrations, 0 new
+routes, 0 new permissions, 0 backend files changed**, `docs/openapi.json`
+untouched. Frontend: 3 new files + 1 edited (`PrioritizationOverviewPage`);
++19 tests (322 → 341 passing). `tsc -b --noEmit` and `vite build` clean;
+`oxlint` could not be run (this environment's OS blocks its native binary
+— a pre-existing, repo-wide tooling gap, not a code issue). Backend suite
+unchanged at 1060, not re-run (0 backend files touched — the Phase
+24/25/27 convention for a frontend-only visualization phase). No browser
+verification (no browser-automation tool available). The two remaining
+PRD §15 visualizations (Capacity-vs-Priority matrix, Risk-vs-Value
+quadrant) stay deferred — each still needs a genuine product decision, not
+a definition invented to keep the phase number moving. See
+docs/adr/0040-dependency-timeline.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -2032,13 +2092,19 @@ feature, zero backend changes); the PRD's own §15 Priority-vs-Effort
 scatter is resolved as of Phase 27,
 docs/adr/0027-priority-effort-scatter-visualization.md (also a
 frontend-only feature, zero backend changes, scoped to RICE/WSJF only
-since ICE/Weighted have no defined effort criterion) — the remaining
-three PRD visualizations (Capacity-vs-Priority matrix, Risk-vs-Value
-quadrant, dependency timeline) remain unbuilt, all three genuinely
+since ICE/Weighted have no defined effort criterion); the PRD's own §15
+dependency timeline is resolved as of Phase 40,
+docs/adr/0040-dependency-timeline.md (also a frontend-only feature, zero
+backend changes — `Project.start_date`/`end_date` as the axis, undated
+projects listed separately and never fabricated onto it, `blocks` edges
+only, no schedule-consistency judgement; Phase 39 was the audit-only hard
+stop that recommended it) — the remaining
+two PRD visualizations (Capacity-vs-Priority matrix, Risk-vs-Value
+quadrant) remain unbuilt, both genuinely
 blocked on unspecified cross-domain semantics, reconfirmed unchanged by
-the Phase 27 audit; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
-ADR 0024's, ADR 0025's, ADR 0026's, and ADR 0027's Consequences for the
-remaining named boundaries);
+the Phase 39 audit; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
+ADR 0024's, ADR 0025's, ADR 0026's, ADR 0027's, and ADR 0040's
+Consequences for the remaining named boundaries);
 Prioritization Import/Export registration is resolved as of Phase 36
 (docs/adr/0036-import-export-risk-stakeholder-prioritization.md) —
 scoped specifically to `ProjectPriorityScore`/`ProjectPriorityCriterionValue`
