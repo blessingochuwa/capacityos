@@ -647,3 +647,22 @@ def test_import_invalid_entity_type_returns_422(client: TestClient) -> None:
         params={"mode": "upsert"},
     )
     assert response.status_code == 422
+
+
+def test_portfolio_snapshot_import_is_deliberately_unsupported(client: TestClient) -> None:
+    """Phase 38 audited and deliberately did NOT register PortfolioSnapshot
+    for import: its own model docstring states it is "deliberately NOT
+    read back as an input to any live computation," and its create() takes
+    only a framework_id — there is no user-supplied content a CSV row
+    could represent. Accepting one would let an import fabricate
+    historical portfolio state that never existed. "portfolio_snapshot" is
+    therefore not a member of ImportEntityType at all, so this 422 is
+    FastAPI's own enum-path-param validation — this test exists only to
+    lock the absence in as intentional. See
+    docs/adr/0038-portfoliosnapshot-export-capability.md."""
+    response = client.post(
+        "/api/v1/imports/portfolio_snapshot/validate",
+        files={"file": ("data.csv", b"framework_id\nsome-id\n", "text/csv")},
+        params={"mode": "upsert"},
+    )
+    assert response.status_code == 422

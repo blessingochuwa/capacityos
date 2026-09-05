@@ -1904,6 +1904,48 @@ only the row that closes the cycle) and cross-organization reference/
 export isolation. See
 docs/adr/0037-import-export-project-dependency.md.
 
+### Phase 38
+PortfolioSnapshot export decision — Outcome A: neither import nor export
+(§18/§39 Phase 6) — closes the export half of the question Phase 37
+explicitly deferred to its own dedicated audit. Five independently
+converging pieces of evidence were checked directly, not assumed:
+`AuditEvent` — the entity `PortfolioSnapshot`'s own docstring explicitly
+models itself after — has never been exportable anywhere in this
+codebase's history (`app/api/v1/audit.py` exposes only a paginated JSON
+list, no CSV route, despite being the single entity most plausibly
+needing compliance export if any did); the PRD's own words describe the
+purpose as "trend/history purposes" (in-app viewing), never mentioning
+export/download/CSV/backup; ADR 0006's own founding charter is about
+**operational source data** portability for onboarding ("current data...
+for backup, inspection, or reuse elsewhere") — a derived, computed,
+after-the-fact artifact doesn't fit that framing; the specific "see the
+trend" need is already shipped (Phase 24's in-app score-over-time
+chart, zero backend changes); and a full grep of every frontend file
+consuming `PortfolioSnapshot` found zero export/download signal of any
+kind. No capability architecture (`importable`/`exportable`/`both`) was
+built — building one now for a single entity this same audit concluded
+doesn't need *either* capability would be architecture built on spec,
+not on evidence; a future phase registering a genuinely export-only or
+import-only entity should size that distinction to what that entity
+actually needs, when it's actually needed. **0 production code changes,
+0 migrations, 0 new permissions, 0 API contract changes, 0 frontend
+changes.** Two regression tests lock the decision in as intentional
+(`test_portfolio_snapshot_import_is_deliberately_unsupported`,
+`test_portfolio_snapshot_export_is_deliberately_unsupported`, both
+asserting FastAPI's own enum-path-parameter 422 — not a special-cased
+rejection, since none was built). One incidental, pre-existing FastAPI
+dependency-resolution behavior was observed and documented rather than
+silently dropped: an authorized caller sees 422 for the invalid entity
+type, while an unauthorized caller sees 403 first (their `ForbiddenError`
+is raised during dependency solving, before the framework reaches the
+path-parameter coercion) — harmless, since the authorization boundary
+holds either way, just reported via a different equally-correct reason.
+Backend: 1060 tests (was 1058), `ruff`/`uv run pyright` (strict) both
+clean. Verified live against a fresh database, including confirming an
+existing export still works, `portfolio_snapshot` is rejected on both
+paths, and a Viewer is denied. See
+docs/adr/0038-portfoliosnapshot-export-capability.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -2018,12 +2060,21 @@ deliberately **not** built on either side: its own model docstring
 already settles import ("deliberately NOT read back as an input to any
 live computation," immutable/append-only like AuditEvent, and its
 `create()` takes only a `framework_id` — there is no user-supplied
-content a CSV row could represent); export was evaluated separately but
-the existing architecture offers no way to expose it without also
-exposing an unguarded import path, since `/imports/{type}` and
-`/exports/{type}` share one `ImportEntityType` enum with no per-route
-capability flag — closing that gap would be new infrastructure, out of
-that phase's explicit scope; the membership roster/role/status-management UI is
+content a CSV row could represent); export was evaluated separately in
+Phase 37 but left as its own dedicated question, since `/imports/{type}`
+and `/exports/{type}` share one `ImportEntityType` enum with no
+per-route capability flag. **Phase 38 resolved that question**
+(docs/adr/0038-portfoliosnapshot-export-capability.md): export is
+**deliberately rejected on product grounds**, not merely deferred for
+architectural reasons — `AuditEvent`, the entity PortfolioSnapshot
+explicitly models itself after, has never been exportable anywhere in
+this codebase; the PRD describes the purpose as in-app "trend/history,"
+never backup/download; ADR 0006's own charter is about operational
+source-data portability, not derived artifacts; and the specific
+"see the trend" need is already served by Phase 24's chart with zero
+export needed. No capability architecture was built, since the one
+entity that would have needed it turned out not to need either
+capability; the membership roster/role/status-management UI is
 resolved as of Phase 28 (docs/adr/0028-membership-management-ui.md) and
 the `User`-account create/disable/re-enable UI as of Phase 29
 (docs/adr/0029-user-account-management-ui.md), and organization **rename**

@@ -331,3 +331,18 @@ def test_export_unsupported_format_returns_422(client: TestClient) -> None:
 def test_export_invalid_entity_type_returns_422(client: TestClient) -> None:
     response = client.get("/api/v1/exports/not_a_real_entity", params={"format": "csv"})
     assert response.status_code == 422
+
+
+def test_portfolio_snapshot_export_is_deliberately_unsupported(client: TestClient) -> None:
+    """Phase 38 audited and deliberately did NOT register PortfolioSnapshot
+    for export: it is immutable, derived, and historical — explicitly
+    modeled on AuditEvent (docs/adr/0021-portfolio-snapshots.md), which has
+    never been exportable through this pipeline either — and no product
+    evidence (PRD, roadmap, ADR, frontend) ever named a backup/reporting
+    need for it. "portfolio_snapshot" is therefore not a member of
+    ImportEntityType at all, so this 422 is FastAPI's own enum-path-param
+    validation, not a special-cased rejection — this test exists only to
+    make the absence an intentional, locked-in contract rather than an
+    implicit one. See docs/adr/0038-portfoliosnapshot-export-capability.md."""
+    response = client.get("/api/v1/exports/portfolio_snapshot", params={"format": "csv"})
+    assert response.status_code == 422
