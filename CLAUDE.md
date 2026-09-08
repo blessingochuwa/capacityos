@@ -2109,6 +2109,40 @@ backend files changed**, `docs/openapi.json` untouched. Frontend: 10 new
 files + 3 edited (`app/routes.tsx`, `AppShell.tsx`, `test/fixtures.ts`);
 +20 tests (368 → 388 passing). See docs/adr/0043-audit-log-ui.md.
 
+### Phase 44
+Audit Log — action & resource-type filtering (§27/§35) — the small
+follow-up ADR 0043 itself named: expose the existing `GET /api/v1/audit`
+route's `action`/`resource_type` query parameters as filter controls.
+**Frontend-only, zero backend changes.** Re-verified directly against
+current source (not assumed unchanged) that both remain plain SQL
+equality filters (`AuditEvent.action == action`,
+`AuditEvent.resource_type == resource_type` —
+`app/repositories/audit_event.py::list_filtered`), never substring or
+case-insensitive matching. Extends the existing Phase 43
+`AuditFilterBar`/`AuditLogPage`/`auditApi` in place — two new plain
+`type="search"` text inputs ("Action", "Resource type"), never a
+dropdown: `AuditAction`'s own docstring still calls it "an open...
+vocabulary," so a dropdown would either duplicate that backend-owned
+list or misrepresent completeness if built from only the currently-
+loaded page (the exact reasoning Phase 43 already established,
+reconfirmed rather than re-litigated). Placeholder text demonstrates the
+expected format ("e.g. person.create") without claiming the UI knows
+every valid value or implementing a matching behavior the backend
+doesn't have. Both new fields feed the same `filters` object already
+passed to `useAuditEvents` (so both are part of the existing
+`['audit-events', filters]` query key with no hook changes) and call the
+same `resetToFirstPage()` every existing filter already calls — no new
+pagination model. The existing generic `isFiltered` empty-state
+distinction (Phase 43) needed no change since its inputs were simply
+extended. **0 new tables, 0 migrations, 0 new routes, 0 new query
+parameters (both already existed), 0 new permissions, 0 backend files
+changed**, `docs/openapi.json` untouched (API contract unchanged).
+Frontend: 0 new files, 3 edited (`auditApi.ts`, `AuditFilterBar.tsx`,
+`AuditLogPage.tsx`) + 2 test files extended; +13 tests (388 → 401
+passing). Risk vs. Value quadrant remains explicitly not started — still
+blocked on a user-supplied Value definition and risk-aggregation rule.
+See docs/adr/0044-audit-log-action-resource-filtering.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.

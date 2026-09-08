@@ -58,7 +58,7 @@ export function AuditLogPage() {
       <Card>
         <CardHeader
           title="Events"
-          description="Most recent first. Filter by actor or a date range."
+          description="Most recent first. Filter by actor, action, resource type, or a date range."
         />
         <CardBody className="space-y-4">
           <AuditLogManager />
@@ -73,6 +73,8 @@ function AuditLogManager() {
   const organizationId = user?.active_organization?.id
 
   const [actorFilter, setActorFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState('')
+  const [resourceTypeFilter, setResourceTypeFilter] = useState('')
   const [startInput, setStartInput] = useState('')
   const [endInput, setEndInput] = useState('')
   const [offset, setOffset] = useState(0)
@@ -96,6 +98,8 @@ function AuditLogManager() {
 
   const filters = {
     actor_user_id: actorFilter || undefined,
+    action: actionFilter.trim() || undefined,
+    resource_type: resourceTypeFilter.trim() || undefined,
     start: toIsoInstant(startInput),
     end: toIsoInstant(endInput),
     offset,
@@ -106,7 +110,9 @@ function AuditLogManager() {
     setOffset(0)
   }
 
-  const isFiltered = Boolean(actorFilter || startInput || endInput)
+  const isFiltered = Boolean(
+    actorFilter || actionFilter || resourceTypeFilter || startInput || endInput,
+  )
   const total = eventsQuery.data?.total ?? 0
   const hasPrevious = offset > 0
   const hasNext = offset + AUDIT_PAGE_SIZE < total
@@ -118,6 +124,16 @@ function AuditLogManager() {
         actorValue={actorFilter}
         onActorChange={(value) => {
           setActorFilter(value)
+          resetToFirstPage()
+        }}
+        actionValue={actionFilter}
+        onActionChange={(value) => {
+          setActionFilter(value)
+          resetToFirstPage()
+        }}
+        resourceTypeValue={resourceTypeFilter}
+        onResourceTypeChange={(value) => {
+          setResourceTypeFilter(value)
           resetToFirstPage()
         }}
         startValue={startInput}

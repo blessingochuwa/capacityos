@@ -23,6 +23,16 @@ export interface AuditEventFilters {
    * membership roster (features/members), never free text, since a raw
    * UUID isn't something a person can usefully type. */
   actor_user_id?: string
+  /** Exact match against `AuditEvent.action`
+   * (`apps/api/app/repositories/audit_event.py::list_filtered` —
+   * `AuditEvent.action == action`, not a substring/`ilike` search) — see
+   * `apps/api/app/models/enums.py::AuditAction`'s own docstring: an open,
+   * backend-owned vocabulary, so this is a plain text field (Phase 44),
+   * never a dropdown built from an invented or partial list. */
+  action?: string
+  /** Exact match against `AuditEvent.resource_type` — same semantics and
+   * same reasoning as `action` above. */
+  resource_type?: string
   /** Inclusive lower/upper bounds on `timestamp`, ISO 8601 — apps/api's
    * `start`/`end` query params. */
   start?: string
@@ -34,6 +44,8 @@ export const auditApi = {
   list: (filters: AuditEventFilters = {}) =>
     apiGet<Page<AuditEvent>>('/api/v1/audit', {
       actor_user_id: filters.actor_user_id || undefined,
+      action: filters.action || undefined,
+      resource_type: filters.resource_type || undefined,
       start: filters.start || undefined,
       end: filters.end || undefined,
       limit: AUDIT_PAGE_SIZE,

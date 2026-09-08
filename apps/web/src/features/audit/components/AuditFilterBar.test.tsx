@@ -3,21 +3,29 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuditFilterBar } from './AuditFilterBar'
 
+function defaultProps() {
+  return {
+    actorOptions: [] as { value: string; label: string }[],
+    actorValue: '',
+    onActorChange: vi.fn(),
+    actionValue: '',
+    onActionChange: vi.fn(),
+    resourceTypeValue: '',
+    onResourceTypeChange: vi.fn(),
+    startValue: '',
+    onStartChange: vi.fn(),
+    endValue: '',
+    onEndChange: vi.fn(),
+  }
+}
+
 describe('AuditFilterBar', () => {
-  it('renders actor, since, and until controls', () => {
-    render(
-      <AuditFilterBar
-        actorOptions={[]}
-        actorValue=""
-        onActorChange={vi.fn()}
-        startValue=""
-        onStartChange={vi.fn()}
-        endValue=""
-        onEndChange={vi.fn()}
-      />,
-    )
+  it('renders actor, action, resource type, since, and until controls', () => {
+    render(<AuditFilterBar {...defaultProps()} />)
 
     expect(screen.getByLabelText('Actor')).toBeInTheDocument()
+    expect(screen.getByLabelText('Action')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resource type')).toBeInTheDocument()
     expect(screen.getByLabelText('Since')).toBeInTheDocument()
     expect(screen.getByLabelText('Until')).toBeInTheDocument()
   })
@@ -25,16 +33,11 @@ describe('AuditFilterBar', () => {
   it('lists the supplied actor options', () => {
     render(
       <AuditFilterBar
+        {...defaultProps()}
         actorOptions={[
           { value: 'user-1', label: 'Ada Lovelace (ada@acme.test)' },
           { value: 'user-2', label: 'Alan Turing (alan@acme.test)' },
         ]}
-        actorValue=""
-        onActorChange={vi.fn()}
-        startValue=""
-        onStartChange={vi.fn()}
-        endValue=""
-        onEndChange={vi.fn()}
       />,
     )
 
@@ -48,13 +51,9 @@ describe('AuditFilterBar', () => {
     const user = userEvent.setup()
     render(
       <AuditFilterBar
+        {...defaultProps()}
         actorOptions={[{ value: 'user-1', label: 'Ada Lovelace (ada@acme.test)' }]}
-        actorValue=""
         onActorChange={onActorChange}
-        startValue=""
-        onStartChange={vi.fn()}
-        endValue=""
-        onEndChange={vi.fn()}
       />,
     )
 
@@ -66,15 +65,7 @@ describe('AuditFilterBar', () => {
     const onStartChange = vi.fn()
     const onEndChange = vi.fn()
     render(
-      <AuditFilterBar
-        actorOptions={[]}
-        actorValue=""
-        onActorChange={vi.fn()}
-        startValue=""
-        onStartChange={onStartChange}
-        endValue=""
-        onEndChange={onEndChange}
-      />,
+      <AuditFilterBar {...defaultProps()} onStartChange={onStartChange} onEndChange={onEndChange} />,
     )
 
     // fireEvent.change (rather than userEvent's per-character typing,
@@ -89,5 +80,45 @@ describe('AuditFilterBar', () => {
 
     expect(onStartChange).toHaveBeenCalledWith('2026-01-15T09:30')
     expect(onEndChange).toHaveBeenCalledWith('2026-01-20T00:00')
+  })
+
+  it('calls onActionChange as the Action field is typed', async () => {
+    const onActionChange = vi.fn()
+    const user = userEvent.setup()
+    render(<AuditFilterBar {...defaultProps()} onActionChange={onActionChange} />)
+
+    await user.type(screen.getByLabelText('Action'), 'x')
+    expect(onActionChange).toHaveBeenCalledWith('x')
+  })
+
+  it('calls onResourceTypeChange as the Resource type field is typed', async () => {
+    const onResourceTypeChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <AuditFilterBar {...defaultProps()} onResourceTypeChange={onResourceTypeChange} />,
+    )
+
+    await user.type(screen.getByLabelText('Resource type'), 'x')
+    expect(onResourceTypeChange).toHaveBeenCalledWith('x')
+  })
+
+  it('reflects the current Action and Resource type values', () => {
+    render(
+      <AuditFilterBar
+        {...defaultProps()}
+        actionValue="person.create"
+        resourceTypeValue="person"
+      />,
+    )
+
+    expect(screen.getByLabelText('Action')).toHaveValue('person.create')
+    expect(screen.getByLabelText('Resource type')).toHaveValue('person')
+  })
+
+  it('does not suggest a finite taxonomy — Action and Resource type are plain text inputs, not selects', () => {
+    render(<AuditFilterBar {...defaultProps()} />)
+
+    expect(screen.getByLabelText('Action').tagName).toBe('INPUT')
+    expect(screen.getByLabelText('Resource type').tagName).toBe('INPUT')
   })
 })
