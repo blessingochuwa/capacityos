@@ -2006,6 +2006,74 @@ quadrant) stay deferred — each still needs a genuine product decision, not
 a definition invented to keep the phase number moving. See
 docs/adr/0040-dependency-timeline.md.
 
+### Phase 41
+Full roadmap re-audit & next-increment selection — **audit-only, no
+code, no ADR, no commit**. Re-verified directly against current source
+(models, routers, enums, route tables, frontend routes/nav — not on the
+strength of any prior ADR's claim) that Capacity-vs-Priority and
+Risk-vs-Value remained blocked exactly as Phase 39 found them, that every
+other named deferral (scenario snapshots, org-wide Risk/Stakeholder
+registers, PostgreSQL concurrency verification, external integrations)
+was still genuinely blocked or explicitly out of scope, and — going
+beyond the existing "named candidates" list as instructed — searched the
+codebase for smaller, high-value, zero-ambiguity gaps. Found one:
+`GET /api/v1/audit` (`Permission.AUDIT_READ`, Admin/Owner only) has
+existed, fully built and organization-scoped, since Phase 10, with **zero
+frontend consumer anywhere** — no route, no nav entry, no
+`can('audit.read')` reference in `apps/web/src`. Recommended an Audit Log
+UI as the strongest ready Phase 42 candidate (fully defined semantics, no
+backend change, total reuse of the Phase 34 filter-bar pattern). See the
+Phase 41 Final Report (no ADR was produced — audit-only phases do not
+generate one, matching Phase 39's own precedent).
+
+### Phase 42
+Capacity vs. Priority matrix (§18/§38, the PRD's own §15) — the item
+Phase 41 found still blocked, unblocked this phase by an explicit product
+decision supplied directly by the user rather than derived by audit: "a
+project's capacity requirement is the total allocated hours for that
+project over the currently represented planning horizon." **Frontend-
+only, zero backend changes.**
+`features/prioritization/utils/capacityPriorityMatrix.ts::buildCapacityPriorityMatrix`
+is a pure, unit-tested function joining two already-authorized, already-
+organization-scoped reads client-side: the existing `GET
+/api/v1/prioritization/portfolio` (unchanged since Phase 17, via the
+already-mounted `usePortfolio` hook) and `GET /api/v1/allocations` (a new
+`allocationsApi.list()` wrapper with no filter, over the existing,
+unchanged, `ALLOCATION_READ`-gated route — no new backend route).
+Capacity is the sum of `Allocation.allocation_hours` per project (its
+existing, documented "total hours over the row's span" semantic, no date
+window, no forecasting); priority is the project's already-computed
+`score`, copied verbatim, never recalculated. A project with **zero**
+recorded allocations is treated as missing capacity data and excluded —
+deliberately **not** a real zero (unlike `ProjectDemandRead.allocated_hours`'s
+own "0 when unallocated" convention for a bounded date range, this axis
+answers "has capacity ever been captured for this project," which an
+absent Allocation row does not answer). A project with `score === null`
+(incomplete numeric inputs, or any MoSCoW-scored project) is excluded as
+missing a priority score — the same filter `WsjfBreakdownChart`/
+`PriorityEffortScatterChart` already use. Reference lines are the
+**median** capacity and median priority across the currently plotted
+projects only, never an invented threshold; a value exactly equal to its
+axis's median is deterministically classified on the "low" side of that
+axis (documented tie rule). Quadrants are purely descriptive labels
+("High Priority / High Capacity", etc.) — never a recommendation or
+risk/"quick win" judgment (CLAUDE.md §17/§29). Chart (`aria-hidden`, two
+`ReferenceLine`s) paired with a plain-text median/count sentence, a
+quadrant-definition legend, an accessible table, and — when non-empty —
+one sentence disclosing every excluded project and its specific reason.
+**0 new tables, 0 migrations, 0 new routes, 0 new permissions, 0 backend
+files changed**, `docs/openapi.json` untouched. Frontend: 5 new files + 3
+edited (`entities.ts`, `test/fixtures.ts`, `PrioritizationOverviewPage`);
++27 tests (341 → 368 passing). `tsc -b --noEmit`, `oxlint`, and `vite
+build` all clean. Backend suite not re-run (0 backend files touched, the
+Phase 24/25/27/40 convention; `pytest` remains blocked in this
+environment per Phase 41). No browser verification (no browser-automation
+tool available). The one remaining PRD §15 visualization (Risk vs. Value
+quadrant) stays deferred — it still needs a genuine product decision
+supplied the same way this phase's capacity definition was, not one
+invented to keep the phase number moving. See
+docs/adr/0042-capacity-priority-matrix.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -2098,13 +2166,22 @@ docs/adr/0040-dependency-timeline.md (also a frontend-only feature, zero
 backend changes — `Project.start_date`/`end_date` as the axis, undated
 projects listed separately and never fabricated onto it, `blocks` edges
 only, no schedule-consistency judgement; Phase 39 was the audit-only hard
-stop that recommended it) — the remaining
-two PRD visualizations (Capacity-vs-Priority matrix, Risk-vs-Value
-quadrant) remain unbuilt, both genuinely
-blocked on unspecified cross-domain semantics, reconfirmed unchanged by
-the Phase 39 audit; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
-ADR 0024's, ADR 0025's, ADR 0026's, ADR 0027's, and ADR 0040's
-Consequences for the remaining named boundaries);
+stop that recommended it); the PRD's own §15 Capacity-vs-Priority matrix
+is resolved as of Phase 42, docs/adr/0042-capacity-priority-matrix.md
+(also a frontend-only feature, zero backend changes — capacity is each
+project's total recorded `Allocation.allocation_hours`, priority is the
+existing portfolio score, median-based reference lines with a documented
+tie rule, purely descriptive quadrant labels, a project with zero
+recorded allocations excluded as missing data rather than plotted at a
+fabricated zero; unblocked by an explicit product decision supplied
+directly by the user, not derived by audit — see Phase 41) — the
+remaining one PRD visualization (Risk-vs-Value quadrant) remains unbuilt,
+still genuinely blocked on unspecified cross-domain semantics
+(how a project's several `Risk` rows aggregate into one axis value, and
+what "Value" means outside WSJF), reconfirmed unchanged by the Phase 39
+and Phase 41 audits; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
+ADR 0024's, ADR 0025's, ADR 0026's, ADR 0027's, ADR 0040's, and ADR
+0042's Consequences for the remaining named boundaries);
 Prioritization Import/Export registration is resolved as of Phase 36
 (docs/adr/0036-import-export-risk-stakeholder-prioritization.md) —
 scoped specifically to `ProjectPriorityScore`/`ProjectPriorityCriterionValue`

@@ -7,11 +7,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { QueryBoundary } from '@/components/ui/QueryBoundary'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/features/auth/context/AuthContext'
+import { useAllocations } from '@/hooks/useAllocations'
 import { useProjects } from '@/hooks/useProjects'
 import { ViewOnlyNotice } from '@/features/auth/components/ViewOnlyNotice'
 import { ProjectFilterPicker } from '@/features/insights/components/ProjectFilterPicker'
 import { ExplainPriorityButton } from '@/features/ai/components/ExplainPriorityButton'
 import { ExplainSnapshotComparisonButton } from '@/features/ai/components/ExplainSnapshotComparisonButton'
+import { CapacityPriorityMatrixChart } from '../components/CapacityPriorityMatrixChart'
 import { DependencyGraphTable } from '../components/DependencyGraphTable'
 import { DependencyManager } from '../components/DependencyManager'
 import { DependencyTimeline } from '../components/DependencyTimeline'
@@ -68,10 +70,16 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * §15 dependency timeline (DependencyTimeline) — every fully-dated project
  * placed on a shared date axis with the blocking relationships between
  * them, built from GET /api/v1/projects + the existing dependency-graph
- * read, no new backend endpoint; see utils/dependencyTimeline.ts. The
- * remaining two PRD visualizations (Capacity vs. Priority matrix, Risk vs.
- * Value quadrant) remain deferred — each still needs a product decision
- * (see docs/adr/0040-dependency-timeline.md).
+ * read, no new backend endpoint; see utils/dependencyTimeline.ts. Phase 42
+ * adds the PRD's §15 Capacity vs. Priority matrix
+ * (CapacityPriorityMatrixChart) — each project's total allocated hours
+ * (GET /api/v1/allocations, summed client-side) plotted against its
+ * already-computed priority score, with median-based reference lines
+ * across the currently plotted projects only (never an invented business
+ * threshold); no new backend endpoint; see
+ * utils/capacityPriorityMatrix.ts. The remaining PRD visualization (Risk
+ * vs. Value quadrant) remains deferred — it still needs a product decision
+ * (see docs/adr/0042-capacity-priority-matrix.md).
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -92,6 +100,7 @@ export function PrioritizationOverviewPage() {
   const scoresQuery = useProjectPriorityScores(scoringProjectId)
   const dependencyGraphQuery = useDependencyGraph()
   const projectsQuery = useProjects()
+  const allocationsQuery = useAllocations()
   const snapshotsQuery = usePortfolioSnapshots(frameworkId)
   const createSnapshot = useCreateSnapshot()
   const comparisonQuery = useSnapshotComparison(compareFromId, compareToId)
@@ -206,6 +215,22 @@ export function PrioritizationOverviewPage() {
                         <WsjfBreakdownChart items={portfolio.items} />
                       </div>
                     ) : null}
+                    <div className="space-y-4 border-t border-slate-800 pt-4">
+                      <h3 className="text-sm font-medium text-slate-200">
+                        Capacity vs. priority
+                      </h3>
+                      <QueryBoundary
+                        query={allocationsQuery}
+                        loadingLabel="Loading allocations…"
+                      >
+                        {(allocationsPage) => (
+                          <CapacityPriorityMatrixChart
+                            items={portfolio.items}
+                            allocations={allocationsPage.items}
+                          />
+                        )}
+                      </QueryBoundary>
+                    </div>
                   </div>
                 )
               }

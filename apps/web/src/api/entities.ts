@@ -40,6 +40,12 @@ export const allocationsApi = {
       person_id: personId,
       limit: LIST_ALL_LIMIT,
     }),
+  /** Every allocation in the caller's active organization (Phase 42) — same
+   * `GET /api/v1/allocations` route, org-scoped and ALLOCATION_READ-gated
+   * exactly like `listForPerson`, just without a `person_id` filter. Used
+   * to derive each project's total allocated hours client-side (Capacity
+   * vs. Priority matrix) — no new backend endpoint. */
+  list: () => apiGet<Page<Allocation>>('/api/v1/allocations', { limit: LIST_ALL_LIMIT }),
 }
 
 export const availabilityExceptionsApi = {

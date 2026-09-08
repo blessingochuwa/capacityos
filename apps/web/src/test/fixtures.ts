@@ -1,4 +1,4 @@
-import type { Person, Project, Team } from '@/types/entities'
+import type { Allocation, Person, Project, Team } from '@/types/entities'
 import type { CurrentUser } from '@/features/auth/types/auth'
 import type {
   PersonCapacity,
@@ -137,6 +137,22 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     status: 'active',
     start_date: null,
     end_date: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeAllocation(overrides: Partial<Allocation> = {}): Allocation {
+  return {
+    id: 'allocation-1',
+    person_id: 'person-1',
+    project_id: 'project-1',
+    start_date: '2026-01-01',
+    end_date: '2026-01-31',
+    allocation_hours: '40',
+    allocation_unit: 'total_hours',
+    notes: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
