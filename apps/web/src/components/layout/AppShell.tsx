@@ -79,6 +79,11 @@ export function AppShell() {
                   Organization
                 </NavLink>
               ) : null}
+              {can('audit.read') ? (
+                <NavLink to="/admin/audit" className={NAV_LINK_CLASS}>
+                  Audit Log
+                </NavLink>
+              ) : null}
             </nav>
           </div>
           <div className="flex items-center gap-4">

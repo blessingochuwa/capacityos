@@ -2074,6 +2074,41 @@ supplied the same way this phase's capacity definition was, not one
 invented to keep the phase number moving. See
 docs/adr/0042-capacity-priority-matrix.md.
 
+### Phase 43
+Audit Log UI (§27/§35) — the item Phase 41's roadmap re-audit found: `GET
+/api/v1/audit` has existed, fully built and organization-scoped, since
+Phase 10, with zero frontend consumer anywhere. **Frontend-only, zero
+backend changes.** A new `/admin/audit` page
+(`apps/web/src/features/audit/`), gated by `can('audit.read')`
+(Admin/Owner only, mirroring `UsersPage`'s exact pattern), consumes the
+existing `GET /api/v1/audit` contract exactly as audited: `actor_user_id`/
+`action`/`resource_type`/`start`/`end` filters, `limit`/`offset`
+pagination with a real `total`. Only **actor** (populated from the
+active organization's already-complete membership roster,
+`useMemberships`) and a **since/until** date range are exposed as filter
+controls — `action`/`resource_type`, though also real server filters, are
+deliberately left as plain table columns rather than dropdowns, since
+both are open, backend-owned vocabularies (`AuditAction`'s own docstring:
+new members are "a pure code change, never a migration") and a dropdown
+built from only the currently-loaded page would misrepresent
+completeness. This is the first real pagination UI in the frontend
+(Previous/Next over `offset`/`limit`/`total`) — every other "list all X"
+pattern in this app fetches up to 500 rows once and never paginates
+(ADR 0034), which would misrepresent an unboundedly-growing audit trail
+as complete. `action` is rendered as its raw machine code, never mapped
+through an invented human-readable label (the same "no fabricated
+semantics" reasoning that ruled out the dropdown). No organization id is
+threaded into the query key — switching organizations already purges the
+entire query cache (`AuthContext.tsx`, established since Phase 12), the
+same mechanism every other organization-scoped query already relies on.
+`event_metadata` is rendered exactly as the backend already returns it —
+already vetted by `tests/api/test_audit.py` to never carry a password or
+token; this phase expands nothing about that payload. **0 new tables, 0
+migrations, 0 new routes, 0 new query parameters, 0 new permissions, 0
+backend files changed**, `docs/openapi.json` untouched. Frontend: 10 new
+files + 3 edited (`app/routes.tsx`, `AppShell.tsx`, `test/fixtures.ts`);
++20 tests (368 → 388 passing). See docs/adr/0043-audit-log-ui.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.

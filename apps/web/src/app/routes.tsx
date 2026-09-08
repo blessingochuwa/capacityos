@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { RouteErrorBoundary } from '@/components/layout/RouteErrorBoundary'
 import { AccessManagementPage } from '@/features/access/views/AccessManagementPage'
+import { AuditLogPage } from '@/features/audit/views/AuditLogPage'
 import { CapacityOverviewPage } from '@/features/capacity/views/CapacityOverviewPage'
 import { PersonCapacityPage } from '@/features/capacity/views/PersonCapacityPage'
 import { ProjectCapacityPage } from '@/features/capacity/views/ProjectCapacityPage'
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
       { path: 'admin/members', element: <MembersPage /> },
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'admin/organization', element: <OrganizationSettingsPage /> },
+      { path: 'admin/audit', element: <AuditLogPage /> },
     ],
   },
 ])

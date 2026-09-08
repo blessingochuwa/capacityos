@@ -51,6 +51,7 @@ import type {
   SnapshotComparisonItem,
 } from '@/features/prioritization/types/prioritization'
 import type { Stakeholder } from '@/features/stakeholders/types/stakeholders'
+import type { AuditEvent } from '@/features/audit/types/audit'
 import type {
   AIInsightResponse,
   AIResponseEnvelope,
@@ -155,6 +156,23 @@ export function makeAllocation(overrides: Partial<Allocation> = {}): Allocation 
     notes: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeAuditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    id: 'audit-1',
+    timestamp: '2026-01-15T09:30:00Z',
+    organization_id: 'org-1',
+    actor_user_id: 'user-1',
+    actor_email: 'ada@acme.test',
+    action: 'person.create',
+    resource_type: 'person',
+    resource_id: 'person-1',
+    outcome: 'success',
+    request_id: 'req-1',
+    event_metadata: null,
     ...overrides,
   }
 }
