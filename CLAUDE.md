@@ -2143,6 +2143,47 @@ passing). Risk vs. Value quadrant remains explicitly not started — still
 blocked on a user-supplied Value definition and risk-aggregation rule.
 See docs/adr/0044-audit-log-action-resource-filtering.md.
 
+### Phase 45
+Risk vs. Value quadrant (§18/§38, the PRD's own §15, the last of its five
+visualizations) — every prior audit (Phases 25, 39, 40, 41) had found
+this blocked on two undefined product concepts: a project's "Value," and
+how to aggregate its 0..N `Risk` rows. This phase re-audited both
+directly against current source (not on the strength of any prior
+finding), reconfirmed neither was defined anywhere (`Project` still has
+no value field of any kind; `Risk` still has no numeric field at all —
+`exposure` is deliberately categorical; WSJF's `business_value` is one
+of four inputs to a *different* score, not a standalone project value;
+no aggregation function exists anywhere in `app/domain/risk.py`), and
+produced a Decision Report with 2-3 concrete options for each, put to
+the user as a blocking question rather than guessed at (CLAUDE.md §31).
+**The user chose:** Value = the project's existing priority score under
+the selected framework (Phase 42's own Y-axis, reused verbatim); Risk =
+the count of a project's open (not `closed`) Risk records with `exposure
+== "high"` — the exact condition the existing `risk_high_exposure`
+Insights signal already uses (`app/domain/risk.py::classify_risk_signal`),
+reused as a plain count, never a synthesized score (CLAUDE.md §17). With
+both decisions supplied, implementation proceeded. **Frontend-only, zero
+backend changes.** No bulk risk endpoint exists (ADR 0013: "no org-wide
+risk register"), so `features/prioritization/hooks/useRisksForProjects.ts`
+fires one `GET /projects/{id}/risks` per plotted project via TanStack
+Query's `useQueries`, reusing `features/risks/`'s own query key
+(`['projects', projectId, 'risks']`) so results share cache with the
+standalone Risks page. A risk count of `0` is a REAL plotted value
+(unlike Phase 42's capacity axis) — an empty qualifying-risk list is the
+same positive fact the Insights page already expresses by firing no
+signal, not an ambiguous "never assessed" state; a project is excluded
+only when its risk fetch genuinely fails (`risk_data_unavailable`), and
+a single project's fetch failure never blocks the whole chart — it is
+individually excluded and disclosed. Median-based reference lines and
+the "tie goes to the low side" rule reapply Phase 42's own technique —
+deliberately, not silently: the only quadrant-boundary technique this
+codebase has ever used, with no alternative specified by the user's
+decision. **0 new tables, 0 migrations, 0 new routes, 0 new permissions,
+0 backend files changed**, `docs/openapi.json` untouched. Frontend: 5 new
+files + 1 edited (`PrioritizationOverviewPage`); +35 tests (401 → 436
+passing). Every PRD §15 visualization is now implemented. See
+docs/adr/0045-risk-value-quadrant.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -2243,14 +2284,19 @@ existing portfolio score, median-based reference lines with a documented
 tie rule, purely descriptive quadrant labels, a project with zero
 recorded allocations excluded as missing data rather than plotted at a
 fabricated zero; unblocked by an explicit product decision supplied
-directly by the user, not derived by audit — see Phase 41) — the
-remaining one PRD visualization (Risk-vs-Value quadrant) remains unbuilt,
-still genuinely blocked on unspecified cross-domain semantics
-(how a project's several `Risk` rows aggregate into one axis value, and
-what "Value" means outside WSJF), reconfirmed unchanged by the Phase 39
-and Phase 41 audits; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's,
-ADR 0024's, ADR 0025's, ADR 0026's, ADR 0027's, ADR 0040's, and ADR
-0042's Consequences for the remaining named boundaries);
+directly by the user, not derived by audit — see Phase 41) — the PRD's
+own §15 Risk vs. Value quadrant is resolved as of Phase 45,
+docs/adr/0045-risk-value-quadrant.md (Value = the existing priority
+score, reused verbatim from Phase 42; Risk = the count of a project's
+open, high-exposure `Risk` records, reusing the existing
+`risk_high_exposure` signal's own condition as a plain count — both
+definitions supplied by explicit user decision after a Phase 45 Decision
+Report, not derived by audit; zero backend changes, one `GET
+/projects/{id}/risks` call per plotted project since no bulk risk
+endpoint exists per ADR 0013) — every PRD §15 visualization is now
+implemented; see ADR 0020's, ADR 0021's, ADR 0022's, ADR 0023's, ADR
+0024's, ADR 0025's, ADR 0026's, ADR 0027's, ADR 0040's, ADR 0042's, and
+ADR 0045's Consequences for the full history);
 Prioritization Import/Export registration is resolved as of Phase 36
 (docs/adr/0036-import-export-risk-stakeholder-prioritization.md) —
 scoped specifically to `ProjectPriorityScore`/`ProjectPriorityCriterionValue`

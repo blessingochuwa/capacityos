@@ -24,6 +24,7 @@ import { PortfolioSnapshotList } from '../components/PortfolioSnapshotList'
 import { PortfolioSnapshotTrendChart } from '../components/PortfolioSnapshotTrendChart'
 import { PortfolioTable } from '../components/PortfolioTable'
 import { PriorityEffortScatterChart } from '../components/PriorityEffortScatterChart'
+import { RiskValueMatrixChart } from '../components/RiskValueMatrixChart'
 import { WsjfBreakdownChart } from '../components/WsjfBreakdownChart'
 import { ScoreForm } from '../components/ScoreForm'
 import { useDependencyGraph } from '../hooks/useDependencyGraph'
@@ -77,9 +78,17 @@ import { useCreateSnapshot } from '../hooks/useSnapshotMutations'
  * already-computed priority score, with median-based reference lines
  * across the currently plotted projects only (never an invented business
  * threshold); no new backend endpoint; see
- * utils/capacityPriorityMatrix.ts. The remaining PRD visualization (Risk
- * vs. Value quadrant) remains deferred — it still needs a product decision
- * (see docs/adr/0042-capacity-priority-matrix.md).
+ * utils/capacityPriorityMatrix.ts. Phase 45 adds the PRD's own final §15
+ * visualization, Risk vs. Value (RiskValueMatrixChart) — Value reuses the
+ * same already-computed priority score Phase 42 plots; Risk is each
+ * project's count of open, high-exposure Risk records (one
+ * GET /api/v1/projects/{id}/risks per project, since no bulk risk
+ * endpoint exists — ADR 0013), reusing the exact condition the existing
+ * risk_high_exposure Insights signal already uses. Both definitions were
+ * explicit product decisions confirmed by the user for this phase, not
+ * derived by audit; see docs/adr/0045-risk-value-quadrant.md and
+ * utils/riskValueMatrix.ts. Every PRD §15 visualization is now
+ * implemented.
  */
 export function PrioritizationOverviewPage() {
   const { can } = useAuth()
@@ -230,6 +239,12 @@ export function PrioritizationOverviewPage() {
                           />
                         )}
                       </QueryBoundary>
+                    </div>
+                    <div className="space-y-4 border-t border-slate-800 pt-4">
+                      <h3 className="text-sm font-medium text-slate-200">
+                        Risk vs. value
+                      </h3>
+                      <RiskValueMatrixChart items={portfolio.items} />
                     </div>
                   </div>
                 )
