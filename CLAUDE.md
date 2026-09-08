@@ -2184,6 +2184,38 @@ files + 1 edited (`PrioritizationOverviewPage`); +35 tests (401 → 436
 passing). Every PRD §15 visualization is now implemented. See
 docs/adr/0045-risk-value-quadrant.md.
 
+### Phase 46
+Roadmap re-audit & next-build decision (§31/§38) — with the PRD
+visualization backlog closed by Phase 45, a fresh evidence-based audit
+rather than defaulting to whatever was most recently named. Re-verified
+directly against current source: `ScenarioService.delete` is a genuine,
+unconditional hard delete (no soft-delete flag on `Scenario`, unlike
+`PrioritizationFramework`); `Permission.RISK_READ`/`STAKEHOLDER_READ` are
+both confirmed inside `_READ_PERMISSIONS` (global, every role — reads
+were never grant-scoped, only writes were, per Phase 11); both
+`RisksOverviewPage`/`StakeholdersOverviewPage` still require selecting
+exactly one project before showing anything, with no org-wide view ever
+built. Found the **org-wide cross-project Risk register**
+(`docs/roadmap.md`'s own long-named, never-built gap — ADR 0013
+Consequences) to be genuinely build-ready: no new authorization (reads
+are already global), no new product semantics, and direct, strong
+precedent already in this codebase (`useRisksForProjects`, built one
+phase ago for Risk vs. Value, is the exact bulk-composition shape
+needed). Recommended it as Phase 47 — **not implemented this phase**.
+Reconfirmed Scenario Snapshots still blocked, and sharpened the exact
+question: `PortfolioSnapshot.framework_id` uses `ondelete=RESTRICT`,
+which only works because `PrioritizationFramework` is never hard-deleted
+— `Scenario` is, so a scenario-snapshot's own FK needs an explicit
+choice among `CASCADE` (dies with its scenario, defeating the point),
+`RESTRICT` (blocks deletion, an unrequested behavior change), or
+freezing the scenario's identifying fields at capture time with a
+nullable FK (mirroring `PortfolioSnapshot.framework_name`'s own
+precedent) — a genuine product decision, not made here. Reconfirmed
+rank-over-time stays declined (no new evidence contradicts ADR 0024) and
+PostgreSQL concurrency verification stays infrastructure-blocked (needs
+a real deployment, not application code). **0 production files changed**
+— audit/documentation only. See docs/adr/0046-roadmap-reaudit.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
