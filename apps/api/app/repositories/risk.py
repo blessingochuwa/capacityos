@@ -70,6 +70,30 @@ class RiskRepository(BaseRepository[Risk]):
             )
         )
 
+    def list_filtered(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        project_id: uuid.UUID | None = None,
+        status: RiskStatus | None = None,
+    ) -> list[Risk]:
+        """Every risk across the ENTIRE organization matching the given
+        filters — the org-wide counterpart to list_for_project (Phase 47,
+        the org-wide Risk register). `exposure` is deliberately NOT a
+        parameter here: it is never a persisted column (see the Risk
+        model's docstring), so this repository stays SQL-filtering only —
+        RiskService.list_for_organization applies the exposure filter (and
+        pagination) afterward, computing exposure through the same single
+        source of truth (calculate_risk_exposure) every other Risk read
+        path already uses, rather than duplicating the probability x
+        impact lookup table into a second, SQL-side form."""
+        stmt = select(Risk).where(Risk.organization_id == organization_id)
+        if project_id is not None:
+            stmt = stmt.where(Risk.project_id == project_id)
+        if status is not None:
+            stmt = stmt.where(Risk.status == status)
+        return list(self.session.scalars(stmt.order_by(Risk.created_at)))
+
     def list_open_for_project(
         self, project_id: uuid.UUID, organization_id: uuid.UUID
     ) -> list[Risk]:

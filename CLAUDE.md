@@ -2216,6 +2216,51 @@ PostgreSQL concurrency verification stays infrastructure-blocked (needs
 a real deployment, not application code). **0 production files changed**
 — audit/documentation only. See docs/adr/0046-roadmap-reaudit.md.
 
+### Phase 47
+Org-wide cross-project Risk register (§5/§17) — the item Phase 46's
+re-audit found genuinely build-ready. A new `GET /api/v1/risks` route
+(`app/api/v1/risks.py`) returns every Risk across every project in the
+caller's active organization, filterable by project/status/exposure,
+gated by the existing `Permission.RISK_READ` (already global, no new
+permission). Built on a real discovery from this phase's own audit:
+`RiskRepository.list(organization_id, limit, offset)` — Phase 12's
+required override of `BaseRepository.list`'s unscoped signature —
+already implemented a correct, organization-wide, paginated risk query
+as **dead code**, never called by any route; this phase extends that
+same shape (`list_filtered`, adding `project_id`/`status` SQL filters)
+rather than the N-parallel-per-project composition Phase 45's
+`useRisksForProjects` used — that pattern is bounded by "projects scored
+under one framework" (small); an org-wide register's scope is "every
+project in the org" (unbounded, primary, frequently used), so a small
+new endpoint was the correct architectural choice, explicitly reasoned
+through and documented rather than defaulted into. `exposure` (never a
+persisted column) is filtered in Python via `calculate_risk_exposure` —
+the same single source of truth `risk_to_read` already uses — never
+duplicated into a SQL `CASE` expression. Frontend: a new **"Organization-
+wide risk register"** Card on the existing `/risks` page (no new route,
+no new nav entry) — Project (the existing `ProjectFilterPicker`, reused
+verbatim), Status, and Exposure filters; a new read-only
+`OrgRiskRegisterTable` (deliberately not the per-project `RisksTable`,
+which carries edit/remove controls this register doesn't have); real
+server-side Previous/Next pagination mirroring the Audit Log's own
+precedent (`RISK_REGISTER_PAGE_SIZE = 50`), since a risk register can
+grow without bound the same way an audit trail does. `EXPOSURE_VARIANT`/
+`STATUS_LABEL` were extracted from `RisksTable.tsx` into a new shared
+`features/risks/constants.ts` so both tables' badges can never disagree.
+**0 new tables, 0 migrations, 0 new permissions.** Backend: 1 new route
+file + 2 files extended (repository/service) + `main.py` registration.
+Frontend: 6 new files + 3 edited; +19 tests (436 → 455 passing).
+`pytest`/`pyright` remain blocked by this sandbox's pre-existing
+Application Control policy (confirmed this phase to also block core
+CPython's own `asyncio`/`_overlapped.pyd`, unrelated to this change);
+`ruff check .` and `python -m py_compile` on every changed file both
+passed cleanly — the maximum backend verification available here.
+`docs/openapi.json` was **not** regenerated — the generation script
+itself hits the identical environment block (it imports the FastAPI app,
+which imports SQLAlchemy, which imports `asyncio`); it was left
+untouched rather than hand-edited. See
+docs/adr/0047-org-wide-risk-register.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.

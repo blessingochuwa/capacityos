@@ -1,23 +1,10 @@
 import { Badge } from '@/components/ui/Badge'
-import type { BadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Table, Td, Th } from '@/components/ui/Table'
+import { EXPOSURE_VARIANT, STATUS_LABEL } from '../constants'
 import { RISK_STATUSES } from '../types/risks'
-import type { Risk, RiskExposure, RiskStatus } from '../types/risks'
-
-const EXPOSURE_VARIANT: Record<RiskExposure, BadgeVariant> = {
-  low: 'neutral',
-  medium: 'warning',
-  high: 'danger',
-}
-
-const STATUS_LABEL: Record<RiskStatus, string> = {
-  open: 'Open',
-  mitigating: 'Mitigating',
-  monitoring: 'Monitoring',
-  closed: 'Closed',
-}
+import type { Risk, RiskStatus } from '../types/risks'
 
 interface RisksTableProps {
   risks: Risk[]

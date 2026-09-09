@@ -21,6 +21,7 @@ from app.api.v1.organizations import router as organizations_router
 from app.api.v1.people import router as people_router
 from app.api.v1.prioritization import router as prioritization_router
 from app.api.v1.projects import router as projects_router
+from app.api.v1.risks import router as risks_router
 from app.api.v1.scenarios import router as scenarios_router
 from app.api.v1.skills import router as skills_router
 from app.api.v1.teams import router as teams_router
@@ -89,6 +90,7 @@ app.include_router(audit_router)
 app.include_router(people_router)
 app.include_router(teams_router)
 app.include_router(projects_router)
+app.include_router(risks_router)
 app.include_router(access_grants_router)
 app.include_router(allocations_router)
 app.include_router(working_schedules_router)

@@ -11,6 +11,7 @@ export type RiskStatus = 'open' | 'mitigating' | 'monitoring' | 'closed'
 
 export const RISK_PROBABILITY_LEVELS: RiskProbability[] = ['low', 'medium', 'high']
 export const RISK_IMPACT_LEVELS: RiskImpact[] = ['low', 'medium', 'high']
+export const RISK_EXPOSURE_LEVELS: RiskExposure[] = ['low', 'medium', 'high']
 export const RISK_STATUSES: RiskStatus[] = ['open', 'mitigating', 'monitoring', 'closed']
 
 export interface Risk {
