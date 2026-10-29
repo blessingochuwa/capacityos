@@ -1,41 +1,64 @@
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import MetaData, create_engine, event
+from sqlalchemy import Engine, MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
 
-if settings.database_url.startswith("sqlite"):
-    # WAL mode lets one writer proceed concurrently with readers on OTHER
-    # connections — SQLite's default rollback-journal mode does not, and a
-    # second connection's write can raise "database is locked" while a
-    # first connection still holds an open (even read-only) transaction.
-    # This became a real, observed failure in Phase 10: AuditService
-    # (app/api/deps.py::get_audit_service) deliberately writes through a
-    # SECOND connection, independent of the request-scoped `db` connection
-    # every other repository/service uses (see that module's docstring for
-    # why) — against a file-backed database, that is two connections in
-    # the same request. busy_timeout is a defensive second layer: a brief
-    # wait-and-retry at the SQLite level before raising, rather than
-    # failing immediately on any residual contention. Both PRAGMAs are
-    # silently no-ops on `:memory:` (this codebase's test database — see
-    # tests/conftest.py) — SQLite always uses its own in-memory journal
-    # there regardless of what journal_mode is requested — so this changes
-    # no test behavior, only real file-backed dev/production databases.
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
-        dbapi_connection: Any, _connection_record: object
-    ) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.close()
+def create_database_engine(database_url: str) -> Engine:
+    """Builds the application's engine. A function (rather than inline
+    module-level code) only so tests can build an engine from an arbitrary
+    URL and check its behavior; the app itself calls it exactly once, below.
+
+    pool_pre_ping=True (Phase 53A.1): before handing out a pooled
+    connection, SQLAlchemy issues a lightweight ping and, if the connection
+    is dead, silently discards it and opens a fresh one. Needed for a
+    scale-to-zero database such as Neon Free, which suspends after 5 idle
+    minutes and drops every open connection — while the API process (which
+    stays up longer) would otherwise hand a dead pooled connection to the
+    next request, which would fail with a 503. The ping costs one round trip
+    per checkout and runs only when a request needs the database: it never
+    runs in the background and never keeps the database awake. It does not
+    remove a cold start (the first ping waits while the database wakes) and
+    does not retry a connection that fails mid-request."""
+    is_sqlite = database_url.startswith("sqlite")
+    connect_args = {"check_same_thread": False} if is_sqlite else {}
+    engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+
+    if is_sqlite:
+        # WAL mode lets one writer proceed concurrently with readers on OTHER
+        # connections — SQLite's default rollback-journal mode does not, and a
+        # second connection's write can raise "database is locked" while a
+        # first connection still holds an open (even read-only) transaction.
+        # This became a real, observed failure in Phase 10: AuditService
+        # (app/api/deps.py::get_audit_service) deliberately writes through a
+        # SECOND connection, independent of the request-scoped `db` connection
+        # every other repository/service uses (see that module's docstring for
+        # why) — against a file-backed database, that is two connections in
+        # the same request. busy_timeout is a defensive second layer: a brief
+        # wait-and-retry at the SQLite level before raising, rather than
+        # failing immediately on any residual contention. Both PRAGMAs are
+        # silently no-ops on `:memory:` (this codebase's test database — see
+        # tests/conftest.py) — SQLite always uses its own in-memory journal
+        # there regardless of what journal_mode is requested — so this changes
+        # no test behavior, only real file-backed dev/production databases.
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
+            dbapi_connection: Any, _connection_record: object
+        ) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.close()
+
+    return engine
+
+
+engine = create_database_engine(settings.database_url)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
