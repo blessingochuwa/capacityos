@@ -8,7 +8,7 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.enums import UserRole
+from app.models.enums import RiskImpact, RiskProbability, RiskStatus, UserRole
 from tests.factories import make_organization, make_person, make_project, make_risk
 
 
@@ -276,9 +276,9 @@ def test_organization_risks_status_and_exposure_filters_cannot_bypass_org_scopin
         project=project_b,
         owner=owner_b,
         description="Org B sweep risk",
-        status="open",
-        probability="high",
-        impact="high",
+        status=RiskStatus.OPEN,
+        probability=RiskProbability.HIGH,
+        impact=RiskImpact.HIGH,
     )
 
     body = client.get("/api/v1/risks", params={"status": "open", "exposure": "high"}).json()

@@ -2854,6 +2854,239 @@
         }
       }
     },
+    "/api/v1/risks": {
+      "get": {
+        "tags": [
+          "risks"
+        ],
+        "summary": "List Organization Risks",
+        "description": "Phase 47 \u2014 the org-wide Risk register: every Risk across every\nProject in the caller's active organization, optionally narrowed by\nproject/status/exposure. Organization-scoped via get_current_membership\nexactly like every other org-wide route (audit, users) \u2014 a `project_id`\nfilter naming a project in another organization simply matches no rows\n(every Risk's own organization_id is independently checked, Phase 12),\nit never 403s or otherwise confirms that project's existence. Reuses\nPermission.RISK_READ unchanged \u2014 already granted to every role,\nidentical to the existing per-project GET /projects/{id}/risks route.",
+        "operationId": "list_organization_risks_api_v1_risks_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RiskStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "exposure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exposure"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RiskRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stakeholders": {
+      "get": {
+        "tags": [
+          "stakeholders"
+        ],
+        "summary": "List Organization Stakeholders",
+        "description": "Phase 48 \u2014 the org-wide Stakeholder register: every Stakeholder\nacross every Project in the caller's active organization, optionally\nnarrowed by project/influence/interest/decision authority. Mirrors\nGET /api/v1/risks (Phase 47) exactly: organization-scoped via\nget_current_membership, never a client-supplied organization id; a\n`project_id` naming a project in another organization simply matches\nno rows (every Stakeholder's own organization_id is independently\nchecked, Phase 12) \u2014 never a 403/404 that would confirm it exists.\nReuses Permission.STAKEHOLDER_READ unchanged \u2014 already granted to\nevery role, identical to GET /projects/{id}/stakeholders.",
+        "operationId": "list_organization_stakeholders_api_v1_stakeholders_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "influence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StakeholderInfluence"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Influence"
+            }
+          },
+          {
+            "name": "interest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StakeholderInterest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interest"
+            }
+          },
+          {
+            "name": "decision_authority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StakeholderDecisionAuthority"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Authority"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_StakeholderRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/teams/{team_id}/access-grants": {
       "get": {
         "tags": [
@@ -10169,6 +10402,27 @@
         ],
         "title": "Page[ProjectRead]"
       },
+      "Page_RiskRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__schemas__risk__RiskRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "Page[RiskRead]"
+      },
       "Page_ScenarioOperationRead_": {
         "properties": {
           "items": {
@@ -10252,6 +10506,27 @@
           "total"
         ],
         "title": "Page[SkillRead]"
+      },
+      "Page_StakeholderRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StakeholderRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "Page[StakeholderRead]"
       },
       "Page_TeamRead_": {
         "properties": {

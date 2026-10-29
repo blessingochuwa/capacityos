@@ -86,13 +86,17 @@ class RiskRepository(BaseRepository[Risk]):
         pagination) afterward, computing exposure through the same single
         source of truth (calculate_risk_exposure) every other Risk read
         path already uses, rather than duplicating the probability x
-        impact lookup table into a second, SQL-side form."""
+        impact lookup table into a second, SQL-side form.
+
+        Ordered by (created_at, id) — Phase 48 added the id tie-breaker so
+        two risks sharing a created_at can never swap places between two
+        separate page requests (each page is its own query)."""
         stmt = select(Risk).where(Risk.organization_id == organization_id)
         if project_id is not None:
             stmt = stmt.where(Risk.project_id == project_id)
         if status is not None:
             stmt = stmt.where(Risk.status == status)
-        return list(self.session.scalars(stmt.order_by(Risk.created_at)))
+        return list(self.session.scalars(stmt.order_by(Risk.created_at, Risk.id)))
 
     def list_open_for_project(
         self, project_id: uuid.UUID, organization_id: uuid.UUID

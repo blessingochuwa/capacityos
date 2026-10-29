@@ -2,6 +2,11 @@ import uuid
 
 from sqlalchemy import func, select
 
+from app.models.enums import (
+    StakeholderDecisionAuthority,
+    StakeholderInfluence,
+    StakeholderInterest,
+)
 from app.models.stakeholder import Stakeholder
 from app.repositories.base import BaseRepository
 
@@ -71,6 +76,54 @@ class StakeholderRepository(BaseRepository[Stakeholder]):
                 )
             )
         )
+
+    def list_filtered(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        project_id: uuid.UUID | None = None,
+        influence: StakeholderInfluence | None = None,
+        interest: StakeholderInterest | None = None,
+        decision_authority: StakeholderDecisionAuthority | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[Stakeholder], int]:
+        """Every stakeholder across the ENTIRE organization matching the
+        given filters — the org-wide counterpart to list_for_project
+        (Phase 48, the org-wide Stakeholder register). Unlike
+        RiskRepository.list_filtered, every filter here is a persisted,
+        CHECK-constrained column (Stakeholder has no derived field like
+        Risk.exposure), so filtering, counting, and pagination all happen
+        in SQL — `total` is a COUNT over the same WHERE clause the page
+        query uses, never len() of a Python-side list. Ordered by
+        (created_at, id) so a created_at tie can never make a row appear
+        on two pages or on none."""
+        conditions = [Stakeholder.organization_id == organization_id]
+        if project_id is not None:
+            conditions.append(Stakeholder.project_id == project_id)
+        if influence is not None:
+            conditions.append(Stakeholder.influence == influence)
+        if interest is not None:
+            conditions.append(Stakeholder.interest == interest)
+        if decision_authority is not None:
+            conditions.append(Stakeholder.decision_authority == decision_authority)
+
+        total = (
+            self.session.scalar(
+                select(func.count()).select_from(Stakeholder).where(*conditions)
+            )
+            or 0
+        )
+        items = list(
+            self.session.scalars(
+                select(Stakeholder)
+                .where(*conditions)
+                .order_by(Stakeholder.created_at, Stakeholder.id)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        return items, total
 
     def get_by_project_and_person(
         self, project_id: uuid.UUID, person_id: uuid.UUID, organization_id: uuid.UUID

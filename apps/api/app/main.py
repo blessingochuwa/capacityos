@@ -24,6 +24,7 @@ from app.api.v1.projects import router as projects_router
 from app.api.v1.risks import router as risks_router
 from app.api.v1.scenarios import router as scenarios_router
 from app.api.v1.skills import router as skills_router
+from app.api.v1.stakeholders import router as stakeholders_router
 from app.api.v1.teams import router as teams_router
 from app.api.v1.users import router as users_router
 from app.api.v1.working_schedules import router as working_schedules_router
@@ -91,6 +92,7 @@ app.include_router(people_router)
 app.include_router(teams_router)
 app.include_router(projects_router)
 app.include_router(risks_router)
+app.include_router(stakeholders_router)
 app.include_router(access_grants_router)
 app.include_router(allocations_router)
 app.include_router(working_schedules_router)

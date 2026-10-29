@@ -83,7 +83,11 @@ describe('RisksOverviewPage — organization-wide register (Phase 47)', () => {
     renderPage()
 
     expect(screen.getByText('Organization-wide risk register')).toBeInTheDocument()
-    expect(screen.getByLabelText('Project')).toBeInTheDocument()
+    // Two distinct project pickers (per-project + org-wide). Before Phase 48
+    // both rendered id="project", so both labels resolved to the first one.
+    const pickers = screen.getAllByLabelText('Project')
+    expect(pickers).toHaveLength(2)
+    expect(pickers[1]).toHaveAttribute('id', 'org-risk-project')
     expect(screen.getByLabelText('Status')).toBeInTheDocument()
     expect(screen.getByLabelText('Exposure')).toBeInTheDocument()
   })

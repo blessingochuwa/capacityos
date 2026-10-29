@@ -45,7 +45,7 @@ export function OrgRiskFilterBar({
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="w-56">
-        <ProjectFilterPicker value={projectId} onChange={onProjectChange} />
+        <ProjectFilterPicker id="org-risk-project" value={projectId} onChange={onProjectChange} />
       </div>
       <div className="w-44">
         <Select

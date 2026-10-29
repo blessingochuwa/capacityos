@@ -1,21 +1,9 @@
 import { Badge } from '@/components/ui/Badge'
-import type { BadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Table, Td, Th } from '@/components/ui/Table'
-import type { Stakeholder, StakeholderInfluence } from '../types/stakeholders'
-
-const INFLUENCE_VARIANT: Record<StakeholderInfluence, BadgeVariant> = {
-  low: 'neutral',
-  medium: 'info',
-  high: 'warning',
-}
-
-const DECISION_AUTHORITY_LABEL: Record<Stakeholder['decision_authority'], string> = {
-  decision_maker: 'Decision maker',
-  advisor: 'Advisor',
-  informed: 'Informed only',
-}
+import { DECISION_AUTHORITY_LABEL, INFLUENCE_VARIANT } from '../constants'
+import type { Stakeholder } from '../types/stakeholders'
 
 interface StakeholdersTableProps {
   stakeholders: Stakeholder[]

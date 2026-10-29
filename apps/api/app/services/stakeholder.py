@@ -1,6 +1,11 @@
 import uuid
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.enums import (
+    StakeholderDecisionAuthority,
+    StakeholderInfluence,
+    StakeholderInterest,
+)
 from app.models.stakeholder import Stakeholder
 from app.repositories.person import PersonRepository
 from app.repositories.project import ProjectRepository
@@ -59,6 +64,34 @@ class StakeholderService:
         if self.project_repository.get(project_id, organization_id) is None:
             raise NotFoundError("Project", project_id)
         return self.repository.list_for_project(project_id, organization_id)
+
+    def list_for_organization(
+        self,
+        organization_id: uuid.UUID,
+        *,
+        project_id: uuid.UUID | None = None,
+        influence: StakeholderInfluence | None = None,
+        interest: StakeholderInterest | None = None,
+        decision_authority: StakeholderDecisionAuthority | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[Stakeholder], int]:
+        """Phase 48 — the org-wide Stakeholder register: every Stakeholder
+        across every Project in this organization, optionally narrowed by
+        project, influence, interest, and/or decision authority. A
+        project_id from another organization is deliberately NOT looked
+        up and rejected (unlike list_for_project's NotFoundError) — it
+        simply matches no rows, so the filter can never become a way to
+        probe whether some other organization's project exists."""
+        return self.repository.list_filtered(
+            organization_id,
+            project_id=project_id,
+            influence=influence,
+            interest=interest,
+            decision_authority=decision_authority,
+            limit=limit,
+            offset=offset,
+        )
 
     def update(
         self,

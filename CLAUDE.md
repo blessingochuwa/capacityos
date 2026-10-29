@@ -2261,6 +2261,50 @@ which imports SQLAlchemy, which imports `asyncio`); it was left
 untouched rather than hand-edited. See
 docs/adr/0047-org-wide-risk-register.md.
 
+### Phase 48
+Org-wide cross-project Stakeholder register (§16/§27) — the matching
+register for the deferral ADR 0014 named, built on Phase 47's shape where
+the audit showed it fits. **Opened with a Phase 47 verification gate**:
+the Application Control block had mostly lifted (Python, pytest, pyright
+run; only the `alembic.exe`/`uvicorn` console shims stay blocked, so
+both ran as `python -m ...`). The Phase 47 baseline passed 1078 backend
+tests on their first real run; strict pyright found 3 errors in
+`test_org_risk_register.py` (string literals passed for enums — fixed);
+the exposure filter was confirmed applied before pagination/total
+(by reading the code and by live HTTP); `/api/v1/risks` was missing from
+`docs/openapi.json` (regenerated with the canonical script). Two further
+minimal Phase 47 corrections: `RiskRepository.list_filtered` now orders
+by `(created_at, id)` (each page is its own query, so a `created_at` tie
+could otherwise duplicate or skip rows across pages), and both pickers on
+`/risks` rendered `id="project"`, so the org-wide picker's label pointed
+at the per-project select and left it without an accessible name.
+`ProjectFilterPicker` gained an optional `id` prop. **Stakeholder
+audit**: no status field and no derived field (`influence`/`interest`/
+`decision_authority` are stored, CHECK-constrained enums), so unlike
+Risk, a new `StakeholderRepository.list_filtered` filters, `COUNT`s, and
+`LIMIT`/`OFFSET`s entirely in SQL with one shared WHERE clause, ordered
+by `(created_at, id)`. New `GET /api/v1/stakeholders`
+(`app/api/v1/stakeholders.py`), filters `project_id`/`influence`/
+`interest`/`decision_authority`, `Page[StakeholderRead]` unchanged,
+gated by the existing global `STAKEHOLDER_READ` (every role, so there is
+no 403 case). Organization comes only from `get_current_membership`; a
+cross-organization `project_id` deliberately isn't looked up, so it
+returns exactly what an unknown id returns (200, empty), never a probe.
+Frontend: a read-only "Organization-wide stakeholder register" Card on
+the existing `/stakeholders` page (no new route/nav), 50-row server-side
+pages, filter change resets to page 1, distinct empty states;
+stakeholder mutations now also invalidate `['org-stakeholders']` (both
+registers share a page). No score, quadrant, or aggregation. **0 new
+tables, 0 migrations, 0 new permissions.** Backend 1078 → 1108, ruff
+clean, pyright strict 0 errors. Frontend 455 → 483; tsc, oxlint (runs
+again here), and build clean. Fresh DB migrated cleanly; live HTTP 31/31
+against real `uvicorn` across two organizations, including Phase 47's
+first live verification. `alembic check` reports only a pre-existing
+Enum-CHECK-constraint autogenerate artifact on 21 untouched tables. No
+browser verification (no tool available). Open follow-up: Risk mutations
+still don't invalidate `org-risks`. See
+docs/adr/0048-org-wide-stakeholder-register.md.
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.
@@ -2277,15 +2321,18 @@ requires a new, explicit product requirement naming the missing ownership
 concept, not a rebuild of what Phase 16 already decided);
 Risk Import/Export registration is resolved as of Phase 36
 (docs/adr/0036-import-export-risk-stakeholder-prioritization.md — a new
-nullable `external_id` column) — an org-wide cross-project risk
-register remains open (see ADR 0013's Consequences — its other listed
+nullable `external_id` column) — the org-wide cross-project risk
+register is resolved as of Phase 47 (docs/adr/0047-org-wide-risk-register.md;
+see ADR 0013's Consequences — its other listed
 gap, the Prioritization (§18) domain concept, is resolved as a v1 slice
 per Phase 17, docs/adr/0017-prioritization-engine.md);
 Stakeholder Import/Export registration is resolved as of Phase 36
 (docs/adr/0036-import-export-risk-stakeholder-prioritization.md —
 matched by its existing `(project_id, person_id)` unique constraint, no
-schema change) — an org-wide cross-project
-stakeholder register remains open (see ADR 0014's Consequences); independent
+schema change) — the org-wide cross-project
+stakeholder register is resolved as of Phase 48
+(docs/adr/0048-org-wide-stakeholder-register.md; see ADR 0014's
+Consequences); independent
 verification of the Phase 15 last-owner concurrency guard against a real
 PostgreSQL instance under true multi-connection MVCC — only SQLite's
 single-file writer serialization was actually tested (see ADR 0015's
