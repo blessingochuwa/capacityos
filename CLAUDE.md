@@ -2342,6 +2342,18 @@ files, 0 API/OpenAPI/schema/permission changes.** No browser
 verification (no tool available). See
 docs/adr/0049-risk-register-cache-invalidation.md.
 
+### Phases 50-52 — prototype milestone
+Priority changed in Phase 51 from feature count to a working, browser-
+testable prototype. Phase 50 formatted two files. Phase 51 audited release
+readiness (audit only). Phase 52 removed the deployment blockers: added
+`psycopg[binary]`; added `apps/web/vercel.json` (same-origin `/api` proxy,
+required by the cookie/CSRF design, plus SPA fallback); documented backend
+build/start commands; rewrote `scripts/seed_demo_data.py` (organization-
+scoped, atomic, idempotent, tested); put `scripts/` under strict pyright.
+Verified locally on PostgreSQL 16. **Not yet deployed or browser-tested.**
+Next: Phase 53, deploy and run the browser acceptance checklist. Runbook:
+docs/production-readiness.md ("Prototype deployment").
+
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
 §23, §32) pending an explicit request, not implied to be the next phase.

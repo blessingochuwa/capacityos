@@ -197,6 +197,214 @@ provider, and permissive CORS are all intentional defaults there.
   migration; CapacityOS does not automatically convert a SQLite database
   to PostgreSQL.
 
+## Prototype deployment (Phase 52)
+
+Status, as of Phase 52: **ready for deployment, not deployed.** Everything
+below was verified locally (PostgreSQL 16 included). Nothing has been
+verified on Vercel or on a hosted backend yet; see "Still unverified".
+
+### Topology
+
+```text
+browser ──https──▶ Vercel (apps/web static build)
+                     ├─ /api/*  ──proxy──▶ Python web service (apps/api, uvicorn)
+                     └─ /*      ──▶ index.html (SPA fallback)        │
+                                                                     ▼
+                                                        managed PostgreSQL
+```
+
+**The browser must only ever talk to one origin.** Authentication uses two
+host-only, `SameSite=Lax` cookies set by the API (`capacityos_session`,
+httpOnly; `capacityos_csrf`, readable by JS). The frontend reads the CSRF
+cookie through `document.cookie` and echoes it as `X-CSRF-Token` on every
+mutation (`apps/web/src/api/client.ts`). If the frontend and API were on
+different sites, the browser would never send the Lax session cookie (every
+request would 401) and the frontend could not read the API's CSRF cookie
+(every mutation would 403). Local development only works because browsers
+treat `localhost:5173` and `localhost:8000` as the same site. The Vercel
+proxy keeps everything on the Vercel origin, so no authentication, cookie,
+or CSRF code changes are needed. Do not "fix" a split deployment by
+loosening cookies or CSRF.
+
+### Frontend: Vercel
+
+`apps/web/vercel.json` (validated against Vercel's published schema):
+
+- `routes`: `/api/(.*)` → `${CAPACITYOS_API_ORIGIN}/api/$1`, expanded from a
+  Vercel environment variable at request time, so no backend hostname is
+  committed. If the variable is unset, Vercel leaves the literal
+  `${CAPACITYOS_API_ORIGIN}` in place and API calls fail visibly; there is
+  no fallback.
+- `/api` responses get `Cache-Control: private, no-store` and the documented
+  `x-vercel-enable-rewrite-caching: 0` opt-out, so authenticated or
+  mutation responses are never CDN-cached. The API itself sends no
+  caching headers.
+- `rewrites`: `/(.*)` → `/index.html`. Vercel checks real files first, so
+  `/assets/*` is served directly and every client route (`/capacity`,
+  `/scenarios/:id`, ...) survives a refresh or direct link.
+- `buildCommand`: `VITE_API_URL= npm run build`. An **empty**
+  `VITE_API_URL` makes the bundle call relative `/api/...` URLs, i.e. the
+  same origin. (If it were unset, the bundle would fall back to
+  `http://localhost:8000`.) Local `npm run dev` is unaffected.
+
+Vercel project settings: **Root Directory** `apps/web`; framework Vite;
+environment variable `CAPACITYOS_API_ORIGIN` = the backend's public origin,
+e.g. `https://<service>.onrender.com`, with no trailing slash and no
+`/api`. The repo uses npm workspaces with the lockfile at the repo root.
+
+### Backend: Python web service
+
+Verified against the repo: `apps/api/pyproject.toml` requires Python
+≥ 3.14, and uv enforces `required-version = "==0.11.25"`, so any other uv
+version refuses to run. The app entry point is `app.main:app`, run from
+`apps/api`, where `alembic.ini` also lives.
+
+| Setting | Value |
+|---|---|
+| Root / working directory | `apps/api` |
+| Python | 3.14 (e.g. `PYTHON_VERSION=3.14` on Render) |
+| Build command | `pip install uv==0.11.25 && uv sync --frozen --no-dev` |
+| Start command | `.venv/bin/python -m alembic upgrade head && .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/api/v1/health/ready` (runs `SELECT 1`) |
+
+- `--frozen` installs exactly `uv.lock`; `--no-dev` leaves out pytest,
+  ruff and pyright. The start command calls the venv's Python directly, so
+  uv isn't needed at runtime.
+- Migrations run on every start. `alembic upgrade head` is a no-op when
+  already current. That's fine for **one** instance. If the host offers a
+  pre-deploy/release command, move the migration there before scaling
+  beyond one instance.
+- A Dockerfile was deliberately not added. The native commands above were
+  verified locally; add one only if a host's native Python runtime proves
+  incompatible.
+
+Backend environment variables:
+
+| Variable | Value |
+|---|---|
+| `ENVIRONMENT` | `production` (enables the startup safety gate and `Secure` cookies) |
+| `DATABASE_URL` | `postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME` (synchronous psycopg 3; `psycopg[binary]` is a dependency) |
+| `API_CORS_ORIGINS` | the Vercel origin, e.g. `https://<project>.vercel.app`. The browser never makes cross-origin calls through the proxy, but the production gate requires an explicit non-wildcard value. |
+| `AI_PROVIDER` | `none` (the default; `mock` is refused in production) |
+
+Never put secrets in `apps/web` or in `vercel.json`.
+
+### Database
+
+Any PostgreSQL ≥ 16 (verified on 16.2). Create an empty database; the
+start command applies all migrations and creates the "Default
+Organization" (slug `default`). To verify compatibility against any
+disposable database:
+
+```bash
+cd apps/api
+DATABASE_URL=postgresql+psycopg://... uv run python -m alembic upgrade head
+DATABASE_URL=postgresql+psycopg://... uv run python ../../scripts/seed_demo_data.py --organization-slug default
+```
+
+### First Owner and demo data
+
+From an operator machine, with the production `DATABASE_URL` set (no
+public demo account exists, and none should be added):
+
+```bash
+cd apps/api
+uv run python ../../scripts/create_first_owner.py      # prompts; password never echoed
+uv run python ../../scripts/seed_demo_data.py --organization-slug default
+```
+
+Share the Owner credentials out of band. Additional (e.g. Viewer) accounts
+are created in the app under Accounts/Members.
+
+### Demo data
+
+`scripts/seed_demo_data.py` seeds **one named organization** with fictional
+data (`@example.com`, every name suffixed "(Demo)"):
+
+- three teams, nine people, five projects (including the unstaffed
+  "Project X (Proposed, Demo)");
+- 13 allocations, one annual-leave day, and one partial training day;
+- three skills, seven person-skills, and three skill requirements.
+
+It is atomic (all or nothing), refuses an unknown or deactivated slug
+(exit 2), and is idempotent per organization: if "Product Design (Demo)"
+already exists, it writes nothing. `--week-of DATE` anchors the data to
+that date's Monday-to-Friday week (default: the current week).
+
+Expected values for that Monday-to-Friday week, derived by hand from
+`app/domain/capacity.py` and asserted against the real engine in
+`apps/api/tests/scripts/test_seed_demo_data.py`. "Capacity" here is the
+engine's **effective capacity**: scheduled hours minus leave/exceptions. The
+engine has no separate non-project-work deduction.
+
+| Person | Schedule | Effective | Allocated | Remaining | Utilization |
+|---|---|---|---|---|---|
+| Alex Morgan | 8h Mon–Fri | 40 | 28 | 12 | 0.7000 |
+| Priya Shah | 8h Mon–Fri | 40 | 36 | 4 | 0.9000 |
+| **Sam Ade** | 8h Mon–Fri, **Friday leave** | 32 | 40 | **−8 (over by 8)** | **1.2500** |
+| Taylor Brooks | 8h Mon–Fri | 40 | 32 | 8 | 0.8000 |
+| Morgan Reyes | 8h Mon–Fri | 40 | 36 | 4 | 0.9000 |
+| **Casey Kim** | **10h Mon–Thu (4-day week)** | 40 | 12 | **28 (spare)** | 0.3000 |
+| Riley Okafor | 8h Mon–Fri | 40 | 40 | 0 | 1.0000 |
+| Jamie Novak | 4h Mon–Fri (part-time) | 20 | 16 | 4 | 0.8000 |
+| Avery Chen | 6h Mon–Wed, 2h available Wed | 14 | 8 | 6 | 0.5714 |
+
+| Team | Effective | Allocated | Remaining | Utilization |
+|---|---|---|---|---|
+| Product Design (Demo) | 112 | 104 | 8 | 0.9286 |
+| Platform Engineering (Demo) | 120 | 80 | 40 | 0.6667 |
+| Content & Motion (Demo) | 74 | 64 | 10 | 0.8649 |
+
+Things worth noticing when evaluating the product:
+
+- **Allocations spread evenly over every day in their range.** Sam's 8h
+  Friday booking lands on a leave day, which is how his over-allocation
+  shows up.
+- **Team totals net out.** Utilization is weighted and over-allocation is
+  net, so the Design team shows 0 over-allocation while Sam's own row shows
+  8h.
+- **Skill bottleneck.** For Project X, Product Design is covered (16h
+  needed, 16h qualified spare). Motion Design is not: 30h needed, but only
+  4h spare between Riley and Jamie, a 26h gap.
+- **Scenario exercise.** Add 16h of Riley on Project X for the week. Riley
+  goes to 56h / 40h, utilization 1.4000, and becomes newly over-allocated.
+  The scenario's aggregate covers only the people it touches, so here it is
+  Riley alone (40h → 56h). Live data is unchanged.
+
+### Local same-origin smoke test
+
+Phase 52 ran the full topology locally:
+
+- the backend with `ENVIRONMENT=production` on PostgreSQL 16;
+- the frontend built with the exact `vercel.json` build command;
+- a small HTTPS proxy reproducing the `vercel.json` routing (`/api/*` to the
+  backend, static files, `index.html` fallback).
+
+27/27 checks passed:
+
+- the frontend and five deep links load through the fallback;
+- `/api/v1/health/ready` works through the origin;
+- login sets `Secure`, host-only cookies on the frontend origin;
+- the seeded capacity values match the table above;
+- a mutation without `X-CSRF-Token` returns 403, and with it returns 201;
+- logout invalidates the session server-side.
+
+Data survived a backend restart. To repeat it, run the same three pieces
+locally; any local reverse proxy can stand in for Vercel.
+
+### Still unverified (needs the real deployment)
+
+- That Vercel's `routes` proxy forwards `Set-Cookie` and the
+  `X-CSRF-Token` request header unchanged, and that `/api` responses come
+  back uncached (check the `x-vercel-cache` response header).
+- That the backend host's native Python 3.14 runtime, and
+  `pip install uv==0.11.25`, behave as on the verified local build.
+- That the npm-workspaces install works with Root Directory `apps/web`.
+- Cold-start and sleep behaviour of free tiers, and managed-PostgreSQL
+  limits. Check the current platform documentation before choosing.
+- Real-browser behaviour. Nothing has been exercised in a browser yet;
+  that is Phase 53's acceptance checklist.
+
 ## Security boundaries
 
 - **AI**: server-side only, the API key never reaches `apps/web`, AI

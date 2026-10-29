@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "VITE_API_URL= npm run build",
+  "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "${CAPACITYOS_API_ORIGIN}/api/$1",
+      "env": ["CAPACITYOS_API_ORIGIN"],
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "x-vercel-enable-rewrite-caching": "0"
+      }
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    }
+  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
