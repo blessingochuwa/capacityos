@@ -362,8 +362,10 @@ Stop conditions. If any of these can't be met without a card or a
 payment, the deployment is **NO-GO** until a new decision is made:
 
 - **Stop if a provider asks for a payment card**, payment details, a paid
-  trial or an upgrade. Don't sign up just to find out whether one is
-  required.
+  trial or an upgrade, **or if its billing terms are unclear** at any point
+  during signup or setup. Don't sign up just to find out whether one is
+  required. See "Provider signup and billing check" below for what each
+  provider publishes.
 - **Don't enable billing, buy a domain, or accept a paid add-on.** Use the
   provider-supplied `*.vercel.app` and `*.onrender.com` URLs.
 - **Set `CAPACITYOS_API_ORIGIN` for the Production environment only.** A
@@ -395,6 +397,59 @@ payment, the deployment is **NO-GO** until a new decision is made:
   other transient network errors. Re-check it on Neon after deployment:
   sign in, wait more than 5 minutes, then load a data page. It should
   succeed with no 503.
+
+#### Provider signup and billing check (Phase 53B, 2026-10-29)
+
+Desk research only: no account was created and no signup was attempted.
+None of this guarantees the signup flow. The stop conditions above apply
+whatever these pages say.
+
+- **Neon Free: no card, per Neon.** Neon's FAQ states "No credit card
+  required." Past the free limits, compute is suspended until the next
+  billing period, storage writes fail at 1 GB, and "None of these limits
+  delete your data." No overage charges are described.
+  ([plans](https://neon.com/docs/introduction/plans),
+  [free-tier FAQ](https://neon.com/faqs/managed-postgres-databases-free-tier))
+- **Render Free: published information conflicts; the card question is
+  unresolved.** Render's free-instance docs are silent on whether signup
+  or deploying a free service needs a card. An article published on
+  render.com (April 23, 2026; no author byline) states "No credit card is
+  required." Two third-party sources contradict it, and make different
+  claims:
+  - FlyWP (published March 27, 2026) says Render requires a card to
+    *deploy a web service*, verified with a $1 hold that is immediately
+    released.
+  - freetier.co (verified August 29, 2026) says a card is required to
+    *sign up*, but its own statistics panel lists the requirement as
+    "Not stated."
+
+  What Render's docs do establish: past 750 instance hours, free services
+  are suspended until the next month, and **bandwidth or build-minute
+  overage is billed if a payment method is on file**. Without one,
+  services are suspended or new builds disabled instead.
+  ([free instances](https://render.com/docs/free),
+  [Render article](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026),
+  [FlyWP](https://flywp.com/blog/9769/best-free-docker-hosting-platforms/),
+  [freetier.co](https://freetier.co/directory/products/render))
+- **Vercel Hobby: the official docs don't say whether signup needs a
+  card.** The Hobby plan and fair use pages are silent on it. One cited
+  third-party guide (fencode, June 2, 2026) says Hobby "runs forever
+  without a credit card." A Vercel community forum thread (March 2026)
+  associates a card-verification prompt with AI Gateway promotional
+  credits. It doesn't establish that this is the only circumstance in
+  which a card might be requested, or whether signup requires one. Don't
+  enable AI Gateway. What the official docs do establish: Hobby has no
+  billing cycle (an exceeded limit pauses the feature, in most cases for
+  30 days), and it is **non-commercial, personal use only**.
+  ([Hobby plan](https://vercel.com/docs/plans/hobby),
+  [fair use](https://vercel.com/docs/limits/fair-use-guidelines),
+  [community thread](https://community.vercel.com/t/vercel-ai-gateway-promotional-credit-not-showing-after-payment-verification/35992),
+  [fencode guide](https://www.fencode.dev/en/blog/vercel-free-vs-pro-2026-official-limits-pricing))
+
+The real signup is the only definitive check. Stop at the first request
+for a card, payment details, a paid trial or an upgrade, or at any unclear
+billing requirement, and reassess before going further. Don't add a card
+to get past a verification step, even a refundable hold.
 
 ### First Owner and demo data
 
