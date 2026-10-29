@@ -33,10 +33,12 @@ const INTEREST_OPTIONS = STAKEHOLDER_INTEREST_LEVELS.map((level) => ({
   label: levelLabel(level),
 }))
 
-const DECISION_AUTHORITY_OPTIONS = STAKEHOLDER_DECISION_AUTHORITY_LEVELS.map((level) => ({
-  value: level,
-  label: DECISION_AUTHORITY_LABEL[level],
-}))
+const DECISION_AUTHORITY_OPTIONS = STAKEHOLDER_DECISION_AUTHORITY_LEVELS.map(
+  (level) => ({
+    value: level,
+    label: DECISION_AUTHORITY_LABEL[level],
+  }),
+)
 
 /** The org-wide Stakeholder register's filter controls (Phase 48) —
  * project, influence, interest, and decision authority, every one applied
@@ -62,7 +64,11 @@ export function OrgStakeholderFilterBar({
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="w-56">
-        <ProjectFilterPicker id="org-stakeholder-project" value={projectId} onChange={onProjectChange} />
+        <ProjectFilterPicker
+          id="org-stakeholder-project"
+          value={projectId}
+          onChange={onProjectChange}
+        />
       </div>
       <div className="w-40">
         <Select
@@ -71,7 +77,9 @@ export function OrgStakeholderFilterBar({
           value={influenceValue}
           placeholder="All influence levels"
           options={INFLUENCE_OPTIONS}
-          onChange={(event) => onInfluenceChange(event.target.value as StakeholderInfluence | '')}
+          onChange={(event) =>
+            onInfluenceChange(event.target.value as StakeholderInfluence | '')
+          }
         />
       </div>
       <div className="w-40">
@@ -81,7 +89,9 @@ export function OrgStakeholderFilterBar({
           value={interestValue}
           placeholder="All interest levels"
           options={INTEREST_OPTIONS}
-          onChange={(event) => onInterestChange(event.target.value as StakeholderInterest | '')}
+          onChange={(event) =>
+            onInterestChange(event.target.value as StakeholderInterest | '')
+          }
         />
       </div>
       <div className="w-48">
@@ -92,7 +102,9 @@ export function OrgStakeholderFilterBar({
           placeholder="All decision authority"
           options={DECISION_AUTHORITY_OPTIONS}
           onChange={(event) =>
-            onDecisionAuthorityChange(event.target.value as StakeholderDecisionAuthority | '')
+            onDecisionAuthorityChange(
+              event.target.value as StakeholderDecisionAuthority | '',
+            )
           }
         />
       </div>
