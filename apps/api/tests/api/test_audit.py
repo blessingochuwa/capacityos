@@ -3,10 +3,13 @@ and audit records never carry secrets — see
 docs/adr/0010-authentication-rbac-audit.md."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from app.models.enums import UserRole
+from app.models.audit_event import AuditEvent
+from app.models.enums import AuditOutcome, UserRole
 from tests.conftest import user_id_of
 
 
@@ -126,3 +129,37 @@ def test_import_apply_audit_metadata_never_contains_file_content(client: TestCli
     events = client.get("/api/v1/audit", params={"action": "import.apply"}).json()["items"]
     for event in events:
         assert marker not in str(event)
+
+
+def test_audit_pagination_is_stable_when_timestamps_tie(
+    client: TestClient, db_session: Session
+) -> None:
+    """Each Audit Log page is its own query. Events written in the same
+    burst can share a timestamp, so without the id tie-breaker tied rows
+    could swap places between page requests — a row shown twice, another
+    never shown."""
+    organization = client.organization  # type: ignore[attr-defined]
+    tied_at = datetime(2026, 1, 1, tzinfo=UTC)
+    events = [
+        AuditEvent(
+            organization_id=organization.id,
+            timestamp=tied_at,
+            action="phase48.tie",
+            resource_type="tie",
+            outcome=AuditOutcome.SUCCESS,
+        )
+        for _ in range(6)
+    ]
+    db_session.add_all(events)
+    db_session.flush()
+
+    params: dict[str, str | int] = {"action": "phase48.tie", "limit": 2}
+    walked = [
+        item["id"]
+        for offset in (0, 2, 4)
+        for item in client.get("/api/v1/audit", params={**params, "offset": offset}).json()[
+            "items"
+        ]
+    ]
+    expected = [str(e.id) for e in sorted(events, key=lambda e: e.id, reverse=True)]
+    assert walked == expected

@@ -206,12 +206,6 @@ register lists stored facts exactly as the per-project register does
   and the Risk register.
 - No free-text search (name or role). Not requested; it would be a separate
   decision.
-- Risk mutations still invalidate only the per-project risk key, so on
-  `/risks` the org-wide register can briefly show stale rows after an edit
-  in the per-project card. It refreshes on refetch. The fix is the
-  one-line invalidation this phase applied to stakeholders. It was **not**
-  applied to Risk, to keep Phase 47 corrections limited to the verified
-  defects above.
 - PostgreSQL was not exercised. The queries are plain, portable
   SQLAlchemy (equality filters, COUNT, ORDER BY, LIMIT/OFFSET).
 
@@ -219,3 +213,29 @@ register lists stored facts exactly as the per-project register does
 
 Stakeholder editing from the register, bulk actions, export from the
 register view, and any stakeholder classification are all out of scope.
+
+## Follow-up fixes (post-release repository check)
+
+A repository-wide check after Phase 48 shipped found and fixed three
+defects. Each has a regression test that fails without its fix (item 2
+is owned and documented by Phase 49):
+
+1. **Regression introduced by this phase: duplicate element ids on
+   `/stakeholders`.** With a project selected, `StakeholderForm` and
+   `OrgStakeholderFilterBar` both rendered `Select`s labelled Influence,
+   Interest and Decision authority, so each pair shared a label-derived
+   id. The register's labels pointed at the form's controls. The filter
+   bar's selects now carry explicit `org-stakeholder-*` ids. A page test
+   asserts every id on the page is unique.
+2. **Stale org-wide risk register (Phase 47).** Risk create, update and
+   delete invalidated only `['projects', id, 'risks']`. The fix (also
+   invalidate `['org-risks']`) was first made by this check. Phase 49 then
+   confirmed the root cause against `HEAD`, rewrote the tests into
+   behavioral ones, and recorded it: see
+   [ADR 0049](0049-risk-register-cache-invalidation.md). The matching
+   stakeholder mutation tests were added by this check.
+3. **Unstable Audit Log pagination (Phase 10/43).**
+   `AuditEventRepository.list_filtered` ordered by `timestamp` alone,
+   although the Audit Log pages with Previous/Next and one request often
+   writes several events in a burst. It now orders by
+   `(timestamp desc, id desc)`.

@@ -35,9 +35,14 @@ class AuditEventRepository(BaseRepository[AuditEvent]):
             stmt = stmt.where(AuditEvent.timestamp <= end)
 
         total = self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        # id is the tie-breaker: one request often writes several events in a
+        # burst, and each page is its own query — ordering by timestamp alone
+        # would let tied rows swap places between pages (duplicated/skipped).
         items = list(
             self.session.scalars(
-                stmt.order_by(AuditEvent.timestamp.desc()).limit(limit).offset(offset)
+                stmt.order_by(AuditEvent.timestamp.desc(), AuditEvent.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
         )
         return items, total

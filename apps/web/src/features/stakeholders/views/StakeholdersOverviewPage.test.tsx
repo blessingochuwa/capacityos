@@ -286,6 +286,18 @@ describe('StakeholdersOverviewPage — per-project register (regression)', () =>
     expect(within(table).getByRole('button', { name: 'Edit' })).toBeInTheDocument()
   })
 
+  it('form and register controls never share an element id', () => {
+    renderPage('/stakeholders?project=p1')
+
+    for (const label of ['Influence', 'Interest', 'Decision authority']) {
+      const controls = screen.getAllByLabelText(label)
+      expect(controls).toHaveLength(2)
+      expect(controls[0]).not.toBe(controls[1])
+    }
+    const ids = Array.from(document.querySelectorAll('[id]')).map((el) => el.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
   it('the per-project selection does not filter the org-wide register', () => {
     renderPage('/stakeholders?project=p1')
 

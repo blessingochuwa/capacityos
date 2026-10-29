@@ -44,7 +44,11 @@ const DECISION_AUTHORITY_OPTIONS = STAKEHOLDER_DECISION_AUTHORITY_LEVELS.map((le
  * filtering logic of its own, mirroring OrgRiskFilterBar (Phase 47).
  * Every option list is the codebase's own finite, DB-CHECK-constrained
  * vocabulary — never an invented grouping such as a power/interest
- * quadrant (CLAUDE.md §16/§17: no derived stakeholder classification). */
+ * quadrant (CLAUDE.md §16/§17: no derived stakeholder classification).
+ *
+ * Every control carries an explicit id: StakeholdersOverviewPage renders
+ * StakeholderForm (same Influence/Interest/Decision authority labels) on
+ * the same page, and Select's label-derived default ids would collide. */
 export function OrgStakeholderFilterBar({
   projectId,
   onProjectChange,
@@ -62,6 +66,7 @@ export function OrgStakeholderFilterBar({
       </div>
       <div className="w-40">
         <Select
+          id="org-stakeholder-influence"
           label="Influence"
           value={influenceValue}
           placeholder="All influence levels"
@@ -71,6 +76,7 @@ export function OrgStakeholderFilterBar({
       </div>
       <div className="w-40">
         <Select
+          id="org-stakeholder-interest"
           label="Interest"
           value={interestValue}
           placeholder="All interest levels"
@@ -80,6 +86,7 @@ export function OrgStakeholderFilterBar({
       </div>
       <div className="w-48">
         <Select
+          id="org-stakeholder-decision-authority"
           label="Decision authority"
           value={decisionAuthorityValue}
           placeholder="All decision authority"

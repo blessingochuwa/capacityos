@@ -2301,9 +2301,46 @@ again here), and build clean. Fresh DB migrated cleanly; live HTTP 31/31
 against real `uvicorn` across two organizations, including Phase 47's
 first live verification. `alembic check` reports only a pre-existing
 Enum-CHECK-constraint autogenerate artifact on 21 untouched tables. No
-browser verification (no tool available). Open follow-up: Risk mutations
-still don't invalidate `org-risks`. See
-docs/adr/0048-org-wide-stakeholder-register.md.
+browser verification (no tool available). A post-release repository
+check then fixed three defects, each with a failing-first regression
+test: duplicate select ids between `StakeholderForm` and the new
+register filter bar (introduced by this phase), Audit Log pagination
+ordered by `timestamp` alone (now `(timestamp, id)`), and Risk
+mutations not invalidating `org-risks` (owned and documented by Phase
+49). See docs/adr/0048-org-wide-stakeholder-register.md.
+
+### Phase 49
+Risk Register cache invalidation (§4/§26/§29) — fixes the Phase 48
+known limitation that editing a risk on `/risks` could leave the
+org-wide Risk Register stale. Started from a non-clean tree: `HEAD`
+(`7265ec1`) equalled `origin/main`, but uncommitted post-Phase-48 fixes
+were present, including a change to this exact hook; all were
+preserved, and the defect was confirmed against `HEAD` source. **Root
+cause**: `useCreateRisk`/`useUpdateRisk`/`useDeleteRisk` invalidated only
+`['projects', projectId, 'risks']`; the register is keyed
+`['org-risks', filters]` (one entry per filter/page combination), which
+nothing invalidated, and with the 30s `staleTime` the register, mounted
+on the same page, kept showing pre-edit rows. **Fix**: one shared
+`invalidateRiskQueries` helper, called from `onSuccess` only (no
+optimistic updates, so a failed mutation triggers nothing), also
+invalidates the `['org-risks']` prefix, which reaches every filtered and
+paginated variant. It cannot cross organizations: an organization switch
+already removes every non-session query, and the server re-scopes every
+request. No new cache abstraction; same shape as
+`useStakeholderMutations` (Phase 48). **Tests** (existing
+`useRiskMutations.test.tsx`, rewritten from 3 spy-only tests to 5
+behavioral ones using a real `QueryClient` with production's
+`staleTime`): a mounted register visibly refetches after a successful
+edit; create/update/delete each invalidate three seeded register
+variants plus the project list and leave other projects' risks and all
+stakeholder queries untouched; a failed edit invalidates nothing and
+leaves the register as it was. Against `HEAD`'s hook, the 4 success
+tests fail and the failure guard passes; with the fix, all 5 pass.
+Frontend 492 passed (483 at `HEAD`, 490 in the starting tree); tsc,
+oxlint, and build clean. **Frontend-only: 1 production file, 0 backend
+files, 0 API/OpenAPI/schema/permission changes.** No browser
+verification (no tool available). See
+docs/adr/0049-risk-register-cache-invalidation.md.
 
 Remaining unclaimed from the original "Phase 9+" line: external
 integrations and the Chrome extension — still explicitly deferred (§22,
